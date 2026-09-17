@@ -1,3 +1,12 @@
+import type { ChannelMessage } from "@roster/api";
+
+export interface MessageItem extends ChannelMessage {
+  pending?: boolean;
+  failed?: boolean;
+}
+
+export type ChannelTab = "messages" | "tasks" | "memory" | "running";
+
 export interface OrgSummary {
   id: string;
   name: string;
@@ -10,4 +19,4 @@ export interface UserSummary {
   email: string;
 }
 
-export type SidebarSection = "channels" | "members";
+export type SidebarSection = "channels" | "members" | "tasks";

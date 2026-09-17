@@ -18,6 +18,16 @@ export {
   type OnboardingStep,
 } from "./services/onboarding";
 export {
+  getChannelBySlug,
+  listChannels,
+  type Channel,
+  type ChannelGroups,
+} from "./services/channels";
+export {
+  listMessages,
+  type ChannelMessage,
+} from "./services/messages";
+export {
   listOrgProjects,
   projectsForAllHosts,
   type HostProjects,

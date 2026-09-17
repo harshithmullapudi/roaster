@@ -1,3 +1,4 @@
+import type { ChannelGroups } from "@roster/api";
 import type { ReactNode } from "react";
 
 import { AppSidebar } from "~/components/sidebar/app-sidebar";
@@ -10,8 +11,12 @@ export interface AppShellProps {
   organizations: OrgSummary[];
   user: UserSummary;
   section: SidebarSection;
-  title: string;
+  channels: ChannelGroups;
+  activeChannelSlug?: string;
+  title: ReactNode;
   actions?: ReactNode;
+  tabs?: ReactNode;
+  flush?: boolean;
   children: ReactNode;
 }
 
@@ -20,8 +25,12 @@ export function AppShell({
   organizations,
   user,
   section,
+  channels,
+  activeChannelSlug,
   title,
   actions,
+  tabs,
+  flush,
   children,
 }: AppShellProps) {
   return (
@@ -31,12 +40,20 @@ export function AppShell({
         organizations={organizations}
         user={user}
         section={section}
+        channels={channels}
+        activeChannelSlug={activeChannelSlug}
       />
-      <main className="bg-background-3 m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl shadow-sm">
-        <PageHeader title={title} actions={actions} />
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl px-5 py-4">{children}</div>
-        </div>
+      <main className="bg-background-2 shadow-1 m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
+        <PageHeader title={title} actions={actions} tabs={tabs} />
+        {flush ? (
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            <div className="flex w-auto flex-col gap-6 p-3 md:w-3xl">
+              {children}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

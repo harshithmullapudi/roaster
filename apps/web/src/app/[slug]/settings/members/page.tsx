@@ -1,4 +1,8 @@
-import { listOrgMembers, listPendingInvitations } from "@roster/api";
+import {
+  listChannels,
+  listOrgMembers,
+  listPendingInvitations,
+} from "@roster/api";
 
 import { AppShell } from "~/components/app-shell/app-shell";
 import { InviteForm } from "~/components/members/invite-form";
@@ -14,8 +18,9 @@ export default async function MembersPage({
   const { slug } = await params;
   const { session, organization, member } = await requireOrg(slug);
 
-  const [organizations, members, invitations] = await Promise.all([
+  const [organizations, channels, members, invitations] = await Promise.all([
     myOrganizations(session.user.id),
+    listChannels({ organizationId: organization.id, memberId: member.id }),
     listOrgMembers(organization.id),
     listPendingInvitations(organization.id),
   ]);
@@ -28,6 +33,7 @@ export default async function MembersPage({
       organizations={organizations}
       user={session.user}
       section="members"
+      channels={channels}
       title="Members"
     >
       <div className="space-y-6">

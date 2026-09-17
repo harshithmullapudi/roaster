@@ -35,11 +35,11 @@ export function PendingInvitations({
         Pending invitations{" "}
         <span className="text-muted-foreground">{invitations.length}</span>
       </h2>
-      <ul className="border-border mt-2 divide-y rounded-lg border">
+      <ul className="bg-background-3 text-foreground mt-2 flex flex-col divide-y rounded">
         {invitations.map((invitation) => (
           <li
             key={invitation.id}
-            className="bg-background-3 flex items-center gap-3 px-3 py-2.5 first:rounded-t-lg last:rounded-b-lg"
+            className="flex items-center gap-3 px-4 py-3"
           >
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm">{invitation.email}</div>

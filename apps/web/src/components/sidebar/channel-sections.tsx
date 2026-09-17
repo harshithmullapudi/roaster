@@ -1,0 +1,91 @@
+"use client";
+
+import type { Channel, ChannelGroups } from "@roster/api";
+import { useEffect, useState } from "react";
+
+import { readCollapsed, writeCollapsed } from "~/utils/sidebar-collapse";
+import { trpc } from "~/utils/trpc";
+
+import { ChannelSection } from "./channel-section";
+
+export interface ChannelSectionsProps {
+  groups: ChannelGroups;
+  orgSlug: string;
+  activeChannelSlug?: string;
+}
+
+const SECTIONS: { key: keyof ChannelGroups; label: string }[] = [
+  { key: "starred", label: "Starred" },
+  { key: "public", label: "Public" },
+  { key: "private", label: "Private" },
+];
+
+function regroup(groups: ChannelGroups, changed: Channel): ChannelGroups {
+  const all = [...groups.starred, ...groups.public, ...groups.private].map(
+    (channel) =>
+      channel.id === changed.id ? { ...channel, starred: changed.starred } : channel,
+  );
+
+  const next: ChannelGroups = { starred: [], public: [], private: [] };
+  for (const channel of all) {
+    if (channel.starred) next.starred.push(channel);
+    else if (channel.visibility === "private") next.private.push(channel);
+    else next.public.push(channel);
+  }
+  for (const key of ["starred", "public", "private"] as const) {
+    next[key].sort((a, b) => a.slug.localeCompare(b.slug));
+  }
+  return next;
+}
+
+export function ChannelSections({
+  groups,
+  orgSlug,
+  activeChannelSlug,
+}: ChannelSectionsProps) {
+  const [current, setCurrent] = useState(groups);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => setCurrent(groups), [groups]);
+  useEffect(() => setCollapsed(readCollapsed()), []);
+
+  function setOpen(key: string, open: boolean) {
+    setCollapsed((previous) => {
+      const next = { ...previous, [key]: !open };
+      writeCollapsed(next);
+      return next;
+    });
+  }
+
+  async function toggleStar(channel: Channel) {
+    const optimistic = { ...channel, starred: !channel.starred };
+    setCurrent((previous) => regroup(previous, optimistic));
+    try {
+      const result = await trpc.channels.toggleStar.mutate({
+        projectId: channel.id,
+      });
+      setCurrent((previous) =>
+        regroup(previous, { ...channel, starred: result.starred }),
+      );
+    } catch {
+      setCurrent((previous) => regroup(previous, channel));
+    }
+  }
+
+  return (
+    <div className="flex w-full min-w-0 flex-col">
+      {SECTIONS.map((section) => (
+        <ChannelSection
+          key={section.key}
+          label={section.label}
+          channels={current[section.key]}
+          open={collapsed[section.key] !== true}
+          orgSlug={orgSlug}
+          activeChannelSlug={activeChannelSlug}
+          onOpenChange={(open) => setOpen(section.key, open)}
+          onToggleStar={toggleStar}
+        />
+      ))}
+    </div>
+  );
+}

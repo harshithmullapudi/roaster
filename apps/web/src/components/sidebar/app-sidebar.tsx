@@ -1,16 +1,19 @@
-import { Hash, Users } from "lucide-react";
+import type { ChannelGroups } from "@roster/api";
+import { CircleCheck, Users } from "lucide-react";
 
 import type { OrgSummary, SidebarSection, UserSummary } from "~/types";
 
+import { ChannelSections } from "./channel-sections";
 import { SidebarLink } from "./sidebar-link";
-import { TeamSwitcher } from "./team-switcher";
-import { UserMenu } from "./user-menu";
+import { WorkspaceMenu } from "./workspace-menu";
 
 export interface AppSidebarProps {
   activeOrg: OrgSummary;
   organizations: OrgSummary[];
   user: UserSummary;
   section: SidebarSection;
+  channels: ChannelGroups;
+  activeChannelSlug?: string;
 }
 
 export function AppSidebar({
@@ -18,27 +21,39 @@ export function AppSidebar({
   organizations,
   user,
   section,
+  channels,
+  activeChannelSlug,
 }: AppSidebarProps) {
   return (
-    <aside className="flex w-64 shrink-0 flex-col p-2">
-      <TeamSwitcher activeOrg={activeOrg} organizations={organizations} />
+    <aside className="bg-background flex w-56 shrink-0 flex-col gap-3 p-2">
+      <WorkspaceMenu
+        activeOrg={activeOrg}
+        organizations={organizations}
+        user={user}
+      />
 
-      <nav className="mt-2 flex flex-1 flex-col gap-0.5">
-        <SidebarLink
-          href={`/${activeOrg.slug}`}
-          active={section === "channels"}
-          icon={<Hash size={16} />}
-          label="Channels"
-        />
-        <SidebarLink
-          href={`/${activeOrg.slug}/settings/members`}
-          active={section === "members"}
-          icon={<Users size={16} />}
-          label="Members"
+      <nav className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
+        <div className="flex w-full min-w-0 flex-col gap-0.5">
+          <SidebarLink
+            href={`/${activeOrg.slug}/tasks`}
+            active={section === "tasks"}
+            icon={<CircleCheck size={16} />}
+            label="My tasks"
+          />
+          <SidebarLink
+            href={`/${activeOrg.slug}/settings/members`}
+            active={section === "members"}
+            icon={<Users size={16} />}
+            label="Members"
+          />
+        </div>
+
+        <ChannelSections
+          groups={channels}
+          orgSlug={activeOrg.slug}
+          activeChannelSlug={activeChannelSlug}
         />
       </nav>
-
-      <UserMenu user={user} />
     </aside>
   );
 }

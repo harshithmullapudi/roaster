@@ -14,15 +14,18 @@ export function SidebarLink({ href, active, icon, label }: SidebarLinkProps) {
     <Button
       variant="ghost"
       isActive={active}
+      full
       className={cn(
-        "text-foreground w-fit gap-1 !rounded-md",
+        "text-foreground min-w-0 justify-start gap-2 !rounded-md px-2 text-sm",
         active && "!bg-accent !text-accent-foreground",
       )}
       asChild
     >
       <Link href={href}>
-        {icon}
-        {label}
+        <span className="text-muted-foreground flex size-4 shrink-0 items-center justify-center">
+          {icon}
+        </span>
+        <span className="min-w-0 truncate text-left">{label}</span>
       </Link>
     </Button>
   );

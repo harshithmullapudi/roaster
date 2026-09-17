@@ -1,4 +1,4 @@
-import { listOrgProjects } from "@roster/api";
+import { listChannels } from "@roster/api";
 import { Button } from "@roster/ui";
 import Link from "next/link";
 
@@ -12,12 +12,14 @@ export default async function TeamHomePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { session, organization } = await requireOrg(slug);
+  const { session, organization, member } = await requireOrg(slug);
 
-  const [organizations, projects] = await Promise.all([
+  const [organizations, channels] = await Promise.all([
     myOrganizations(session.user.id),
-    listOrgProjects(organization.id),
+    listChannels({ organizationId: organization.id, memberId: member.id }),
   ]);
+
+  const all = [...channels.starred, ...channels.public, ...channels.private];
 
   return (
     <AppShell
@@ -25,17 +27,18 @@ export default async function TeamHomePage({
       organizations={organizations}
       user={session.user}
       section="channels"
+      channels={channels}
       title="Channels"
       actions={
-        projects.length > 0 ? (
+        all.length > 0 ? (
           <Button variant="ghost" size="sm" asChild>
             <Link href="/onboarding?step=projects">Add</Link>
           </Button>
         ) : null
       }
     >
-      {projects.length === 0 ? (
-        <div className="border-border rounded-lg border border-dashed p-6">
+      {all.length === 0 ? (
+        <div className="border-border rounded-md border border-dashed p-6">
           <p className="text-sm font-medium">No channels yet</p>
           <p className="text-muted-foreground mt-1 text-sm">
             Channels come from your Superset projects.
@@ -45,7 +48,7 @@ export default async function TeamHomePage({
           </Button>
         </div>
       ) : (
-        <ChannelList projects={projects} />
+        <ChannelList orgSlug={organization.slug} channels={all} />
       )}
     </AppShell>
   );

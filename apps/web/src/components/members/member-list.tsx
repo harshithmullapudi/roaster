@@ -1,10 +1,8 @@
 "use client";
 
 import { authClient } from "@roster/auth/client";
-import { Avatar, AvatarFallback, Badge, Button } from "@roster/ui";
+import { AvatarText, Badge, Button } from "@roster/ui";
 import { useRouter } from "next/navigation";
-
-import { initials } from "~/utils/initials";
 
 export interface MemberRow {
   id: string;
@@ -44,17 +42,13 @@ export function MemberList({
       <h2 className="text-sm font-medium">
         Members <span className="text-muted-foreground">{members.length}</span>
       </h2>
-      <ul className="border-border mt-2 divide-y rounded-lg border">
+      <ul className="bg-background-3 text-foreground mt-2 flex flex-col divide-y rounded">
         {members.map((member) => (
-          <li
-            key={member.id}
-            className="bg-background-3 flex items-center gap-3 px-3 py-2.5 first:rounded-t-lg last:rounded-b-lg"
-          >
-            <Avatar className="size-6">
-              <AvatarFallback className="text-[10px]">
-                {initials(member.name || member.email)}
-              </AvatarFallback>
-            </Avatar>
+          <li key={member.id} className="flex items-center gap-3 px-4 py-3">
+            <AvatarText
+              text={member.name || member.email}
+              className="h-5 w-5 rounded text-xs"
+            />
 
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm">

@@ -53,7 +53,7 @@ export function InviteForm({ organizationId }: InviteFormProps) {
   }
 
   return (
-    <section className="bg-background-3 border-border rounded-lg border p-4">
+    <section className="bg-background-3 text-foreground rounded p-4">
       <h2 className="text-sm font-medium">Invite someone</h2>
       <p className="text-muted-foreground mt-0.5 text-sm">
         They&rsquo;ll get an email with a link. It expires in 7 days.

@@ -1,3 +1,5 @@
+import { channelsRouter } from "./routers/channels";
+import { messagesRouter } from "./routers/messages";
 import { onboardingRouter } from "./routers/onboarding";
 import { supersetRouter } from "./routers/superset";
 import { listUserOrganizations } from "./services/org";
@@ -10,6 +12,8 @@ export const appRouter = createTRPCRouter({
   })),
   superset: supersetRouter,
   onboarding: onboardingRouter,
+  channels: channelsRouter,
+  messages: messagesRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,0 +1,13 @@
+/*
+ * core's theme, copied byte-for-byte from
+ * ~/Documents/core/apps/webapp/app/tailwind.css. Do not edit globals.css —
+ * put Roster's own CSS here so the two stay diffable against upstream.
+ */
+@import "./globals.css";
+
+/*
+ * Tailwind v4 scans the importing app only. @roster/ui lives outside it, so
+ * its class names have to be declared as a source or every component ships
+ * unstyled.
+ */
+@source "../../../../packages/ui/src";

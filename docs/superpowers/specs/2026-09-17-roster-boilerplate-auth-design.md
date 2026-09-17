@@ -300,6 +300,58 @@ session has no `activeOrganizationId` and that roughly thirty-nine procedures
 read that field, so the header costs an afternoon. Worth knowing before it is
 scheduled, not worth solving here.
 
+## What the build changed
+
+Recorded after implementing, so the spec matches the repo.
+
+- **`packages/cli` deferred, `packages/api` kept.** As designed.
+- **UI package is smaller than specified.** `chart` and `data-table` were
+  dropped along with the TUI half, taking `recharts` and
+  `@tanstack/react-table` with them, as were core's own widgets (`List`,
+  `Player`, `Stat`, `Tasks`, `TextBlock`). Twenty-eight Radix/shadcn modules
+  plus `utils` and `color-utils` remain. The brutal rule applied; the theme
+  rule did not, because these are components rather than theme.
+- **`globals.css` is untouched and `theme.css` wraps it.** Tailwind v4 only
+  scans the importing app, so `@roster/ui` needs an `@source` declaration or
+  every component renders unstyled. Putting it in a wrapper keeps the copied
+  file byte-identical to core's and diffable against upstream.
+- **Org access checks live in `packages/api/src/org.ts`, not `apps/web`.**
+  `resolveOrgAccess` is pure and importable by both; `apps/web/src/lib/session.ts`
+  wraps it with `redirect()`/`notFound()`, which need `next/navigation`. A
+  package must not depend on an app.
+- **`drizzle.config.ts` needs `schemaFilter: ["public", "auth"]`.** drizzle-kit
+  only inspects `public` by default, and reports "no changes detected" rather
+  than warning that it ignored every table in the file.
+- **better-auth needs `advanced.database.generateId: false`.** Its id generator
+  emits a 32-char nanoid; every id column here is `uuid`.
+- **Postgres runs on 5442, not 5432.** This machine already has several
+  Postgres containers bound to nearby ports.
+
+## Verified
+
+End to end against a running server on 2026-09-17:
+
+- `/` redirects by state: signed out → `/sign-in`, no team → `/onboarding`,
+  team → `/{slug}`.
+- Magic link signs a new user in and creates their row; the console fallback
+  prints the link when `RESEND_API_KEY` is unset.
+- Team creation, then `/tegon` renders and `/not-a-team` 404s.
+- Invitation email fires; `/invite/{id}` renders correctly signed out, signed
+  in as the wrong address, and for an unknown id.
+- A second user signs in through the invitation link, accepts, and lands in the
+  team. Accepting twice returns `INVITATION_NOT_FOUND` and creates no duplicate
+  member row.
+- `me` over tRPC returns the user and their organizations.
+- `next build` succeeds; all five workspaces typecheck.
+
+## Not done
+
+**Two of the three specified tests are missing.** `slugify`/`nextSlugCandidate`
+have ten passing vitest cases. The `requireOrg` rejection and the invitation
+acceptance rules were verified by hand over HTTP, as listed above, but have no
+automated test — both need a test database and a fixture harness that does not
+exist yet. Worth building before the next slice adds rows to guard.
+
 ## Open question
 
 Whether `packages/cli` is built immediately after this slice or after the first

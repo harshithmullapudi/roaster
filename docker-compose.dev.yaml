@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: roster-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: roster
+      POSTGRES_PASSWORD: roster
+      POSTGRES_DB: roster
+    # 5442 rather than 5432: this machine already runs several Postgres
+    # containers for other projects.
+    ports:
+      - "5442:5432"
+    volumes:
+      - roster-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roster -d roster"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  roster-pgdata:

@@ -1,7 +1,6 @@
-import { db, members } from "@roster/db";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { isAgentNameTaken, setAgentName } from "../services/agent-name";
 import { saveProjects } from "../services/superset-connection";
 import { createTRPCRouter, memberProcedure } from "../trpc";
 
@@ -37,13 +36,25 @@ export const onboardingRouter = createTRPCRouter({
       return { added };
     }),
 
+  checkAgentName: memberProcedure
+    .input(z.object({ agentName: agentNameSchema }))
+    .query(async ({ ctx, input }) => {
+      const taken = await isAgentNameTaken({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        agentName: input.agentName,
+      });
+      return { available: !taken };
+    }),
+
   setAgentName: memberProcedure
     .input(z.object({ agentName: agentNameSchema }))
     .mutation(async ({ ctx, input }) => {
-      await db
-        .update(members)
-        .set({ agentName: input.agentName })
-        .where(eq(members.id, ctx.member.id));
-      return { agentName: input.agentName };
+      const agentName = await setAgentName({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        agentName: input.agentName,
+      });
+      return { agentName };
     }),
 });

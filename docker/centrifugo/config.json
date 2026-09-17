@@ -1,0 +1,26 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "client": {
+    "allowed_origins": ["http://localhost:3000"]
+  },
+  "channel": {
+    "namespaces": [
+      {
+        "name": "channel",
+        "presence": true,
+        "history_size": 300,
+        "history_ttl": "30m",
+        "force_recovery": true
+      },
+      {
+        "name": "thread",
+        "presence": false,
+        "history_size": 300,
+        "history_ttl": "30m",
+        "force_recovery": true
+      }
+    ]
+  }
+}

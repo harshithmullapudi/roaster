@@ -1,0 +1,53 @@
+import { describe, expect, it } from "vitest";
+
+import { filterMentions, type MentionItem } from "./mentions";
+
+function item(handle: string, slug: string, name: string): MentionItem {
+  return {
+    id: handle,
+    slug,
+    name,
+    visibility: "public",
+    handle,
+    display: `${handle.split("-")[0]} [${slug}]`,
+  };
+}
+
+const agents = [
+  item("fern-core", "core", "Core"),
+  item("fern-spark-wilderness", "spark-wilderness", "Spark Wilderness"),
+  item("ash-web", "web", "Web App"),
+];
+
+describe("filterMentions", () => {
+  it("offers everything before anything is typed", () => {
+    expect(filterMentions(agents, "")).toHaveLength(3);
+  });
+
+  it("matches on the agent handle", () => {
+    expect(filterMentions(agents, "fern-c")).toEqual([agents[0]]);
+  });
+
+  it("matches on the channel slug, so @core finds fern-core", () => {
+    expect(filterMentions(agents, "core")).toEqual([agents[0]]);
+  });
+
+  it("matches on the channel's display name", () => {
+    expect(filterMentions(agents, "web app")).toEqual([agents[2]]);
+  });
+
+  it("ignores case and surrounding space", () => {
+    expect(filterMentions(agents, "  ASH  ")).toEqual([agents[2]]);
+  });
+
+  it("returns nothing for a handle that matches no agent", () => {
+    expect(filterMentions(agents, "nobody")).toEqual([]);
+  });
+
+  it("caps the list so the popup cannot run off screen", () => {
+    const many = Array.from({ length: 20 }, (_, index) =>
+      item(`fern-c${index}`, `c${index}`, `Channel ${index}`),
+    );
+    expect(filterMentions(many, "fern")).toHaveLength(8);
+  });
+});

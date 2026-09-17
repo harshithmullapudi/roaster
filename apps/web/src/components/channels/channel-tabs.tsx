@@ -7,32 +7,42 @@ const TABS: { value: ChannelTab; label: string }[] = [
   { value: "messages", label: "Messages" },
   { value: "tasks", label: "Tasks" },
   { value: "memory", label: "Memory" },
-  { value: "running", label: "Running" },
+  { value: "sessions", label: "Sessions" },
 ];
 
 export interface ChannelTabsProps {
   basePath: string;
+  channelSlug: string;
   active: ChannelTab;
 }
 
-export function ChannelTabs({ basePath, active }: ChannelTabsProps) {
+export function ChannelTabs({
+  basePath,
+  channelSlug,
+  active,
+}: ChannelTabsProps) {
+  // Tasks is the org-wide list, so the tab link pre-fills its channel filter.
+  const href = (tab: ChannelTab) =>
+    tab === "tasks"
+      ? `${basePath}?tab=tasks&channel=${encodeURIComponent(channelSlug)}`
+      : `${basePath}?tab=${tab}`;
+
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex w-max items-center gap-0.5">
       {TABS.map((tab) => (
         <Button
           key={tab.value}
           variant="ghost"
-          size="sm"
           isActive={tab.value === active}
           className={cn(
-            "text-muted-foreground !rounded-md px-2 text-sm",
+            "text-muted-foreground shrink-0 !rounded-md px-2 text-sm",
             tab.value === active &&
               "!bg-accent !text-accent-foreground",
           )}
           asChild
         >
           <Link
-            href={`${basePath}?tab=${tab.value}`}
+            href={href(tab.value)}
             aria-current={tab.value === active ? "page" : undefined}
           >
             {tab.label}

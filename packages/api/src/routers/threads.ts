@@ -1,0 +1,118 @@
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+
+import { requireOrgProject } from "../services/channels";
+import {
+  cancelThread,
+  listChannelThreads,
+  retryThread,
+  threadDetail,
+  threadSummary,
+  threadTarget,
+} from "../services/sessions";
+import { createTRPCRouter, memberProcedure } from "../trpc";
+
+export const threadsRouter = createTRPCRouter({
+  list: memberProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const project = await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: input.projectId,
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
+
+      return listChannelThreads(project.id);
+    }),
+
+  get: memberProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        threadId: z.string().uuid(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const project = await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: input.projectId,
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const detail = await threadDetail({
+        projectId: project.id,
+        threadId: input.threadId,
+      });
+      if (!detail) throw new TRPCError({ code: "NOT_FOUND" });
+
+      return detail;
+    }),
+
+  cancel: memberProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        threadId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const project = await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: input.projectId,
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const target = await threadTarget(input.threadId);
+      if (!target || target.projectId !== project.id) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const canceled = await cancelThread({ threadId: target.id });
+      if (!canceled) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "That session already finished.",
+        });
+      }
+
+      return threadSummary({ projectId: project.id, threadId: target.id });
+    }),
+
+  retry: memberProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        threadId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const project = await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: input.projectId,
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const target = await threadTarget(input.threadId);
+      if (!target || target.projectId !== project.id) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const retrying = await retryThread({ threadId: target.id });
+      if (!retrying) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "That session has no worktree left to retry.",
+        });
+      }
+
+      return threadSummary({ projectId: project.id, threadId: target.id });
+    }),
+});

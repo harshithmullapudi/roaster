@@ -1,60 +1,78 @@
-import type { ChannelGroups } from "@roster/api";
 import type { ReactNode } from "react";
 
+import { CommandProvider } from "~/components/providers/command-provider";
 import { AppSidebar } from "~/components/sidebar/app-sidebar";
-import type { OrgSummary, SidebarSection, UserSummary } from "~/types";
+import type { Shell } from "~/lib/shell";
+import type { SidebarSection } from "~/types";
 
 import { PageHeader } from "./page-header";
+import { RailLayout } from "./rail-layout";
+import { SidebarSheet } from "./sidebar-sheet";
 
 export interface AppShellProps {
-  activeOrg: OrgSummary;
-  organizations: OrgSummary[];
-  user: UserSummary;
+  shell: Shell;
   section: SidebarSection;
-  channels: ChannelGroups;
   activeChannelSlug?: string;
   title: ReactNode;
   actions?: ReactNode;
   tabs?: ReactNode;
   flush?: boolean;
+  rail?: ReactNode;
   children: ReactNode;
 }
 
 export function AppShell({
-  activeOrg,
-  organizations,
-  user,
+  shell,
   section,
-  channels,
   activeChannelSlug,
   title,
   actions,
   tabs,
   flush,
+  rail,
   children,
 }: AppShellProps) {
-  return (
-    <div className="bg-background flex h-screen">
-      <AppSidebar
-        activeOrg={activeOrg}
-        organizations={organizations}
-        user={user}
-        section={section}
-        channels={channels}
-        activeChannelSlug={activeChannelSlug}
+  const sidebar = (
+    <AppSidebar
+      shell={shell}
+      section={section}
+      activeChannelSlug={activeChannelSlug}
+    />
+  );
+
+  const column = (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <PageHeader
+        title={title}
+        actions={actions}
+        tabs={tabs}
+        nav={<SidebarSheet>{sidebar}</SidebarSheet>}
       />
-      <main className="bg-background-2 shadow-1 m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
-        <PageHeader title={title} actions={actions} tabs={tabs} />
-        {flush ? (
-          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
-        ) : (
-          <div className="flex-1 overflow-y-auto">
-            <div className="flex w-auto flex-col gap-6 p-3 md:w-3xl">
-              {children}
-            </div>
+      {flush ? (
+        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      ) : (
+        <div className="overscroll-contain flex-1 overflow-y-auto">
+          <div className="pb-safe-2 flex w-full max-w-3xl flex-col gap-6 p-3 sm:p-4">
+            {children}
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
+  );
+
+  return (
+    <CommandProvider
+      orgSlug={shell.organization.slug}
+      channels={shell.channels}
+      activeChannelSlug={activeChannelSlug}
+    >
+      <div className="bg-background px-safe flex h-dvh">
+        <div className="hidden md:flex">{sidebar}</div>
+
+        <main className="bg-background-2 shadow-1 flex min-w-0 flex-1 overflow-hidden md:m-2 md:ml-0 md:rounded-xl">
+          {rail ? <RailLayout main={column} rail={rail} /> : column}
+        </main>
+      </div>
+    </CommandProvider>
   );
 }

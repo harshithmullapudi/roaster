@@ -6,6 +6,23 @@ export {
 } from "./crypto";
 export { decodeJwtClaims, type SupersetClaims } from "./jwt";
 export {
+  clearWorkspaceStatuses,
+  createWorkspace,
+  DEFAULT_AGENT,
+  deleteWorkspace,
+  eventsUrl,
+  interruptAgent,
+  isAgentLifecycle,
+  readTranscript,
+  routingKey,
+  runAgent,
+  sendToAgent,
+  type AgentLifecycleEvent,
+  type AgentRun,
+  type CreatedWorkspace,
+  type Transcript,
+} from "./agents";
+export {
   getOrganization,
   jwtExpiresAt,
   listHosts,
@@ -18,3 +35,8 @@ export {
   type SupersetProject,
   type SupersetSession,
 } from "./client";
+export {
+  bindingIsIdle,
+  listAgentBindings,
+  type AgentBinding,
+} from "./agents";

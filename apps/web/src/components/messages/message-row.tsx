@@ -2,24 +2,36 @@
 
 import { AvatarText, cn } from "@roster/ui";
 
+import { ThreadAffordance } from "~/components/threads/thread-affordance";
 import type { MessageItem } from "~/types";
 import { displayName } from "~/utils/message-groups";
 import { relativeTime } from "~/utils/relative-time";
+import type { ThreadItem } from "~/utils/thread-rows";
 
 import { MessageBody } from "./message-body";
 
 export interface MessageRowProps {
   message: MessageItem;
   leading: boolean;
+  thread?: ThreadItem;
+  threadHref?: string;
 }
 
-export function MessageRow({ message, leading }: MessageRowProps) {
-  const name = displayName(message.authorName, message.authorEmail);
+export function MessageRow({
+  message,
+  leading,
+  thread,
+  threadHref,
+}: MessageRowProps) {
+  const name =
+    message.kind === "agent"
+      ? (message.agentDisplay ?? "Agent")
+      : displayName(message.authorName, message.authorEmail);
 
   return (
     <div
       className={cn(
-        "group/message hover:bg-grayAlpha-50 flex w-full gap-3 px-5",
+        "group/message hover:bg-grayAlpha-50 flex w-full gap-2.5 px-3 sm:gap-3 sm:px-5",
         leading ? "pt-3 pb-0.5" : "py-0.5",
         message.pending && "opacity-60",
       )}
@@ -47,6 +59,9 @@ export function MessageRow({ message, leading }: MessageRowProps) {
         <div className="min-w-0">
           <MessageBody body={message.body} text={message.text} />
         </div>
+        {thread && threadHref ? (
+          <ThreadAffordance thread={thread} href={threadHref} />
+        ) : null}
         {message.failed ? (
           <span className="text-destructive text-xs">Failed to send.</span>
         ) : null}

@@ -46,7 +46,6 @@ const AvatarFallback = React.forwardRef<
 ));
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
 
-// Function to get the first two letters
 export const getInitials = (name: string, noOfChar?: number | undefined) => {
   if (!name) {
     return "";

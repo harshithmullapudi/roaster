@@ -1,0 +1,74 @@
+import { describe, expect, it } from "vitest";
+
+import { rosterEnvelope, stripEnvelope } from "./roster-envelope";
+
+const base = {
+  threadId: "8f3a0000-0000-0000-0000-000000000001",
+  channelId: "1c7d0000-0000-0000-0000-000000000002",
+  handle: "fern-core",
+};
+
+describe("rosterEnvelope", () => {
+  it("tells the agent who it is and which thread it is in", () => {
+    const envelope = rosterEnvelope(base);
+    expect(envelope).toContain("@fern-core");
+    expect(envelope).toContain(`thread-id: ${base.threadId}`);
+    expect(envelope).toContain(`channel-id: ${base.channelId}`);
+  });
+
+  it("tells it to end its turn rather than wait, which is what parks it", () => {
+    expect(rosterEnvelope(base)).toContain("Never poll or wait.");
+  });
+
+  it("names the asker and the channel to read when work was handed over", () => {
+    const envelope = rosterEnvelope({
+      ...base,
+      delegation: { askedBy: "ash-spark", originChannelId: "origin-id" },
+    });
+    expect(envelope).toContain("handed to you by @ash-spark");
+    expect(envelope).toContain("--channel-id origin-id --limit 20");
+  });
+
+  it("says nothing about a handover when there wasn't one", () => {
+    expect(rosterEnvelope(base)).not.toContain("handed to you");
+  });
+
+  /**
+   * The whole reason the CLI authenticates from disk: this text is echoed into
+   * the terminal, and the transcript is scraped into channel messages.
+   */
+  it("carries no credential", () => {
+    const envelope = rosterEnvelope({
+      ...base,
+      delegation: { askedBy: "ash-spark", originChannelId: "origin-id" },
+    });
+    expect(envelope).not.toMatch(/rst_|token|secret|api[-_ ]?key/i);
+  });
+});
+
+describe("stripEnvelope", () => {
+  it("removes the briefing from a scraped transcript", () => {
+    const scraped = `${rosterEnvelope(base)}\nBuild is green.`;
+    expect(stripEnvelope(scraped)).toBe("Build is green.");
+  });
+
+  it("removes every briefing when a session was resumed", () => {
+    const scraped = [
+      rosterEnvelope(base),
+      "First answer.",
+      rosterEnvelope(base),
+      "Second answer.",
+    ].join("\n");
+    expect(stripEnvelope(scraped)).toBe("First answer.\nSecond answer.");
+  });
+
+  it("leaves ordinary replies untouched", () => {
+    expect(stripEnvelope("  Build is green.  ")).toBe("Build is green.");
+  });
+
+  it("does not eat text that merely mentions roster", () => {
+    expect(stripEnvelope("I ran roster ask and it worked")).toBe(
+      "I ran roster ask and it worked",
+    );
+  });
+});

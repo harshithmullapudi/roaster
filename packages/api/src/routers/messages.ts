@@ -18,6 +18,7 @@ export const messagesRouter = createTRPCRouter({
       const project = await requireOrgProject({
         organizationId: ctx.organizationId,
         memberId: ctx.member.id,
+        role: ctx.member.role,
         projectId: input.projectId,
       });
       if (!project) throw new TRPCError({ code: "NOT_FOUND" });
@@ -36,12 +37,14 @@ export const messagesRouter = createTRPCRouter({
         body: z.unknown(),
         text: z.string().min(1).max(20000),
         clientId: z.string().min(1).max(100),
+        threadId: z.string().uuid().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const project = await requireOrgProject({
         organizationId: ctx.organizationId,
         memberId: ctx.member.id,
+        role: ctx.member.role,
         projectId: input.projectId,
       });
       if (!project) throw new TRPCError({ code: "NOT_FOUND" });
@@ -53,6 +56,7 @@ export const messagesRouter = createTRPCRouter({
         body: input.body,
         text: input.text,
         clientId: input.clientId,
+        threadId: input.threadId,
       });
     }),
 });

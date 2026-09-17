@@ -1,14 +1,10 @@
-import {
-  listChannels,
-  listOrgMembers,
-  listPendingInvitations,
-} from "@roster/api";
+import { listOrgMembers, listPendingInvitations } from "@roster/api";
 
 import { AppShell } from "~/components/app-shell/app-shell";
 import { InviteForm } from "~/components/members/invite-form";
 import { MemberList } from "~/components/members/member-list";
 import { PendingInvitations } from "~/components/members/pending-invitations";
-import { myOrganizations, requireOrg } from "~/lib/session";
+import { loadShell } from "~/lib/shell";
 
 export default async function MembersPage({
   params,
@@ -16,35 +12,29 @@ export default async function MembersPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { session, organization, member } = await requireOrg(slug);
+  const { session, organization, shell } = await loadShell(slug);
 
-  const [organizations, channels, members, invitations] = await Promise.all([
-    myOrganizations(session.user.id),
-    listChannels({ organizationId: organization.id, memberId: member.id }),
+  const [members, invitations] = await Promise.all([
     listOrgMembers(organization.id),
     listPendingInvitations(organization.id),
   ]);
 
-  const canManage = member.role === "owner" || member.role === "admin";
-
   return (
-    <AppShell
-      activeOrg={organization}
-      organizations={organizations}
-      user={session.user}
-      section="members"
-      channels={channels}
-      title="Members"
-    >
+    <AppShell shell={shell} section="members" title="Members">
       <div className="space-y-6">
-        {canManage ? <InviteForm organizationId={organization.id} /> : null}
+        {shell.can("member:invite") ? (
+          <InviteForm organizationId={organization.id} />
+        ) : null}
         <MemberList
           organizationId={organization.id}
           members={members}
           currentUserId={session.user.id}
-          canManage={canManage}
+          canManage={shell.can("member:remove")}
         />
-        <PendingInvitations invitations={invitations} canManage={canManage} />
+        <PendingInvitations
+          invitations={invitations}
+          canManage={shell.can("member:invite")}
+        />
       </div>
     </AppShell>
   );

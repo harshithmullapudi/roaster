@@ -129,6 +129,10 @@ export const members = authSchema.table(
     index("members_organization_id_idx").on(table.organizationId),
     index("members_user_id_idx").on(table.userId),
     uniqueIndex("members_org_user_idx").on(table.organizationId, table.userId),
+    uniqueIndex("members_org_agent_name_idx").on(
+      table.organizationId,
+      table.agentName,
+    ),
   ],
 );
 

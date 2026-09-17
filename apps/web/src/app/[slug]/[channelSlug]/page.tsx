@@ -1,27 +1,35 @@
-import { getChannelBySlug, listChannels, listMessages } from "@roster/api";
+import {
+  ensureStarted,
+  getChannelBySlug,
+  listChannelThreads,
+  listMessages,
+  listTasks,
+  pausedMessageCount,
+  threadDetail,
+} from "@roster/api";
+import { Button } from "@roster/ui";
+import { Settings } from "lucide-react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppShell } from "~/components/app-shell/app-shell";
 import { ChannelPlaceholder } from "~/components/channels/channel-placeholder";
 import { ChannelTabs } from "~/components/channels/channel-tabs";
+import { WatchToggle } from "~/components/channels/watch-toggle";
+import { HashMark } from "~/components/logo/hash-mark";
 import { MessagePanel } from "~/components/messages/message-panel";
-import { myOrganizations, requireOrg } from "~/lib/session";
+import { SessionsPanel } from "~/components/threads/sessions-panel";
+import { ThreadSidebar } from "~/components/threads/thread-sidebar";
+import { TaskList } from "~/components/tasks/task-list";
+import { loadShell } from "~/lib/shell";
 import type { ChannelTab } from "~/types";
 
-const TABS: ChannelTab[] = ["messages", "tasks", "memory", "running"];
+const TABS: ChannelTab[] = ["messages", "tasks", "memory", "sessions"];
 
 const EMPTY_STATES: Record<string, { title: string; description: string }> = {
-  tasks: {
-    title: "No tasks yet",
-    description: "Tasks raised in this channel will collect here.",
-  },
   memory: {
-    title: "Nothing remembered yet",
+    title: "Coming soon",
     description: "What the channel learns will show up here.",
-  },
-  running: {
-    title: "Nothing running",
-    description: "Active agent runs for this channel will appear here.",
   },
 };
 
@@ -30,65 +38,128 @@ export default async function ChannelPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; channelSlug: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; thread?: string }>;
 }) {
   const { slug, channelSlug } = await params;
-  const { tab } = await searchParams;
-  const { session, organization, member } = await requireOrg(slug);
+  const { tab, thread: openThreadId } = await searchParams;
+  const { session, organization, member, shell } = await loadShell(slug);
 
   const channel = await getChannelBySlug({
     organizationId: organization.id,
     memberId: member.id,
+    role: member.role,
     slug: channelSlug,
   });
   if (!channel) notFound();
+
+  void ensureStarted();
 
   const activeTab: ChannelTab = TABS.includes(tab as ChannelTab)
     ? (tab as ChannelTab)
     : "messages";
 
-  const [organizations, channels, messages] = await Promise.all([
-    myOrganizations(session.user.id),
-    listChannels({ organizationId: organization.id, memberId: member.id }),
-    listMessages({ projectId: channel.id, limit: 50 }),
+  const [messages, tasks, threads, pausedCount] = await Promise.all([
+    activeTab === "messages"
+      ? listMessages({ projectId: channel.id, limit: 50 })
+      : [],
+    activeTab === "tasks"
+      ? listTasks({
+          organizationId: organization.id,
+          memberId: member.id,
+          role: member.role,
+        })
+      : [],
+    activeTab === "messages" || activeTab === "sessions"
+      ? listChannelThreads(channel.id)
+      : [],
+    activeTab === "messages" && channel.watchEnabled
+      ? pausedMessageCount(channel.id)
+      : 0,
   ]);
 
+  const openThread =
+    activeTab === "messages" && openThreadId
+      ? await threadDetail({ projectId: channel.id, threadId: openThreadId })
+      : null;
+
+  const basePath = `/${organization.slug}/${channel.slug}`;
   const placeholder = EMPTY_STATES[activeTab];
 
   return (
     <AppShell
-      activeOrg={organization}
-      organizations={organizations}
-      user={session.user}
+      shell={shell}
       section="channels"
-      channels={channels}
       activeChannelSlug={channel.slug}
       title={
-        <span className="flex items-baseline gap-1">
-          <span className="text-muted-foreground">#</span>
-          {channel.slug}
+        <span className="flex min-w-0 items-center gap-2">
+          <HashMark className="text-muted-foreground" />
+          <span className="truncate">{channel.slug}</span>
+        </span>
+      }
+      actions={
+        <span className="flex items-center gap-1">
+          <WatchToggle
+            projectId={channel.id}
+            enabled={channel.watchEnabled}
+          />
+          {shell.can("channel:update") ? (
+            <Button
+              variant="ghost"
+              className="!rounded-md px-1.5"
+              aria-label="Channel settings"
+              asChild
+            >
+              <Link href={`/${organization.slug}/${channel.slug}/settings`}>
+                <Settings size={16} />
+              </Link>
+            </Button>
+          ) : null}
         </span>
       }
       tabs={
         <ChannelTabs
-          basePath={`/${organization.slug}/${channel.slug}`}
+          basePath={basePath}
+          channelSlug={channel.slug}
           active={activeTab}
         />
       }
       flush
+      rail={
+        openThread && openThreadId ? (
+          <ThreadSidebar
+            projectId={channel.id}
+            threadId={openThreadId}
+            authorName={session.user.name}
+            authorEmail={session.user.email}
+            detail={openThread}
+            closeHref={basePath}
+          />
+        ) : null
+      }
     >
       {placeholder ? (
         <ChannelPlaceholder
           title={placeholder.title}
           description={placeholder.description}
         />
+      ) : activeTab === "tasks" ? (
+        <TaskList tasks={tasks} />
+      ) : activeTab === "sessions" ? (
+        <SessionsPanel
+          projectId={channel.id}
+          basePath={basePath}
+          initialThreads={threads}
+        />
       ) : (
         <MessagePanel
           projectId={channel.id}
           channelName={channel.slug}
+          basePath={basePath}
           authorName={session.user.name}
           authorEmail={session.user.email}
           initialMessages={messages}
+          initialThreads={threads}
+          pausedCount={pausedCount}
         />
       )}
     </AppShell>

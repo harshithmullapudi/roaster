@@ -7,7 +7,6 @@ interface ScrollAreaProps extends React.ComponentPropsWithoutRef<typeof ScrollAr
   orientation?: "horizontal" | "vertical";
 }
 
-// Add this custom hook above the ScrollArea component
 function useScrollRestoration(id: string | undefined, ref: React.RefObject<HTMLDivElement | null>) {
   React.useEffect(() => {
     const element = ref.current as any;
@@ -20,12 +19,10 @@ function useScrollRestoration(id: string | undefined, ref: React.RefObject<HTMLD
     };
 
     if (id && ref.current) {
-      // Initialize window storage if it doesn't exist
       if (!(window as any).__scrollPositions) {
         (window as any).__scrollPositions = {};
       }
 
-      // Restore scroll position on mount
       const savedPosition = (window as any).__scrollPositions[id];
       if (savedPosition) {
         const { scrollTop, scrollLeft } = savedPosition;
@@ -33,12 +30,9 @@ function useScrollRestoration(id: string | undefined, ref: React.RefObject<HTMLD
         element.scrollLeft = scrollLeft;
       }
 
-      // Add scroll event listener to save position while scrolling
-
       element.addEventListener("scroll", handleScroll);
     }
 
-    // Cleanup: remove event listener and save final position
     return () => {
       element.removeEventListener("scroll", handleScroll);
     };

@@ -1,0 +1,84 @@
+"use client";
+
+import { cn } from "@roster/ui";
+import type { SuggestionProps } from "@tiptap/suggestion";
+import { Lock } from "lucide-react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
+
+import type { MentionItem } from "~/utils/mentions";
+
+export interface MentionListHandle {
+  onKeyDown: (event: KeyboardEvent) => boolean;
+}
+
+export const MentionList = forwardRef<
+  MentionListHandle,
+  SuggestionProps<MentionItem>
+>(function MentionList({ items, command }, ref) {
+  const [selected, setSelected] = useState(0);
+
+  useEffect(() => setSelected(0), [items]);
+
+  function choose(index: number) {
+    const item = items[index];
+    if (item) command(item);
+  }
+
+  useImperativeHandle(ref, () => ({
+    onKeyDown: (event) => {
+      if (items.length === 0) return false;
+
+      if (event.key === "ArrowUp") {
+        setSelected((current) => (current + items.length - 1) % items.length);
+        return true;
+      }
+      if (event.key === "ArrowDown") {
+        setSelected((current) => (current + 1) % items.length);
+        return true;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        choose(selected);
+        return true;
+      }
+      return false;
+    },
+  }));
+
+  if (items.length === 0) {
+    return (
+      <div className="bg-background-3 border-border text-muted-foreground w-70 rounded-lg border p-2 text-xs shadow-md">
+        No agents match that.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-background-3 border-border flex w-70 flex-col gap-0.5 rounded-lg border p-1 shadow-md">
+      {items.map((item, index) => (
+        <button
+          key={item.id}
+          type="button"
+          className={cn(
+            "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+            index === selected ? "bg-grayAlpha-100" : "hover:bg-grayAlpha-50",
+          )}
+          onMouseEnter={() => setSelected(index)}
+          onClick={() => choose(index)}
+        >
+          <span className="text-foreground font-medium">{item.handle}</span>
+          {item.visibility === "private" ? (
+            <Lock size={11} className="text-muted-foreground shrink-0" />
+          ) : null}
+          <span className="text-muted-foreground ml-auto truncate text-xs">
+            {item.display}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+});

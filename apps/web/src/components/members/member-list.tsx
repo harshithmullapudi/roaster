@@ -44,7 +44,10 @@ export function MemberList({
       </h2>
       <ul className="bg-background-3 text-foreground mt-2 flex flex-col divide-y rounded">
         {members.map((member) => (
-          <li key={member.id} className="flex items-center gap-3 px-4 py-3">
+          <li
+            key={member.id}
+            className="flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4"
+          >
             <AvatarText
               text={member.name || member.email}
               className="h-5 w-5 rounded text-xs"
@@ -63,16 +66,25 @@ export function MemberList({
             </div>
 
             {!member.supersetConnected ? (
-              <Badge variant="secondary" className="text-warning">
+              <Badge
+                variant="secondary"
+                className="text-warning hidden shrink-0 sm:inline-flex"
+              >
                 not connected
               </Badge>
             ) : null}
-            <Badge variant="secondary">{member.role}</Badge>
+            <Badge variant="secondary" className="shrink-0">
+              {member.role}
+            </Badge>
 
             {canManage &&
             member.userId !== currentUserId &&
             member.role !== "owner" ? (
-              <Button variant="ghost" size="sm" onClick={() => remove(member.id)}>
+              <Button
+                variant="ghost"
+                className="shrink-0"
+                onClick={() => remove(member.id)}
+              >
                 Remove
               </Button>
             ) : null}

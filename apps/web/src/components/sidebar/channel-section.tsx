@@ -1,7 +1,12 @@
 "use client";
 
 import type { Channel } from "@roster/api";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@roster/ui";
+import {
+  cn,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@roster/ui";
 import { ChevronDown } from "lucide-react";
 
 import { ChannelRow } from "./channel-row";
@@ -12,8 +17,10 @@ export interface ChannelSectionProps {
   open: boolean;
   orgSlug: string;
   activeChannelSlug?: string;
+  canManage: boolean;
   onOpenChange: (open: boolean) => void;
   onToggleStar: (channel: Channel) => void;
+  onChangeVisibility: (channel: Channel, visibility: string) => void;
 }
 
 export function ChannelSection({
@@ -22,21 +29,22 @@ export function ChannelSection({
   open,
   orgSlug,
   activeChannelSlug,
+  canManage,
   onOpenChange,
   onToggleStar,
+  onChangeVisibility,
 }: ChannelSectionProps) {
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} className="mb-1">
       <CollapsibleTrigger asChild>
-        <button className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 px-2 py-1 text-sm font-light">
+        <button className="text-muted-foreground hover:text-foreground group/section flex h-7 w-full select-none items-center gap-1 px-2 text-xs font-medium">
           {label}
           <ChevronDown
-            size={14}
-            className={
-              open
-                ? "transition-transform duration-200"
-                : "-rotate-90 transition-transform duration-200"
-            }
+            size={13}
+            className={cn(
+              "opacity-0 transition-[transform,opacity] duration-200 group-hover/section:opacity-100 max-md:opacity-100",
+              !open && "-rotate-90 opacity-100",
+            )}
           />
         </button>
       </CollapsibleTrigger>
@@ -48,7 +56,9 @@ export function ChannelSection({
               channel={channel}
               href={`/${orgSlug}/${channel.slug}`}
               active={channel.slug === activeChannelSlug}
+              canManage={canManage}
               onToggleStar={onToggleStar}
+              onChangeVisibility={onChangeVisibility}
             />
           ))}
         </div>

@@ -396,6 +396,38 @@
   .h-page-xs {
     height: calc(100vh - 16px - var(--tabbar-height, 0px));
   }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .px-safe {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  .pb-safe-2 {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+  }
+
+  @media (max-width: 639px) {
+    .rail-group > [data-panel]:first-of-type,
+    .rail-group > [data-separator] {
+      display: none !important;
+    }
+
+    .rail-group > [data-panel]:last-of-type {
+      flex: 1 1 100% !important;
+    }
+  }
 }
 
 @layer base {
@@ -414,10 +446,24 @@
 
   html {
     height: 100%;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
     @apply bg-background-2 text-foreground text-base;
+
+    overscroll-behavior-y: none;
+  }
+
+  @media (pointer: coarse) {
+    a,
+    button,
+    [role="menuitem"],
+    [role="menuitemradio"] {
+      touch-action: manipulation;
+      -webkit-touch-callout: none;
+    }
   }
 
   @supports (scrollbar-width: auto) {
@@ -489,6 +535,16 @@
 .editor-container p {
   font-size: var(--text-base);
   line-height: 1.6;
+}
+
+/* An @-mention of a channel's agent, in the composer and in sent messages. */
+.mention {
+  border-radius: 0.25rem;
+  padding: 0.0625rem 0.25rem;
+  background-color: var(--color-grayAlpha-100);
+  color: var(--color-primary);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .editor-container .heading-node:first-child {

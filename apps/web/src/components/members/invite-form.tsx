@@ -59,7 +59,10 @@ export function InviteForm({ organizationId }: InviteFormProps) {
         They&rsquo;ll get an email with a link. It expires in 7 days.
       </p>
 
-      <form onSubmit={submit} className="mt-3 flex items-end gap-2">
+      <form
+        onSubmit={submit}
+        className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end"
+      >
         <div className="flex-1 space-y-1.5">
           <Label htmlFor="invite-email">Email</Label>
           <Input
@@ -71,7 +74,7 @@ export function InviteForm({ organizationId }: InviteFormProps) {
             onChange={(event) => setEmail(event.target.value)}
           />
         </div>
-        <div className="w-28 space-y-1.5">
+        <div className="space-y-1.5 sm:w-28">
           <Label htmlFor="invite-role">Role</Label>
           <Select value={role} onValueChange={setRole}>
             <SelectTrigger id="invite-role" showIcon>
@@ -83,7 +86,12 @@ export function InviteForm({ organizationId }: InviteFormProps) {
             </SelectContent>
           </Select>
         </div>
-        <Button type="submit" size="lg" disabled={pending}>
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full sm:w-auto"
+          disabled={pending}
+        >
           {pending ? "Sending…" : "Invite"}
         </Button>
       </form>

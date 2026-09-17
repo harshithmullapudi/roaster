@@ -1,57 +1,54 @@
-import type { ChannelGroups } from "@roster/api";
 import { CircleCheck, Users } from "lucide-react";
 
-import type { OrgSummary, SidebarSection, UserSummary } from "~/types";
+import type { Shell } from "~/lib/shell";
+import type { SidebarSection } from "~/types";
 
 import { ChannelSections } from "./channel-sections";
 import { SidebarLink } from "./sidebar-link";
 import { WorkspaceMenu } from "./workspace-menu";
 
 export interface AppSidebarProps {
-  activeOrg: OrgSummary;
-  organizations: OrgSummary[];
-  user: UserSummary;
+  shell: Shell;
   section: SidebarSection;
-  channels: ChannelGroups;
   activeChannelSlug?: string;
 }
 
 export function AppSidebar({
-  activeOrg,
-  organizations,
-  user,
+  shell,
   section,
-  channels,
   activeChannelSlug,
 }: AppSidebarProps) {
+  const { organization, organizations, user, channels } = shell;
+
   return (
-    <aside className="bg-background flex w-56 shrink-0 flex-col gap-3 p-2">
+    <aside className="bg-background flex h-full w-full shrink-0 flex-col gap-3 p-2 md:w-56">
       <WorkspaceMenu
-        activeOrg={activeOrg}
+        activeOrg={organization}
         organizations={organizations}
         user={user}
       />
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
+      <nav className="overscroll-contain flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         <div className="flex w-full min-w-0 flex-col gap-0.5">
           <SidebarLink
-            href={`/${activeOrg.slug}/tasks`}
+            href={`/${organization.slug}/tasks`}
             active={section === "tasks"}
-            icon={<CircleCheck size={16} />}
-            label="My tasks"
+            icon={<CircleCheck size={14} />}
+            label="Tasks"
           />
           <SidebarLink
-            href={`/${activeOrg.slug}/settings/members`}
+            href={`/${organization.slug}/settings/members`}
             active={section === "members"}
-            icon={<Users size={16} />}
+            icon={<Users size={14} />}
             label="Members"
           />
         </div>
 
         <ChannelSections
           groups={channels}
-          orgSlug={activeOrg.slug}
+          orgSlug={organization.slug}
           activeChannelSlug={activeChannelSlug}
+          canManage={shell.can("channel:update")}
         />
       </nav>
     </aside>

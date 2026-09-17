@@ -39,7 +39,7 @@ export function PendingInvitations({
         {invitations.map((invitation) => (
           <li
             key={invitation.id}
-            className="flex items-center gap-3 px-4 py-3"
+            className="flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4"
           >
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm">{invitation.email}</div>
@@ -47,11 +47,13 @@ export function PendingInvitations({
                 Expires {invitation.expiresAt.toLocaleDateString()}
               </div>
             </div>
-            <Badge variant="secondary">{invitation.role ?? "member"}</Badge>
+            <Badge variant="secondary" className="shrink-0">
+              {invitation.role ?? "member"}
+            </Badge>
             {canManage ? (
               <Button
                 variant="ghost"
-                size="sm"
+                className="shrink-0"
                 onClick={() => revoke(invitation.id)}
               >
                 Revoke

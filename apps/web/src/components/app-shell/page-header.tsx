@@ -4,18 +4,26 @@ export interface PageHeaderProps {
   title: ReactNode;
   actions?: ReactNode;
   tabs?: ReactNode;
+  nav?: ReactNode;
 }
 
-export function PageHeader({ title, actions, tabs }: PageHeaderProps) {
+export function PageHeader({ title, actions, tabs, nav }: PageHeaderProps) {
   return (
-    <header className="relative flex shrink-0 flex-col border-b border-gray-300 transition-[width,height] ease-linear">
+    <header className="pt-safe relative flex shrink-0 flex-col border-b border-gray-300 transition-[width,height] ease-linear">
       <div className="h-(--header-height) flex items-center gap-2">
-        <div className="flex w-full items-center justify-between gap-1 px-4 pr-2 lg:gap-2">
-          <h1 className="min-w-0 truncate text-base">{title}</h1>
-          <div className="flex items-center gap-1">{actions}</div>
+        <div className="flex w-full items-center justify-between gap-1 px-2 sm:px-4 sm:pr-2 lg:gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {nav}
+            <h1 className="min-w-0 truncate text-base">{title}</h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">{actions}</div>
         </div>
       </div>
-      {tabs ? <div className="px-3 pb-1.5">{tabs}</div> : null}
+      {tabs ? (
+        <div className="no-scrollbar overflow-x-auto px-2 pb-1.5 sm:px-3">
+          {tabs}
+        </div>
+      ) : null}
     </header>
   );
 }

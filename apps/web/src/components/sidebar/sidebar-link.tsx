@@ -16,13 +16,13 @@ export function SidebarLink({ href, active, icon, label }: SidebarLinkProps) {
       isActive={active}
       full
       className={cn(
-        "text-foreground min-w-0 justify-start gap-2 !rounded-md px-2 text-sm",
+        "text-foreground min-w-0 justify-start gap-2 !rounded-md px-2 text-sm select-none",
         active && "!bg-accent !text-accent-foreground",
       )}
       asChild
     >
       <Link href={href}>
-        <span className="text-muted-foreground flex size-4 shrink-0 items-center justify-center">
+        <span className="text-muted-foreground flex size-[14px] shrink-0 items-center justify-center">
           {icon}
         </span>
         <span className="min-w-0 truncate text-left">{label}</span>

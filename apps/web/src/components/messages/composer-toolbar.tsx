@@ -47,7 +47,7 @@ export function ComposerToolbar({ editor }: ComposerToolbarProps) {
   }
 
   return (
-    <div className="border-border flex items-center gap-0.5 border-b px-2 py-1">
+    <div className="border-border no-scrollbar flex items-center gap-0.5 overflow-x-auto border-b px-2 py-1">
       <ToolbarButton
         title="Bold"
         active={state.bold}

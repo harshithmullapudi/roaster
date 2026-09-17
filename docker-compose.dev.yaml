@@ -19,5 +19,24 @@ services:
       timeout: 5s
       retries: 10
 
+  centrifugo:
+    image: centrifugo/centrifugo:v6.9.6
+    container_name: roster-centrifugo
+    restart: unless-stopped
+    command: centrifugo --config /centrifugo/config.json
+    environment:
+      CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_HMAC_SECRET}
+    # 8010 rather than 8000: 8000 is the port this machine hands out most
+    # often, so the messaging transport gets one of its own.
+    ports:
+      - "8010:8000"
+    volumes:
+      - ./docker/centrifugo/config.json:/centrifugo/config.json:ro
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
 volumes:
   roster-pgdata:

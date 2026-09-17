@@ -1,10 +1,9 @@
-import { listChannels } from "@roster/api";
 import { Button } from "@roster/ui";
 import Link from "next/link";
 
 import { AppShell } from "~/components/app-shell/app-shell";
 import { ChannelList } from "~/components/channels/channel-list";
-import { myOrganizations, requireOrg } from "~/lib/session";
+import { loadShell } from "~/lib/shell";
 
 export default async function TeamHomePage({
   params,
@@ -12,26 +11,19 @@ export default async function TeamHomePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { session, organization, member } = await requireOrg(slug);
-
-  const [organizations, channels] = await Promise.all([
-    myOrganizations(session.user.id),
-    listChannels({ organizationId: organization.id, memberId: member.id }),
-  ]);
+  const { organization, shell } = await loadShell(slug);
+  const { channels } = shell;
 
   const all = [...channels.starred, ...channels.public, ...channels.private];
 
   return (
     <AppShell
-      activeOrg={organization}
-      organizations={organizations}
-      user={session.user}
+      shell={shell}
       section="channels"
-      channels={channels}
       title="Channels"
       actions={
         all.length > 0 ? (
-          <Button variant="ghost" size="sm" asChild>
+          <Button variant="ghost" className="!rounded-md" asChild>
             <Link href="/onboarding?step=projects">Add</Link>
           </Button>
         ) : null

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Channel, ChannelGroups } from "@roster/api";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { readCollapsed, writeCollapsed } from "~/utils/sidebar-collapse";
@@ -12,6 +13,7 @@ export interface ChannelSectionsProps {
   groups: ChannelGroups;
   orgSlug: string;
   activeChannelSlug?: string;
+  canManage: boolean;
 }
 
 const SECTIONS: { key: keyof ChannelGroups; label: string }[] = [
@@ -22,8 +24,7 @@ const SECTIONS: { key: keyof ChannelGroups; label: string }[] = [
 
 function regroup(groups: ChannelGroups, changed: Channel): ChannelGroups {
   const all = [...groups.starred, ...groups.public, ...groups.private].map(
-    (channel) =>
-      channel.id === changed.id ? { ...channel, starred: changed.starred } : channel,
+    (channel) => (channel.id === changed.id ? changed : channel),
   );
 
   const next: ChannelGroups = { starred: [], public: [], private: [] };
@@ -42,7 +43,9 @@ export function ChannelSections({
   groups,
   orgSlug,
   activeChannelSlug,
+  canManage,
 }: ChannelSectionsProps) {
+  const router = useRouter();
   const [current, setCurrent] = useState(groups);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -72,6 +75,24 @@ export function ChannelSections({
     }
   }
 
+  async function changeVisibility(channel: Channel, visibility: string) {
+    if (channel.visibility === visibility) return;
+
+    setCurrent((previous) => regroup(previous, { ...channel, visibility }));
+    try {
+      const result = await trpc.channels.update.mutate({
+        projectId: channel.id,
+        visibility: visibility === "private" ? "private" : "public",
+      });
+      setCurrent((previous) =>
+        regroup(previous, { ...channel, visibility: result.visibility }),
+      );
+      router.refresh();
+    } catch {
+      setCurrent((previous) => regroup(previous, channel));
+    }
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col">
       {SECTIONS.map((section) => (
@@ -82,8 +103,10 @@ export function ChannelSections({
           open={collapsed[section.key] !== true}
           orgSlug={orgSlug}
           activeChannelSlug={activeChannelSlug}
+          canManage={canManage}
           onOpenChange={(open) => setOpen(section.key, open)}
           onToggleStar={toggleStar}
+          onChangeVisibility={changeVisibility}
         />
       ))}
     </div>

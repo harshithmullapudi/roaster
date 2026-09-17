@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { RosterLockup } from "./roster-logo";
+
 export function AuthShell({
   title,
   subtitle,
@@ -14,7 +16,7 @@ export function AuthShell({
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-lg font-semibold tracking-tight">Roster</div>
+        <RosterLockup className="mb-6 h-3.5" />
         <div className="bg-background-3 border-border rounded-lg border p-6 shadow-1">
           <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
           {subtitle ? (

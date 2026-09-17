@@ -65,6 +65,12 @@ pnpm dev:db:stop  # stop Postgres
   `push` reports "no changes" and applies nothing.
 - **`generateId: false`.** Every id column is `uuid`; better-auth's own id
   generator emits a 32-char nanoid Postgres rejects.
+- **`build` and `dev` use different dist directories.** `next dev` writes
+  `.next`, `next build` writes `.next-build` (via `NEXT_DIST_DIR`). Sharing one
+  directory means a build landing while the dev server is up replaces chunks it
+  has already mapped, and the dev server starts throwing
+  `__webpack_modules__[moduleId] is not a function` on routes that were working
+  a second earlier.
 - **`apps/web/src/app/globals.css` is copied byte-for-byte** from
   `core/apps/webapp/app/tailwind.css` and should not be edited — put Roster's
   CSS in `theme.css`, which imports it.

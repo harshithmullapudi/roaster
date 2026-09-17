@@ -326,6 +326,13 @@ Recorded after implementing, so the spec matches the repo.
   emits a 32-char nanoid; every id column here is `uuid`.
 - **Postgres runs on 5442, not 5432.** This machine already has several
   Postgres containers bound to nearby ports.
+- **`next build` writes `.next-build`, `next dev` writes `.next`.** Found the
+  hard way: running the production build while the dev server was up replaced
+  the chunks the dev server had mapped in memory, and it began throwing
+  `__webpack_modules__[moduleId] is not a function` on `/` and `/[slug]` while
+  `/sign-in` kept working — routes recover only as each one recompiles, so the
+  failure looks intermittent and unrelated to the build. `distDir` is driven by
+  `NEXT_DIST_DIR`, which only the build and start scripts set.
 
 ## Verified
 

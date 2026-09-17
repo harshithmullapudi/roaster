@@ -75,12 +75,20 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           isActive && "!bg-accent !text-accent-foreground",
         )}
         ref={ref}
-        type="button"
+        {...(asChild ? {} : { type: "button" as const })}
         {...props}
         disabled={isLoading ?? disabled}
       >
-        {isLoading ? <LoaderCircle className="mr-2 animate-spin" /> : <></>}
-        {children}
+        {asChild ? (
+          children
+        ) : (
+          <>
+            {isLoading ? (
+              <LoaderCircle className="mr-2 animate-spin" />
+            ) : null}
+            {children}
+          </>
+        )}
       </Comp>
     );
   },

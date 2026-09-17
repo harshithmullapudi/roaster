@@ -90,6 +90,39 @@ async function unwrapTrpc<T>(response: Response, what: string): Promise<T> {
   return data as T;
 }
 
+export interface SupersetOrganization {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export async function getOrganization(
+  jwt: string,
+  organizationId: string,
+): Promise<SupersetOrganization | null> {
+  const input = encodeURIComponent(
+    JSON.stringify(SuperJSON.serialize({ id: organizationId })),
+  );
+  const response = await fetch(
+    `${API_URL}/api/trpc/organization.getByIdFromJwt?input=${input}`,
+    { headers: { Authorization: `Bearer ${jwt}` } },
+  );
+  return unwrapTrpc<SupersetOrganization | null>(
+    response,
+    "Reading your Superset organization",
+  );
+}
+
+export async function listOrganizations(
+  jwt: string,
+  organizationIds: string[],
+): Promise<SupersetOrganization[]> {
+  const results = await Promise.all(
+    organizationIds.map((id) => getOrganization(jwt, id).catch(() => null)),
+  );
+  return results.filter((org): org is SupersetOrganization => org !== null);
+}
+
 export interface SupersetHost {
   id: string;
   name: string;

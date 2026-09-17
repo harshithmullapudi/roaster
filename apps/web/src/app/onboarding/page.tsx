@@ -2,6 +2,7 @@ import { loadOnboardingState, resolveStep } from "@roster/api";
 import { redirect } from "next/navigation";
 
 import { AgentNameForm } from "~/components/onboarding/agent-name-form";
+import { ChooseOrganizationForm } from "~/components/onboarding/choose-organization-form";
 import { ConnectSupersetForm } from "~/components/onboarding/connect-superset-form";
 import { CreateTeamForm } from "~/components/onboarding/create-team-form";
 import {
@@ -10,19 +11,6 @@ import {
 } from "~/components/onboarding/onboarding-shell";
 import { ProjectPicker } from "~/components/onboarding/project-picker";
 import { myOrganizations, requireSession } from "~/lib/session";
-
-const ALL_STEPS: readonly OnboardingStepKey[] = [
-  "workspace",
-  "connect",
-  "projects",
-  "agent",
-];
-
-const INVITEE_STEPS: readonly OnboardingStepKey[] = [
-  "connect",
-  "projects",
-  "agent",
-];
 
 export default async function OnboardingPage({
   searchParams,
@@ -46,7 +34,11 @@ export default async function OnboardingPage({
   const step = resolveStep(state, requested);
   if (step === "done") redirect(`/${activeOrg!.slug}`);
 
-  const visibleSteps = state.hasMembership ? INVITEE_STEPS : ALL_STEPS;
+  const visibleSteps: OnboardingStepKey[] = [];
+  if (!state.hasMembership) visibleSteps.push("workspace");
+  visibleSteps.push("connect");
+  if (step === "organization") visibleSteps.push("organization");
+  visibleSteps.push("projects", "agent");
 
   if (step === "workspace") {
     return (
@@ -68,6 +60,18 @@ export default async function OnboardingPage({
         title="Connect Superset"
       >
         <ConnectSupersetForm />
+      </OnboardingShell>
+    );
+  }
+
+  if (step === "organization") {
+    return (
+      <OnboardingShell
+        step="organization"
+        visibleSteps={visibleSteps}
+        title="Choose your Superset org"
+      >
+        <ChooseOrganizationForm />
       </OnboardingShell>
     );
   }

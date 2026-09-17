@@ -1,12 +1,15 @@
 import { db, members, projects, type SelectMember } from "@roster/db";
 import {
+  decodeJwtClaims,
   decryptApiKey,
   encryptApiKey,
   listHosts,
+  listOrganizations,
   listProjects,
   mintJwt,
   SupersetError,
   type SupersetHost,
+  type SupersetOrganization,
   type SupersetProject,
 } from "@roster/superset";
 import { TRPCError } from "@trpc/server";
@@ -15,39 +18,79 @@ import { and, eq, inArray } from "drizzle-orm";
 import { slugifyProject, uniqueProjectSlug } from "../utils/project-slug";
 
 export interface ConnectResult {
-  supersetOrgId: string;
-  hostCount: number;
+  organizations: SupersetOrganization[];
+  chosenOrganizationId: string | null;
 }
 
 export async function connectSuperset(args: {
   memberId: string;
   apiKey: string;
 }): Promise<ConnectResult> {
-  const session = await mintJwt(args.apiKey);
-  const supersetOrgId = session.claims.organizationIds[0]!;
+  const { jwt, claims } = await mintJwt(args.apiKey);
+  const organizations = await listOrganizations(jwt, claims.organizationIds);
 
-  const hosts = await listHosts(session.jwt, supersetOrgId);
+  const only = organizations.length === 1 ? organizations[0]! : null;
 
   await db
     .update(members)
     .set({
       supersetKeyEncrypted: encryptApiKey(args.apiKey),
-      supersetOrgId,
-      supersetConnectedAt: new Date(),
+      supersetOrgId: only?.id ?? null,
+      supersetConnectedAt: only ? new Date() : null,
     })
     .where(eq(members.id, args.memberId));
 
-  return { supersetOrgId, hostCount: hosts.length };
+  return { organizations, chosenOrganizationId: only?.id ?? null };
 }
 
-async function sessionFor(member: SelectMember) {
-  if (!member.supersetKeyEncrypted || !member.supersetOrgId) {
+export async function supersetOrganizationsFor(
+  member: SelectMember,
+): Promise<SupersetOrganization[]> {
+  const { jwt, claims } = await jwtFor(member);
+  return listOrganizations(jwt, claims.organizationIds);
+}
+
+export async function chooseSupersetOrganization(args: {
+  member: SelectMember;
+  organizationId: string;
+}): Promise<void> {
+  const { claims } = await jwtFor(args.member);
+
+  if (!claims.organizationIds.includes(args.organizationId)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "That Superset organization is not on this key.",
+    });
+  }
+
+  await db
+    .update(members)
+    .set({
+      supersetOrgId: args.organizationId,
+      supersetConnectedAt: new Date(),
+    })
+    .where(eq(members.id, args.member.id));
+}
+
+async function jwtFor(member: SelectMember) {
+  if (!member.supersetKeyEncrypted) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
       message: "Superset is not connected for this member.",
     });
   }
   const { jwt } = await mintJwt(decryptApiKey(member.supersetKeyEncrypted));
+  return { jwt, claims: decodeJwtClaims(jwt) };
+}
+
+async function sessionFor(member: SelectMember) {
+  if (!member.supersetOrgId) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "No Superset organization chosen yet.",
+    });
+  }
+  const { jwt } = await jwtFor(member);
   return { jwt, supersetOrgId: member.supersetOrgId };
 }
 
@@ -102,10 +145,17 @@ export interface SelectedProject {
 
 export async function saveProjects(args: {
   organizationId: string;
-  memberId: string;
+  member: SelectMember;
   selected: SelectedProject[];
 }): Promise<number> {
   if (args.selected.length === 0) return 0;
+
+  if (!args.member.supersetOrgId) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "No Superset organization chosen yet.",
+    });
+  }
 
   const existing = await db.query.projects.findMany({
     where: eq(projects.organizationId, args.organizationId),
@@ -124,13 +174,14 @@ export async function saveProjects(args: {
         organizationId: args.organizationId,
         supersetProjectId: project.supersetProjectId,
         supersetHostId: project.supersetHostId,
+        supersetOrgId: args.member.supersetOrgId!,
         name: project.name,
         slug,
         repoOwner: project.repoOwner,
         repoName: project.repoName,
         repoUrl: project.repoUrl,
         repoPath: project.repoPath,
-        addedByMemberId: args.memberId,
+        addedByMemberId: args.member.id,
       };
     });
 

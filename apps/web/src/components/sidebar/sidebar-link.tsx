@@ -1,4 +1,4 @@
-import { cn } from "@roster/ui";
+import { Button, cn } from "@roster/ui";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -11,17 +11,19 @@ export interface SidebarLinkProps {
 
 export function SidebarLink({ href, active, icon, label }: SidebarLinkProps) {
   return (
-    <Link
-      href={href}
+    <Button
+      variant="ghost"
+      isActive={active}
       className={cn(
-        "flex h-7 items-center gap-2 rounded px-2 text-sm transition-colors",
-        active
-          ? "bg-grayAlpha-100 text-foreground font-medium"
-          : "text-muted-foreground hover:bg-grayAlpha-100 hover:text-foreground",
+        "text-foreground w-fit gap-1 !rounded-md",
+        active && "!bg-accent !text-accent-foreground",
       )}
+      asChild
     >
-      {icon}
-      {label}
-    </Link>
+      <Link href={href}>
+        {icon}
+        {label}
+      </Link>
+    </Button>
   );
 }

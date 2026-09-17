@@ -31,7 +31,7 @@ export const onboardingRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const added = await saveProjects({
         organizationId: ctx.organizationId,
-        memberId: ctx.member.id,
+        member: ctx.member,
         selected: input.projects,
       });
       return { added };

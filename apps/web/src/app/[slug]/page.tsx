@@ -2,8 +2,8 @@ import { listOrgProjects } from "@roster/api";
 import { Button } from "@roster/ui";
 import Link from "next/link";
 
+import { AppShell } from "~/components/app-shell/app-shell";
 import { ChannelList } from "~/components/channels/channel-list";
-import { AppSidebar } from "~/components/sidebar/app-sidebar";
 import { myOrganizations, requireOrg } from "~/lib/session";
 
 export default async function TeamHomePage({
@@ -20,31 +20,33 @@ export default async function TeamHomePage({
   ]);
 
   return (
-    <div className="flex h-screen">
-      <AppSidebar
-        activeOrg={organization}
-        organizations={organizations}
-        user={session.user}
-        section="channels"
-      />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-8 py-7">
-          <h1 className="mb-4 text-base font-semibold tracking-tight">
-            Channels
-          </h1>
-
-          {projects.length === 0 ? (
-            <div className="border-border rounded-lg border p-5 text-center">
-              <p className="text-muted-foreground text-sm">No channels yet</p>
-              <Button size="lg" className="mt-3" asChild>
-                <Link href="/onboarding?step=projects">Pick projects</Link>
-              </Button>
-            </div>
-          ) : (
-            <ChannelList projects={projects} />
-          )}
+    <AppShell
+      activeOrg={organization}
+      organizations={organizations}
+      user={session.user}
+      section="channels"
+      title="Channels"
+      actions={
+        projects.length > 0 ? (
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/onboarding?step=projects">Add</Link>
+          </Button>
+        ) : null
+      }
+    >
+      {projects.length === 0 ? (
+        <div className="border-border rounded-lg border border-dashed p-6">
+          <p className="text-sm font-medium">No channels yet</p>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Channels come from your Superset projects.
+          </p>
+          <Button size="lg" className="mt-3" asChild>
+            <Link href="/onboarding?step=projects">Pick projects</Link>
+          </Button>
         </div>
-      </main>
-    </div>
+      ) : (
+        <ChannelList projects={projects} />
+      )}
+    </AppShell>
   );
 }

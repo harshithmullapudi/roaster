@@ -3,9 +3,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import {
+  chooseSupersetOrganization,
   connectSuperset,
   hostsFor,
   projectsForAllHosts,
+  supersetOrganizationsFor,
 } from "../services/superset-connection";
 import { createTRPCRouter, memberProcedure } from "../trpc";
 
@@ -18,7 +20,10 @@ const apiKeySchema = z
 function toTRPCError(cause: unknown): never {
   if (cause instanceof SupersetError) {
     throw new TRPCError({
-      code: cause.status === 401 || cause.status === 403 ? "FORBIDDEN" : "BAD_GATEWAY",
+      code:
+        cause.status === 401 || cause.status === 403
+          ? "FORBIDDEN"
+          : "BAD_GATEWAY",
       message: cause.message,
     });
   }
@@ -34,6 +39,28 @@ export const supersetRouter = createTRPCRouter({
           memberId: ctx.member.id,
           apiKey: input.apiKey,
         });
+      } catch (cause) {
+        toTRPCError(cause);
+      }
+    }),
+
+  organizations: memberProcedure.query(async ({ ctx }) => {
+    try {
+      return await supersetOrganizationsFor(ctx.member);
+    } catch (cause) {
+      toTRPCError(cause);
+    }
+  }),
+
+  chooseOrganization: memberProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await chooseSupersetOrganization({
+          member: ctx.member,
+          organizationId: input.organizationId,
+        });
+        return { organizationId: input.organizationId };
       } catch (cause) {
         toTRPCError(cause);
       }

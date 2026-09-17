@@ -23,3 +23,8 @@ export {
   type HostProjects,
   type SelectedProject,
 } from "./services/superset-connection";
+export type {
+  SupersetHost,
+  SupersetOrganization,
+  SupersetProject,
+} from "@roster/superset";

@@ -20,29 +20,25 @@ export function AppSidebar({
   section,
 }: AppSidebarProps) {
   return (
-    <aside className="bg-background border-border flex w-56 shrink-0 flex-col border-r">
-      <div className="p-2">
-        <TeamSwitcher activeOrg={activeOrg} organizations={organizations} />
-      </div>
+    <aside className="flex w-64 shrink-0 flex-col p-2">
+      <TeamSwitcher activeOrg={activeOrg} organizations={organizations} />
 
-      <nav className="flex-1 space-y-px px-2">
+      <nav className="mt-2 flex flex-1 flex-col gap-0.5">
         <SidebarLink
           href={`/${activeOrg.slug}`}
           active={section === "channels"}
-          icon={<Hash className="size-3.5" />}
+          icon={<Hash size={16} />}
           label="Channels"
         />
         <SidebarLink
           href={`/${activeOrg.slug}/settings/members`}
           active={section === "members"}
-          icon={<Users className="size-3.5" />}
+          icon={<Users size={16} />}
           label="Members"
         />
       </nav>
 
-      <div className="border-border border-t p-2">
-        <UserMenu user={user} />
-      </div>
+      <UserMenu user={user} />
     </aside>
   );
 }

@@ -3,7 +3,12 @@ import type { ReactNode } from "react";
 
 import { RosterLockup } from "~/components/logo/roster-lockup";
 
-export type OnboardingStepKey = "workspace" | "connect" | "projects" | "agent";
+export type OnboardingStepKey =
+  | "workspace"
+  | "connect"
+  | "organization"
+  | "projects"
+  | "agent";
 
 export interface OnboardingShellProps {
   step: OnboardingStepKey;

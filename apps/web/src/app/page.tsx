@@ -20,7 +20,7 @@ export default async function RootPage() {
     organizationId: active.id,
   });
 
-  if (!state.supersetConnected || !state.hasAgentName) redirect("/onboarding");
+  if (!state.supersetOrgChosen || !state.hasAgentName) redirect("/onboarding");
 
   redirect(`/${active.slug}`);
 }

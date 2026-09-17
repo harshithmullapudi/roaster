@@ -4,17 +4,15 @@ import { authClient } from "@roster/auth/client";
 import { nextSlugCandidate, slugify } from "@roster/auth/slug";
 import { Button, Input, Label } from "@roster/ui";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
+
+import { errorMessage } from "~/utils/trpc";
 
 const MAX_SLUG_ATTEMPTS = 25;
 
-/**
- * Finds a free slug for the name. Collisions are resolved here rather than by
- * a unique-constraint retry so the user sees the slug they will actually get
- * before they commit to it.
- */
 async function claimSlug(name: string): Promise<string> {
   const base = slugify(name);
+
   for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt++) {
     const candidate = attempt === 1 ? base : nextSlugCandidate(base, attempt);
     const { data } = await authClient.organization.checkSlug({
@@ -22,9 +20,8 @@ async function claimSlug(name: string): Promise<string> {
     });
     if (data?.status) return candidate;
   }
-  throw new Error(
-    `Couldn't find a free URL for "${name}". Try a different name.`,
-  );
+
+  throw new Error(`Couldn't find a free URL for "${name}".`);
 }
 
 export function CreateTeamForm() {
@@ -35,59 +32,55 @@ export function CreateTeamForm() {
 
   const previewSlug = useMemo(() => (name.trim() ? slugify(name) : ""), [name]);
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const teamName = name.trim();
     if (!teamName) return;
 
     setPending(true);
     setError(null);
+
     try {
       const slug = await claimSlug(teamName);
       const { data, error: createError } =
         await authClient.organization.create({ name: teamName, slug });
+
       if (createError || !data) {
         throw new Error(createError?.message ?? "Couldn't create the team.");
       }
 
       await authClient.organization.setActive({ organizationId: data.id });
-      router.push(`/${data.slug}`);
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Something went wrong.");
+      setError(errorMessage(cause, "Something went wrong."));
       setPending(false);
     }
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="name">Team name</Label>
-        <Input
-          id="name"
-          name="name"
-          required
-          autoFocus
-          placeholder="Tegon"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <p className="text-muted-foreground text-xs">
-          {previewSlug ? (
-            <>
-              Your team lives at{" "}
-              <span className="font-mono">/{previewSlug}</span>
-            </>
-          ) : (
-            "You can invite people once it exists."
-          )}
+    <form onSubmit={submit} className="space-y-2">
+      <Label htmlFor="name" className="sr-only">
+        Workspace name
+      </Label>
+      <Input
+        id="name"
+        name="name"
+        required
+        autoFocus
+        placeholder="Workspace name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+      />
+      {previewSlug ? (
+        <p className="text-muted-foreground font-mono text-xs">
+          /{previewSlug}
         </p>
-      </div>
+      ) : null}
 
       {error ? <p className="text-destructive text-sm">{error}</p> : null}
 
-      <Button type="submit" className="w-full" disabled={pending}>
-        {pending ? "Creating…" : "Create team"}
+      <Button type="submit" size="lg" full disabled={pending}>
+        {pending ? "Creating…" : "Continue"}
       </Button>
     </form>
   );

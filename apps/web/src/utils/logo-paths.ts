@@ -1,79 +1,8 @@
-import { cn } from "@roster/ui";
-
-/**
- * Roster's logo, built on Superset's system: a 3x5 pixel-grid font, square
- * cells only, one blank column between letters, `fill="currentColor"`. S, T, E
- * and R are the same cell patterns as Superset's own wordmark; O is new and
- * matches its U.
- *
- * The mark is `#` — the channel sigil — drawn on the same grid, which mirrors
- * Superset's icon being punctuation (`{()}`) rather than a picture.
- *
- * Source of truth for these paths is the generator that also emits
- * `public/brand/*` and the app icons; see `docs/brand.md`.
- */
-
-const MARK_PATH =
+export const MARK_PATH =
   "M1 0H2V1H1ZM3 0H4V1H3ZM0 1H1V2H0ZM1 1H2V2H1ZM2 1H3V2H2ZM3 1H4V2H3ZM4 1H5V2H4ZM1 2H2V3H1ZM3 2H4V3H3ZM0 3H1V4H0ZM1 3H2V4H1ZM2 3H3V4H2ZM3 3H4V4H3ZM4 3H5V4H4ZM1 4H2V5H1ZM3 4H4V5H3Z";
 
-const WORDMARK_PATH =
+export const WORDMARK_PATH =
   "M0 0H1V1H0ZM1 0H2V1H1ZM2 0H3V1H2ZM0 1H1V2H0ZM2 1H3V2H2ZM0 2H1V3H0ZM1 2H2V3H1ZM0 3H1V4H0ZM2 3H3V4H2ZM0 4H1V5H0ZM2 4H3V5H2ZM4 0H5V1H4ZM5 0H6V1H5ZM6 0H7V1H6ZM4 1H5V2H4ZM6 1H7V2H6ZM4 2H5V3H4ZM6 2H7V3H6ZM4 3H5V4H4ZM6 3H7V4H6ZM4 4H5V5H4ZM5 4H6V5H5ZM6 4H7V5H6ZM8 0H9V1H8ZM9 0H10V1H9ZM10 0H11V1H10ZM8 1H9V2H8ZM8 2H9V3H8ZM9 2H10V3H9ZM10 2H11V3H10ZM10 3H11V4H10ZM8 4H9V5H8ZM9 4H10V5H9ZM10 4H11V5H10ZM12 0H13V1H12ZM13 0H14V1H13ZM14 0H15V1H14ZM13 1H14V2H13ZM13 2H14V3H13ZM13 3H14V4H13ZM13 4H14V5H13ZM16 0H17V1H16ZM17 0H18V1H17ZM18 0H19V1H18ZM16 1H17V2H16ZM16 2H17V3H16ZM17 2H18V3H17ZM16 3H17V4H16ZM16 4H17V5H16ZM17 4H18V5H17ZM18 4H19V5H18ZM20 0H21V1H20ZM21 0H22V1H21ZM22 0H23V1H22ZM20 1H21V2H20ZM22 1H23V2H22ZM20 2H21V3H20ZM21 2H22V3H21ZM20 3H21V4H20ZM22 3H23V4H22ZM20 4H21V5H20ZM22 4H23V5H22Z";
 
-const LOCKUP_PATH =
+export const LOCKUP_PATH =
   "M1 0H2V1H1ZM3 0H4V1H3ZM0 1H1V2H0ZM1 1H2V2H1ZM2 1H3V2H2ZM3 1H4V2H3ZM4 1H5V2H4ZM1 2H2V3H1ZM3 2H4V3H3ZM0 3H1V4H0ZM1 3H2V4H1ZM2 3H3V4H2ZM3 3H4V4H3ZM4 3H5V4H4ZM1 4H2V5H1ZM3 4H4V5H3ZM7 0H8V1H7ZM8 0H9V1H8ZM9 0H10V1H9ZM7 1H8V2H7ZM9 1H10V2H9ZM7 2H8V3H7ZM8 2H9V3H8ZM7 3H8V4H7ZM9 3H10V4H9ZM7 4H8V5H7ZM9 4H10V5H9ZM11 0H12V1H11ZM12 0H13V1H12ZM13 0H14V1H13ZM11 1H12V2H11ZM13 1H14V2H13ZM11 2H12V3H11ZM13 2H14V3H13ZM11 3H12V4H11ZM13 3H14V4H13ZM11 4H12V5H11ZM12 4H13V5H12ZM13 4H14V5H13ZM15 0H16V1H15ZM16 0H17V1H16ZM17 0H18V1H17ZM15 1H16V2H15ZM15 2H16V3H15ZM16 2H17V3H16ZM17 2H18V3H17ZM17 3H18V4H17ZM15 4H16V5H15ZM16 4H17V5H16ZM17 4H18V5H17ZM19 0H20V1H19ZM20 0H21V1H20ZM21 0H22V1H21ZM20 1H21V2H20ZM20 2H21V3H20ZM20 3H21V4H20ZM20 4H21V5H20ZM23 0H24V1H23ZM24 0H25V1H24ZM25 0H26V1H25ZM23 1H24V2H23ZM23 2H24V3H23ZM24 2H25V3H24ZM23 3H24V4H23ZM23 4H24V5H23ZM24 4H25V5H24ZM25 4H26V5H25ZM27 0H28V1H27ZM28 0H29V1H28ZM29 0H30V1H29ZM27 1H28V2H27ZM29 1H30V2H29ZM27 2H28V3H27ZM28 2H29V3H28ZM27 3H28V4H27ZM29 3H30V4H29ZM27 4H28V5H27ZM29 4H30V5H29Z";
-
-interface LogoProps {
-  className?: string;
-}
-
-function Glyph({
-  path,
-  viewBox,
-  className,
-}: LogoProps & { path: string; viewBox: string }) {
-  return (
-    <svg
-      viewBox={viewBox}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      role="img"
-      aria-label="Roster"
-      // crispEdges keeps the cells from picking up a soft anti-aliased seam
-      // between neighbours at fractional sizes.
-      shapeRendering="crispEdges"
-      className={cn("text-foreground", className)}
-    >
-      <title>Roster</title>
-      <path d={path} fill="currentColor" />
-    </svg>
-  );
-}
-
-/** `#` on its own — sidebar, favicon-sized slots, tight corners. */
-export function RosterMark({ className }: LogoProps) {
-  return (
-    <Glyph path={MARK_PATH} viewBox="0 0 5 5" className={cn("h-4", className)} />
-  );
-}
-
-/** ROSTER, no mark. */
-export function RosterWordmark({ className }: LogoProps) {
-  return (
-    <Glyph
-      path={WORDMARK_PATH}
-      viewBox="0 0 23 5"
-      className={cn("h-3 w-auto", className)}
-    />
-  );
-}
-
-/** `#` + ROSTER. The default for sign-in and anywhere with room. */
-export function RosterLockup({ className }: LogoProps) {
-  return (
-    <Glyph
-      path={LOCKUP_PATH}
-      viewBox="0 0 30 5"
-      className={cn("h-3 w-auto", className)}
-    />
-  );
-}

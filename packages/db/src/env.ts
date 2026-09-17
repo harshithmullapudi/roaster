@@ -1,7 +1,5 @@
 import { config } from "dotenv";
 
-// Loaded from the repo root so drizzle-kit, the Next server and vitest all
-// read the same file.
 config({ path: "../../.env", quiet: true });
 config({ path: ".env", quiet: true });
 

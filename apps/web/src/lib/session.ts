@@ -15,14 +15,6 @@ export async function requireSession() {
   return session;
 }
 
-/**
- * The authorization check for every team-scoped page.
- *
- * `notFound()` rather than a "you don't have access" page on purpose: a
- * distinct message would tell anyone who guesses a slug whether that team
- * exists. Same reason `resolveOrgAccess` collapses "no such team" and "not
- * your team" into one null.
- */
 export async function requireOrg(slug: string) {
   const session = await requireSession();
   const access = await resolveOrgAccess({ userId: session.user.id, slug });

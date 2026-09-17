@@ -1,16 +1,3 @@
-/**
- * better-auth's tables, as Drizzle schema.
- *
- * Derived from superset/packages/db/src/schema/auth.ts with everything Roster
- * does not use removed: the organization plugin's `teams`/`team_members`, all
- * four OAuth provider tables, `apikeys`, `device_codes`, `jwkss`, and the
- * Stripe columns. `apikeys` and `jwkss` come back when the CLI and the relay
- * bridge arrive — each with its own spec.
- *
- * They live in their own `auth` Postgres schema so Roster's tables (channels,
- * messages, threads, tasks) stay visibly separate from the ones better-auth
- * owns and migrates.
- */
 import {
   boolean,
   index,
@@ -25,8 +12,6 @@ export const authSchema = pgSchema("auth");
 
 export const users = authSchema.table("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  // Magic-link signup carries no name, so this is blank until onboarding
-  // collects one. better-auth requires the column to exist and be non-null.
   name: text("name").default("").notNull(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
@@ -52,9 +37,6 @@ export const sessions = authSchema.table(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // Where `/` sends you, nothing more. The authoritative organization for
-    // any request is the slug in the URL, re-checked against `members` on the
-    // server — so a stale value here is harmless and is not a foreign key.
     activeOrganizationId: uuid("active_organization_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
@@ -67,11 +49,6 @@ export const sessions = authSchema.table(
 
 export type SelectSession = typeof sessions.$inferSelect;
 
-/**
- * Magic-link sign-in never writes a row here. The table stays because
- * better-auth's adapter reads it on several paths, and dropping it trades ten
- * columns for a runtime error.
- */
 export const accounts = authSchema.table(
   "accounts",
   {
@@ -97,7 +74,6 @@ export const accounts = authSchema.table(
   (table) => [index("accounts_user_id_idx").on(table.userId)],
 );
 
-/** Magic-link tokens live here. */
 export const verifications = authSchema.table(
   "verifications",
   {
@@ -142,6 +118,12 @@ export const members = authSchema.table(
       .references(() => users.id, { onDelete: "cascade" }),
     role: text("role").default("member").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+
+    agentName: text("agent_name"),
+
+    supersetKeyEncrypted: text("superset_key_encrypted"),
+    supersetOrgId: uuid("superset_org_id"),
+    supersetConnectedAt: timestamp("superset_connected_at"),
   },
   (table) => [
     index("members_organization_id_idx").on(table.organizationId),

@@ -41,14 +41,9 @@ export const auth = betterAuth({
   trustedOrigins: [appUrl],
   advanced: {
     database: {
-      // Every id column is `uuid`, and better-auth's own generator emits a
-      // 32-char nanoid that Postgres rejects. Opting out lets each table's
-      // `defaultRandom()` fill the column instead.
       generateId: false,
     },
   },
-  // Magic link is the only way in. Password and social sign-in are both off:
-  // no password column to leak, no OAuth app to register.
   emailAndPassword: { enabled: false },
   session: {
     expiresIn: 60 * 60 * 24 * 30,
@@ -58,9 +53,6 @@ export const auth = betterAuth({
     session: {
       create: {
         before: async (session) => {
-          // Which team a fresh session lands on. The URL slug is what actually
-          // authorizes a request, so this is only a default — picking the most
-          // recent membership is good enough, and switching teams updates it.
           const membership = await db.query.members.findFirst({
             where: eq(members.userId, session.userId),
             orderBy: desc(members.createdAt),

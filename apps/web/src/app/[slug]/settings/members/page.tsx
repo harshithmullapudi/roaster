@@ -1,9 +1,10 @@
 import { listOrgMembers, listPendingInvitations } from "@roster/api";
 
-import { AppSidebar } from "~/components/app-sidebar";
+import { InviteForm } from "~/components/members/invite-form";
+import { MemberList } from "~/components/members/member-list";
+import { PendingInvitations } from "~/components/members/pending-invitations";
+import { AppSidebar } from "~/components/sidebar/app-sidebar";
 import { myOrganizations, requireOrg } from "~/lib/session";
-
-import { MembersClient } from "./members-client";
 
 export default async function MembersPage({
   params,
@@ -19,8 +20,6 @@ export default async function MembersPage({
     listPendingInvitations(organization.id),
   ]);
 
-  // Decided on the server. The client hides the controls to match, but it is
-  // better-auth that enforces it on every mutation.
   const canManage = member.role === "owner" || member.role === "admin";
 
   return (
@@ -29,21 +28,28 @@ export default async function MembersPage({
         activeOrg={organization}
         organizations={organizations}
         user={session.user}
-        currentPath="members"
+        section="members"
       />
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl p-8">
-          <h1 className="text-lg font-semibold tracking-tight">Members</h1>
-          <p className="text-muted-foreground mt-1 mb-6 text-sm">
+        <div className="mx-auto max-w-2xl px-8 py-7">
+          <h1 className="text-base font-semibold tracking-tight">Members</h1>
+          <p className="text-muted-foreground mt-0.5 mb-5 text-sm">
             Everyone in {organization.name}.
           </p>
-          <MembersClient
-            organizationId={organization.id}
-            members={members}
-            invitations={invitations}
-            currentUserId={session.user.id}
-            canManage={canManage}
-          />
+
+          <div className="space-y-6">
+            {canManage ? <InviteForm organizationId={organization.id} /> : null}
+            <MemberList
+              organizationId={organization.id}
+              members={members}
+              currentUserId={session.user.id}
+              canManage={canManage}
+            />
+            <PendingInvitations
+              invitations={invitations}
+              canManage={canManage}
+            />
+          </div>
         </div>
       </main>
     </div>

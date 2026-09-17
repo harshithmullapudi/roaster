@@ -13,6 +13,7 @@
   "dependencies": {
     "@roster/auth": "workspace:*",
     "@roster/db": "workspace:*",
+    "@roster/superset": "workspace:*",
     "@trpc/server": "^11.0.0",
     "drizzle-orm": "^0.38.3",
     "superjson": "^2.2.2",

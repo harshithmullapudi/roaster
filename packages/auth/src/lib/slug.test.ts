@@ -20,7 +20,6 @@ describe("slugify", () => {
   });
 
   it("never returns a trailing hyphen after truncation", () => {
-    // 47 characters, so the 48-char slice lands exactly on a hyphen.
     const name = `${"a".repeat(47)} team`;
     const slug = slugify(name);
     expect(slug.length).toBeLessThanOrEqual(48);

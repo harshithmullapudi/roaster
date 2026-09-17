@@ -2,10 +2,9 @@ import { getInvitationPreview } from "@roster/api";
 import { redirect } from "next/navigation";
 
 import { AuthShell } from "~/components/auth-shell";
-import { SignInForm } from "~/app/sign-in/sign-in-form";
+import { AcceptInvitation } from "~/components/invite/accept-invitation";
+import { SignInForm } from "~/components/sign-in/sign-in-form";
 import { getSession } from "~/lib/session";
-
-import { AcceptInvitation } from "./accept-invitation";
 
 export default async function InvitePage({
   params,
@@ -17,13 +16,8 @@ export default async function InvitePage({
 
   if (!invitation) {
     return (
-      <AuthShell
-        title="This invitation doesn't exist"
-        subtitle="The link may be wrong, or the invitation may have been revoked."
-      >
-        <p className="text-muted-foreground text-sm">
-          Ask whoever invited you to send a new one.
-        </p>
+      <AuthShell title="Invitation not found">
+        <p className="text-muted-foreground text-sm">Ask for a new link.</p>
       </AuthShell>
     );
   }
@@ -34,12 +28,9 @@ export default async function InvitePage({
 
   if (invitation.expired || invitation.status !== "pending") {
     return (
-      <AuthShell
-        title={`This invitation has ${invitation.expired ? "expired" : "been revoked"}`}
-        subtitle={`It was for ${invitation.organization.name}.`}
-      >
+      <AuthShell title="Invitation expired">
         <p className="text-muted-foreground text-sm">
-          Ask {invitation.inviterName} to send a new one.
+          Ask {invitation.inviterName} for a new link.
         </p>
       </AuthShell>
     );
@@ -49,54 +40,31 @@ export default async function InvitePage({
 
   if (!session) {
     return (
-      <AuthShell
-        title={`Join ${invitation.organization.name}`}
-        subtitle={
-          <>
-            {invitation.inviterName} invited{" "}
-            <span className="font-medium">{invitation.email}</span>. Sign in
-            with that address to accept.
-          </>
-        }
-      >
+      <AuthShell title={`Join ${invitation.organization.name}`}>
+        <p className="text-muted-foreground mb-3 text-sm">
+          Invited as {invitation.email}.
+        </p>
         <SignInForm callbackURL={`/invite/${invitation.id}`} />
       </AuthShell>
     );
   }
 
-  // Signed in as the wrong person — a real case, because invitation links get
-  // opened on a laptop that is already signed in as someone else.
   const emailMatches =
     session.user.email.toLowerCase() === invitation.email.toLowerCase();
 
   if (!emailMatches) {
     return (
-      <AuthShell
-        title={`Join ${invitation.organization.name}`}
-        subtitle={
-          <>
-            This invitation is for{" "}
-            <span className="font-medium">{invitation.email}</span>, but you're
-            signed in as{" "}
-            <span className="font-medium">{session.user.email}</span>.
-          </>
-        }
-        footer="Sign out and open the link again to accept it."
-      >
+      <AuthShell title={`Join ${invitation.organization.name}`}>
         <p className="text-muted-foreground text-sm">
-          Accepting would put the wrong account in the team, so Roster won't do
-          it.
+          This invitation is for {invitation.email}, but you&rsquo;re signed in
+          as {session.user.email}.
         </p>
       </AuthShell>
     );
   }
 
   return (
-    <AuthShell
-      title={`Join ${invitation.organization.name}`}
-      subtitle={`${invitation.inviterName} invited you.`}
-      footer={`Signed in as ${session.user.email}.`}
-    >
+    <AuthShell title={`Join ${invitation.organization.name}`}>
       <AcceptInvitation
         invitationId={invitation.id}
         slug={invitation.organization.slug}

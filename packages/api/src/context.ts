@@ -4,11 +4,6 @@ export interface CreateContextArgs {
   headers: Headers;
 }
 
-/**
- * The session is resolved here and nowhere else. Procedures that need a team
- * take its slug as input and call `resolveOrgAccess` — the session's
- * `activeOrganizationId` is a landing preference, not an authorization fact.
- */
 export async function createContext({ headers }: CreateContextArgs) {
   const session = await auth.api.getSession({ headers });
 

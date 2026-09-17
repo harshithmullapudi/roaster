@@ -7,6 +7,7 @@ import {
   sessions,
   users,
 } from "./auth";
+import { projects } from "./roster";
 
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
@@ -20,6 +21,18 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   members: many(members),
   invitations: many(invitations),
+  projects: many(projects),
+}));
+
+export const projectsRelations = relations(projects, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [projects.organizationId],
+    references: [organizations.id],
+  }),
+  addedBy: one(members, {
+    fields: [projects.addedByMemberId],
+    references: [members.id],
+  }),
 }));
 
 export const membersRelations = relations(members, ({ one }) => ({

@@ -2,7 +2,7 @@
 
 import { authClient } from "@roster/auth/client";
 import { Button, Input, Label } from "@roster/ui";
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 
 type State =
   | { status: "idle" }
@@ -10,11 +10,15 @@ type State =
   | { status: "sent"; email: string }
   | { status: "error"; message: string };
 
-export function SignInForm({ callbackURL = "/" }: { callbackURL?: string }) {
+export interface SignInFormProps {
+  callbackURL?: string;
+}
+
+export function SignInForm({ callbackURL = "/" }: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<State>({ status: "idle" });
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const address = email.trim();
     if (!address) return;
@@ -36,15 +40,12 @@ export function SignInForm({ callbackURL = "/" }: { callbackURL?: string }) {
     return (
       <div className="space-y-3">
         <p className="text-sm">
-          A sign-in link is on its way to{" "}
-          <span className="font-medium">{state.email}</span>.
-        </p>
-        <p className="text-muted-foreground text-sm">
-          It expires in 10 minutes and works once.
+          Link sent to <span className="font-medium">{state.email}</span>.
         </p>
         <Button
-          variant="secondary"
-          className="w-full"
+          variant="link"
+          size="sm"
+          className="text-muted-foreground hover:text-foreground h-auto px-0"
           onClick={() => setState({ status: "idle" })}
         >
           Use a different email
@@ -54,32 +55,28 @@ export function SignInForm({ callbackURL = "/" }: { callbackURL?: string }) {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          autoFocus
-          placeholder="you@company.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </div>
+    <form onSubmit={submit} className="space-y-2">
+      <Label htmlFor="email" className="sr-only">
+        Email
+      </Label>
+      <Input
+        id="email"
+        name="email"
+        type="email"
+        autoComplete="email"
+        required
+        autoFocus
+        placeholder="you@company.com"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+      />
 
       {state.status === "error" ? (
         <p className="text-destructive text-sm">{state.message}</p>
       ) : null}
 
-      <Button
-        type="submit"
-        className="w-full"
-        disabled={state.status === "sending"}
-      >
-        {state.status === "sending" ? "Sending…" : "Send sign-in link"}
+      <Button type="submit" size="lg" full disabled={state.status === "sending"}>
+        {state.status === "sending" ? "Sending…" : "Continue with email"}
       </Button>
     </form>
   );

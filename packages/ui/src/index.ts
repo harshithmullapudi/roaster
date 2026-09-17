@@ -1,5 +1,3 @@
-// Ported from core/packages/ui/src/web. The TUI half was dropped, along with
-// chart/data-table (recharts, @tanstack/react-table) and core's own widgets.
 export * from "./accordion";
 export * from "./alert";
 export * from "./alert-dialog";

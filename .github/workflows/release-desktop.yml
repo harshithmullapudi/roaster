@@ -68,6 +68,31 @@ jobs:
           # next step's job, because it belongs in a different repository.
           args: --target universal-apple-darwin
 
+      - name: Notarize and staple the disk image
+        # tauri notarizes the .app, not the .dmg wrapping it. Without a ticket
+        # on the image itself, double-clicking a fresh download is refused with
+        # "Apple cannot check it for malicious software" — before anyone gets
+        # as far as the app inside, which is notarized and would have been fine.
+        env:
+          ARTIFACTS: ${{ steps.build.outputs.artifactPaths }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          set -euo pipefail
+          dmg=$(node -p "JSON.parse(process.env.ARTIFACTS).find((p) => p.endsWith('.dmg')) || ''")
+          if [ -z "$dmg" ]; then
+            echo "no .dmg among the build artifacts" >&2
+            exit 1
+          fi
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$dmg"
+          # Assert the thing we actually care about: that the check Finder runs
+          # on a downloaded image now passes.
+          spctl -a -t open --context context:primary-signature -vv "$dmg"
+
       - name: Collect artifacts and write the update manifest
         id: collect
         env:

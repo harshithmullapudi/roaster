@@ -1,5 +1,12 @@
-import { db, members, messages, threads, users } from "@roster/db";
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import {
+  db,
+  members,
+  messages,
+  threadSessions,
+  threads,
+  users,
+} from "@roster/db";
+import { and, asc, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 
 import { readableError } from "../../utils/session-error";
 import {
@@ -33,8 +40,8 @@ const REPLY_SCOPE = sql`rp.thread_id = ${threads.id} and rp.id <> ${threads.root
 const replyCountSql = sql<number>`(select count(*)::int from roster.messages rp where ${REPLY_SCOPE})`;
 
 const lastReplyAtSql = sql<
-  string | null
->`(select to_char(max(rp.created_at), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') from roster.messages rp where ${REPLY_SCOPE})`;
+  Date | string | null
+>`(select max(rp.created_at) from roster.messages rp where ${REPLY_SCOPE})`;
 
 /**
  * Mirrors `agentDisplay` for agent replies, which carry no author: a thread
@@ -55,15 +62,36 @@ const replierNamesSql = sql<string[]>`(select coalesce(json_agg(distinct coalesc
   left join auth.members am on am.id = ap.added_by_member_id
   where ${REPLY_SCOPE})`;
 
+const THREAD_ID = sql.raw(`"roster"."threads"."id"`);
+
+const LEAD_ORDER = sql`case ts.status when 'running' then 0 when 'starting' then 1 when 'waiting' then 2 else 3 end, case when ts.role = 'main' then 0 else 1 end, ts.started_at desc`;
+
+function leadSession<T>(column: string): SQL<T> {
+  return sql<T>`(select ts.${sql.raw(column)} from roster.thread_sessions ts where ts.thread_id = ${THREAD_ID} order by ${LEAD_ORDER} limit 1)`;
+}
+
+const statusSql = leadSession<string>("status");
+const lastProgressSql = leadSession<string | null>("last_progress");
+const errorSql = leadSession<string | null>("error");
+const endedAtSql = leadSession<Date | string | null>("ended_at");
+
+const startedAtSql = sql<
+  Date | string | null
+>`(select min(ts.started_at) from roster.thread_sessions ts where ts.thread_id = ${THREAD_ID})`;
+
+const sessionState = {
+  status: statusSql.as("lead_status"),
+  lastProgress: lastProgressSql.as("lead_progress"),
+  error: errorSql.as("lead_error"),
+  startedAt: startedAtSql.as("lead_started_at"),
+  endedAt: endedAtSql.as("lead_ended_at"),
+};
+
 const summaryColumns = {
   id: threads.id,
   projectId: threads.projectId,
   rootMessageId: threads.rootMessageId,
-  status: threads.status,
-  lastProgress: threads.lastProgress,
-  error: threads.error,
-  startedAt: threads.startedAt,
-  endedAt: threads.endedAt,
+  ...sessionState,
   rootText: messages.text,
   authorName: users.name,
   authorEmail: users.email,
@@ -72,24 +100,47 @@ const summaryColumns = {
   replierNames: replierNamesSql,
 };
 
-function toSummary(row: {
-  rootText: string | null;
+function asDate(value: Date | string | null): Date | null {
+  if (value === null) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+interface SummaryRow {
+  status: string | null;
+  lastProgress: string | null;
   error: string | null;
+  startedAt: Date | string | null;
+  endedAt: Date | string | null;
+  rootText: string | null;
   replyCount: number;
   lastReplyAt: Date | string | null;
   replierNames: string[] | null;
-}): Pick<
+}
+
+function toSummary(
+  row: SummaryRow,
+): Pick<
   ThreadSummary,
-  "rootText" | "error" | "replyCount" | "lastReplyAt" | "replierNames"
+  | "status"
+  | "lastProgress"
+  | "error"
+  | "startedAt"
+  | "endedAt"
+  | "rootText"
+  | "replyCount"
+  | "lastReplyAt"
+  | "replierNames"
 > {
-  const lastReplyAt =
-    row.lastReplyAt === null ? null : new Date(row.lastReplyAt);
   return {
-    rootText: row.rootText ?? "",
+    status: row.status ?? "starting",
+    lastProgress: row.lastProgress,
     error: readableError(row.error),
+    startedAt: asDate(row.startedAt) ?? new Date(),
+    endedAt: asDate(row.endedAt),
+    rootText: row.rootText ?? "",
     replyCount: Number(row.replyCount ?? 0),
-    lastReplyAt:
-      lastReplyAt && !Number.isNaN(lastReplyAt.getTime()) ? lastReplyAt : null,
+    lastReplyAt: asDate(row.lastReplyAt),
     replierNames: row.replierNames ?? [],
   };
 }
@@ -104,7 +155,7 @@ export async function listChannelThreads(
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
     .where(eq(threads.projectId, projectId))
-    .orderBy(desc(threads.startedAt))
+    .orderBy(desc(startedAtSql))
     .limit(100);
 
   return rows.map((row) => ({ ...row, ...toSummary(row) }));
@@ -131,17 +182,58 @@ export interface ThreadTarget {
 export async function threadTarget(
   threadId: string,
 ): Promise<ThreadTarget | null> {
-  const row = await db.query.threads.findFirst({
-    where: eq(threads.id, threadId),
-    columns: {
-      id: true,
-      organizationId: true,
-      projectId: true,
-      rootMessageId: true,
-      status: true,
-    },
-  });
-  return row ?? null;
+  const [row] = await db
+    .select({
+      id: threads.id,
+      organizationId: threads.organizationId,
+      projectId: threads.projectId,
+      rootMessageId: threads.rootMessageId,
+      status: statusSql.as("lead_status"),
+    })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+
+  return row ? { ...row, status: row.status ?? "starting" } : null;
+}
+
+export interface ThreadPublishState {
+  id: string;
+  projectId: string;
+  rootMessageId: string;
+  status: string;
+  lastProgress: string | null;
+  error: string | null;
+  startedAt: Date;
+  endedAt: Date | null;
+}
+
+export async function threadPublishState(
+  threadId: string,
+): Promise<ThreadPublishState | null> {
+  const [row] = await db
+    .select({
+      id: threads.id,
+      projectId: threads.projectId,
+      rootMessageId: threads.rootMessageId,
+      ...sessionState,
+    })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    rootMessageId: row.rootMessageId,
+    status: row.status ?? "starting",
+    lastProgress: row.lastProgress,
+    error: readableError(row.error),
+    startedAt: asDate(row.startedAt) ?? new Date(),
+    endedAt: asDate(row.endedAt),
+  };
 }
 
 export async function joinableThread(args: {
@@ -155,19 +247,26 @@ export async function joinableThread(args: {
       organizationId: threads.organizationId,
       projectId: threads.projectId,
       rootMessageId: threads.rootMessageId,
-      status: threads.status,
+      status: threadSessions.status,
     })
     .from(threads)
     .innerJoin(messages, eq(threads.rootMessageId, messages.id))
+    .innerJoin(
+      threadSessions,
+      and(
+        eq(threadSessions.threadId, threads.id),
+        eq(threadSessions.role, "main"),
+      ),
+    )
     .where(
       and(
         eq(threads.projectId, args.projectId),
-        inArray(threads.status, ["starting", "running"]),
-        gte(threads.startedAt, args.since),
+        inArray(threadSessions.status, ["starting", "running"]),
+        gte(threadSessions.startedAt, args.since),
         eq(messages.authorMemberId, args.authorMemberId),
       ),
     )
-    .orderBy(desc(threads.startedAt))
+    .orderBy(desc(threadSessions.startedAt))
     .limit(1);
 
   return row ?? null;
@@ -188,7 +287,9 @@ export async function threadSummary(args: {
     .leftJoin(messages, eq(threads.rootMessageId, messages.id))
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
-    .where(and(eq(threads.id, args.threadId), eq(threads.projectId, args.projectId)))
+    .where(
+      and(eq(threads.id, args.threadId), eq(threads.projectId, args.projectId)),
+    )
     .limit(1);
 
   return row ? { ...row, ...toSummary(row) } : null;

@@ -24,9 +24,9 @@ export function MessageRow({
   threadHref,
 }: MessageRowProps) {
   const name =
-    message.kind === "agent"
-      ? (message.agentDisplay ?? "Agent")
-      : displayName(message.authorName, message.authorEmail);
+    message.kind === "user"
+      ? displayName(message.authorName, message.authorEmail)
+      : (message.agentDisplay ?? "Agent");
 
   return (
     <div

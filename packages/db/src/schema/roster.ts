@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   index,
+  integer,
   jsonb,
   pgSchema,
   text,
@@ -42,11 +43,11 @@ export const projects = rosterSchema.table(
     visibility: text("visibility").default("public").notNull(),
 
     watchEnabled: boolean("watch_enabled").default(true).notNull(),
-    watchPausedAt: timestamp("watch_paused_at"),
+    watchPausedAt: timestamp("watch_paused_at", { withTimezone: true }),
 
     lastSeq: bigint("last_seq", { mode: "number" }).default(0).notNull(),
 
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index("projects_organization_id_idx").on(table.organizationId),
@@ -71,7 +72,7 @@ export const channelStars = rosterSchema.table(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex("channel_stars_member_project_idx").on(
@@ -121,9 +122,9 @@ export const messages = rosterSchema.table(
 
     threadId: uuid("thread_id"),
 
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    editedAt: timestamp("edited_at"),
-    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("messages_project_seq_idx").on(table.projectId, table.seq),
@@ -153,6 +154,40 @@ export const threads = rosterSchema.table(
 
     rootMessageId: uuid("root_message_id").notNull(),
 
+    turnCount: integer("turn_count").default(0).notNull(),
+  },
+  (table) => [
+    uniqueIndex("threads_root_message_idx").on(table.rootMessageId),
+    index("threads_project_idx").on(table.projectId),
+  ],
+);
+
+export type SelectThread = typeof threads.$inferSelect;
+export type InsertThread = typeof threads.$inferInsert;
+
+export const THREAD_SESSION_ROLES = ["main", "delegate"] as const;
+export type ThreadSessionRole = (typeof THREAD_SESSION_ROLES)[number];
+
+export const threadSessions = rosterSchema.table(
+  "thread_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+
+    role: text("role")
+      .$type<ThreadSessionRole>()
+      .default("main")
+      .notNull(),
+
+    runAsMemberId: uuid("run_as_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+
     supersetWorkspaceId: text("superset_workspace_id"),
     supersetTerminalId: text("superset_terminal_id"),
     supersetHostKey: text("superset_host_key"),
@@ -164,20 +199,25 @@ export const threads = rosterSchema.table(
       .default(0)
       .notNull(),
 
-    startedAt: timestamp("started_at").defaultNow().notNull(),
-    endedAt: timestamp("ended_at"),
-    workspaceReapedAt: timestamp("workspace_reaped_at"),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    workspaceReapedAt: timestamp("workspace_reaped_at", { withTimezone: true }),
     error: text("error"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("threads_root_message_idx").on(table.rootMessageId),
-    index("threads_project_started_idx").on(table.projectId, table.startedAt),
-    index("threads_status_idx").on(table.status),
+    uniqueIndex("thread_sessions_thread_project_idx").on(
+      table.threadId,
+      table.projectId,
+    ),
+    index("thread_sessions_thread_idx").on(table.threadId),
+    index("thread_sessions_status_idx").on(table.status),
   ],
 );
 
-export type SelectThread = typeof threads.$inferSelect;
-export type InsertThread = typeof threads.$inferInsert;
+export type SelectThreadSession = typeof threadSessions.$inferSelect;
+export type InsertThreadSession = typeof threadSessions.$inferInsert;
 
 export const tasks = rosterSchema.table(
   "tasks",
@@ -202,9 +242,9 @@ export const tasks = rosterSchema.table(
       { onDelete: "set null" },
     ),
 
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
   },
   (table) => [
     index("tasks_organization_created_idx").on(
@@ -245,9 +285,9 @@ export const apiKeys = rosterSchema.table(
     prefix: text("prefix").notNull(),
     hash: text("hash").notNull(),
 
-    lastUsedAt: timestamp("last_used_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    revokedAt: timestamp("revoked_at"),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("api_keys_hash_idx").on(table.hash),
@@ -294,8 +334,8 @@ export const delegations = rosterSchema.table(
     /** Guards against fern-core → ash-spark → fern-core running forever. */
     depth: bigint("depth", { mode: "number" }).default(1).notNull(),
 
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    answeredAt: timestamp("answered_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
   },
   (table) => [
     /** A thread may only wait on one answer at a time. */

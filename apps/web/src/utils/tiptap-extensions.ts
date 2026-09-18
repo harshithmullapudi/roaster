@@ -2,6 +2,7 @@ import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
 
+import { MentionHighlight } from "./mention-highlight";
 import { createMentionSuggestion } from "./mention-suggestion";
 import type { MentionItem } from "./mentions";
 
@@ -62,6 +63,7 @@ export const richTextExtensions = [
     HTMLAttributes: { class: "mention" },
     renderText: MENTION_TEXT,
   }),
+  MentionHighlight,
 ];
 
 export function composerExtensions(
@@ -70,6 +72,7 @@ export function composerExtensions(
 ) {
   return [
     starterKit,
+    MentionHighlight,
     Mention.configure({
       HTMLAttributes: { class: "mention" },
       renderText: MENTION_TEXT,

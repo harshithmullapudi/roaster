@@ -4,6 +4,8 @@ import {
   messages,
   projects,
   type SelectThread,
+  type SelectThreadSession,
+  threadSessions,
   threads,
 } from "@roster/db";
 import { bindingIsIdle, listAgentBindings,
@@ -20,11 +22,10 @@ import { bindingIsIdle, listAgentBindings,
   runAgent,
   sendToAgent,
 } from "@roster/superset";
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import {
   humanSessionError,
-  readableError,
   sessionErrorDetail,
   workspaceAlreadyGone,
 } from "../../utils/session-error";
@@ -33,10 +34,12 @@ import {
   type DelegationContext,
   rosterEnvelope,
 } from "../../utils/roster-envelope";
+import { mergeSteers, undeliveredSteerNotice } from "../../utils/steer-queue";
 import { agentReply, lastMeaningfulLine } from "../../utils/thread-progress";
 import { textToTiptap } from "../../utils/tiptap";
 import { allocateSeq, channelAgentIdentity } from "../channels";
 import { channelName, publish } from "../centrifugo";
+import { threadPublishState } from "./queries";
 
 const POLL_INTERVAL_MS = 2000;
 const WRITE_INTERVAL_MS = 1000;
@@ -45,6 +48,8 @@ const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
 const SETTLE_DELAY_MS = 1500;
 const STALENESS_TIMEOUT_MS = 60_000;
+const STEER_READY_INTERVAL_MS = 500;
+const STEER_READY_TIMEOUT_MS = 120_000;
 
 const TERMINAL_STATUSES = ["completed", "failed", "canceled"] as const;
 
@@ -63,31 +68,13 @@ function isTerminal(status: string): boolean {
 }
 
 /**
- * Parked mid-conversation: this thread asked another agent for something and
+ * Parked mid-conversation: this session asked another agent for something and
  * is holding its worktree until the answer arrives. Not terminal — it has an
  * outstanding delegation and will resume — but the watch loop stops, because
  * its agent's turn really has ended.
  */
 function isParked(status: string): boolean {
   return status === "waiting";
-}
-
-/**
- * Park a thread on another agent's answer. Called before the child session
- * starts, so a child that answers instantly still finds a thread to wake.
- */
-export async function markWaiting(args: {
-  threadId: string;
-  waitingOn: string;
-}): Promise<void> {
-  stopWatch(args.threadId);
-
-  const row = await patch(args.threadId, {
-    status: "waiting",
-    lastProgress: `Waiting on @${args.waitingOn}…`,
-    error: null,
-  });
-  if (row) await publishThread(row);
 }
 
 export function threadChannelName(threadId: string): string {
@@ -102,6 +89,7 @@ interface HostLink {
 }
 
 interface Watch {
+  sessionId: string;
   threadId: string;
   hostKey: string;
   workspaceId: string;
@@ -120,64 +108,177 @@ interface Watch {
 const hosts = new Map<string, HostLink>();
 const watches = new Map<string, Watch>();
 const byTerminal = new Map<string, string>();
-const reaping = new Set<string>();
 const finishing = new Set<string>();
 const pendingSteers = new Map<string, string[]>();
 
 let started = false;
 let starting: Promise<void> | null = null;
 
-async function threadById(threadId: string): Promise<SelectThread | null> {
-  const row = await db.query.threads.findFirst({
-    where: eq(threads.id, threadId),
-  });
+/**
+ * A session plus the identity of the thread it belongs to: the channel the
+ * conversation lives in, which is not always the channel whose agent is
+ * working (`projectId` is that one).
+ */
+interface SessionView {
+  id: string;
+  threadId: string;
+  projectId: string;
+  role: string;
+  runAsMemberId: string | null;
+  supersetWorkspaceId: string | null;
+  supersetTerminalId: string | null;
+  supersetHostKey: string | null;
+  status: string;
+  lastProgress: string | null;
+  workspaceReapedAt: Date | null;
+  error: string | null;
+  organizationId: string;
+  threadProjectId: string;
+  rootMessageId: string;
+}
+
+const sessionViewColumns = {
+  id: threadSessions.id,
+  threadId: threadSessions.threadId,
+  projectId: threadSessions.projectId,
+  role: threadSessions.role,
+  runAsMemberId: threadSessions.runAsMemberId,
+  supersetWorkspaceId: threadSessions.supersetWorkspaceId,
+  supersetTerminalId: threadSessions.supersetTerminalId,
+  supersetHostKey: threadSessions.supersetHostKey,
+  status: threadSessions.status,
+  lastProgress: threadSessions.lastProgress,
+  workspaceReapedAt: threadSessions.workspaceReapedAt,
+  error: threadSessions.error,
+  organizationId: threads.organizationId,
+  threadProjectId: threads.projectId,
+  rootMessageId: threads.rootMessageId,
+};
+
+async function sessionById(sessionId: string): Promise<SessionView | null> {
+  const [row] = await db
+    .select(sessionViewColumns)
+    .from(threadSessions)
+    .innerJoin(threads, eq(threadSessions.threadId, threads.id))
+    .where(eq(threadSessions.id, sessionId))
+    .limit(1);
   return row ?? null;
+}
+
+async function mainSession(threadId: string): Promise<SessionView | null> {
+  const [row] = await db
+    .select(sessionViewColumns)
+    .from(threadSessions)
+    .innerJoin(threads, eq(threadSessions.threadId, threads.id))
+    .where(
+      and(
+        eq(threadSessions.threadId, threadId),
+        eq(threadSessions.role, "main"),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function sessionsOf(threadId: string): Promise<SessionView[]> {
+  return db
+    .select(sessionViewColumns)
+    .from(threadSessions)
+    .innerJoin(threads, eq(threadSessions.threadId, threads.id))
+    .where(eq(threadSessions.threadId, threadId))
+    .orderBy(desc(threadSessions.role), threadSessions.createdAt);
 }
 
 async function patch(
-  threadId: string,
-  values: Partial<SelectThread>,
-): Promise<SelectThread | null> {
+  sessionId: string,
+  values: Partial<SelectThreadSession>,
+): Promise<SessionView | null> {
   const [row] = await db
-    .update(threads)
+    .update(threadSessions)
     .set(values)
-    .where(eq(threads.id, threadId))
-    .returning();
-  return row ?? null;
+    .where(eq(threadSessions.id, sessionId))
+    .returning({ id: threadSessions.id });
+  if (!row) return null;
+  return sessionById(row.id);
 }
 
-async function publishThread(thread: SelectThread): Promise<void> {
+function threadIdentity(session: SessionView): {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  rootMessageId: string;
+} {
+  return {
+    id: session.threadId,
+    organizationId: session.organizationId,
+    projectId: session.threadProjectId,
+    rootMessageId: session.rootMessageId,
+  };
+}
+
+async function bumpTurn(threadId: string): Promise<void> {
+  await db
+    .update(threads)
+    .set({ turnCount: sql`${threads.turnCount} + 1` })
+    .where(eq(threads.id, threadId));
+}
+
+async function publishThread(threadId: string): Promise<void> {
+  const state = await threadPublishState(threadId);
+  if (!state) return;
+
   const payload = {
     type: "thread" as const,
     thread: {
-      id: thread.id,
-      projectId: thread.projectId,
-      rootMessageId: thread.rootMessageId,
-      status: thread.status,
-      lastProgress: thread.lastProgress,
-      error: readableError(thread.error),
-      startedAt: thread.startedAt.toISOString(),
-      endedAt: thread.endedAt ? thread.endedAt.toISOString() : null,
+      id: state.id,
+      projectId: state.projectId,
+      rootMessageId: state.rootMessageId,
+      status: state.status,
+      lastProgress: state.lastProgress,
+      error: state.error,
+      startedAt: state.startedAt.toISOString(),
+      endedAt: state.endedAt ? state.endedAt.toISOString() : null,
     },
   };
   await Promise.all([
-    publish(threadChannelName(thread.id), payload),
-    publish(channelName(thread.projectId), payload),
+    publish(threadChannelName(state.id), payload),
+    publish(channelName(state.projectId), payload),
   ]);
 }
 
-async function connectionFor(thread: {
+/**
+ * Park a session on another agent's answer. Called before the answering
+ * session starts, so one that answers instantly still finds a session to wake.
+ */
+export async function markWaiting(args: {
+  threadId: string;
+  waitingOn: string;
+}): Promise<void> {
+  const session = await mainSession(args.threadId);
+  if (!session) return;
+
+  stopWatch(session.id);
+
+  const row = await patch(session.id, {
+    status: "waiting",
+    lastProgress: `Waiting on @${args.waitingOn}…`,
+    error: null,
+  });
+  if (row) await publishThread(row.threadId);
+}
+
+async function connectionFor(session: {
   organizationId: string;
   projectId: string;
 }) {
   const project = await db.query.projects.findFirst({
-    where: eq(projects.id, thread.projectId),
+    where: eq(projects.id, session.projectId),
   });
   if (!project) throw new Error("This channel is no longer linked to a project.");
 
   const member = await db.query.members.findFirst({
     where: and(
-      eq(members.organizationId, thread.organizationId),
+      eq(members.organizationId, session.organizationId),
       eq(members.supersetOrgId, project.supersetOrgId),
     ),
   });
@@ -205,8 +306,8 @@ async function jwtForHostKey(hostKey: string): Promise<string | null> {
 }
 
 /**
- * One socket per host, not per thread: `/events` is a host-wide bus, so every
- * thread on a machine is demultiplexed off the same connection by terminal id.
+ * One socket per host, not per session: `/events` is a host-wide bus, so every
+ * session on a machine is demultiplexed off the same connection by terminal id.
  */
 function ensureHostLink(hostKey: string): void {
   const existing = hosts.get(hostKey);
@@ -224,7 +325,7 @@ function ensureHostLink(hostKey: string): void {
   void (async () => {
     const jwt = await jwtForHostKey(hostKey);
     if (!jwt) {
-      await failHostThreads(hostKey, "Nobody on this team has Superset connected.");
+      await failHostSessions(hostKey, "Nobody on this team has Superset connected.");
       return;
     }
 
@@ -282,7 +383,7 @@ function scheduleHostRetry(hostKey: string): void {
   if (!link || link.stopped) return;
 
   if (link.attempts >= MAX_ATTEMPTS) {
-    void failHostThreads(
+    void failHostSessions(
       hostKey,
       "That machine is offline — Roster stopped waiting for it.",
     );
@@ -299,25 +400,28 @@ function scheduleHostRetry(hostKey: string): void {
   }, delay);
 }
 
-async function failHostThreads(hostKey: string, reason: string): Promise<void> {
+async function failHostSessions(
+  hostKey: string,
+  reason: string,
+): Promise<void> {
   const affected = [...watches.values()].filter(
     (watch) => watch.hostKey === hostKey,
   );
   for (const watch of affected) {
-    await finish({ threadId: watch.threadId, status: "failed", error: reason });
+    await finish({ sessionId: watch.sessionId, status: "failed", error: reason });
   }
 }
 
 function handleLifecycle(terminalId: string, eventType: string): void {
-  const threadId = byTerminal.get(terminalId);
-  if (!threadId) return;
+  const sessionId = byTerminal.get(terminalId);
+  if (!sessionId) return;
 
-  const watch = watches.get(threadId);
+  const watch = watches.get(sessionId);
   if (!watch) return;
 
   if (eventType === "Failed") {
     void finish({
-      threadId,
+      sessionId,
       status: "failed",
       error: "The agent stopped with an error.",
       capture: true,
@@ -332,7 +436,7 @@ function handleLifecycle(terminalId: string, eventType: string): void {
 
   if (eventType === "Stop" || eventType === "Detached") {
     watch.lastStopAt = Date.now();
-    void settle(threadId);
+    void settle(sessionId);
   }
 }
 
@@ -342,37 +446,37 @@ function handleLifecycle(terminalId: string, eventType: string): void {
  * whether work is over. A later `Start` is what distinguishes a turn boundary
  * mid-run from the agent going quiet, so settle on the race between them.
  */
-async function settle(threadId: string): Promise<void> {
-  const watch = watches.get(threadId);
+async function settle(sessionId: string): Promise<void> {
+  const watch = watches.get(sessionId);
   if (!watch) return;
   const stoppedAt = watch.lastStopAt;
 
   await new Promise((resolve) => setTimeout(resolve, SETTLE_DELAY_MS));
 
-  const current = watches.get(threadId);
+  const current = watches.get(sessionId);
   if (!current || current.lastStopAt !== stoppedAt) return;
   if (current.lastStartAt > stoppedAt) return;
 
-  const thread = await threadById(threadId);
-  if (!thread || isTerminal(thread.status)) return;
+  const session = await sessionById(sessionId);
+  if (!session || isTerminal(session.status)) return;
 
-  await finish({ threadId, status: "completed", error: null, capture: true });
+  await finish({ sessionId, status: "completed", error: null, capture: true });
 }
 
-async function pollOnce(threadId: string): Promise<void> {
-  const watch = watches.get(threadId);
+async function pollOnce(sessionId: string): Promise<void> {
+  const watch = watches.get(sessionId);
   if (!watch) return;
 
-  const thread = await threadById(threadId);
-  if (!thread || isTerminal(thread.status)) {
-    stopWatch(threadId);
+  const session = await sessionById(sessionId);
+  if (!session || isTerminal(session.status)) {
+    stopWatch(sessionId);
     return;
   }
 
   let text: string;
   let jwt: string;
   try {
-    const connection = await connectionFor(thread);
+    const connection = await connectionFor(session);
     jwt = connection.jwt;
     const transcript = await readTranscript({
       jwt: connection.jwt,
@@ -387,15 +491,15 @@ async function pollOnce(threadId: string): Promise<void> {
       retrying: true,
     });
     console.warn(
-      `[sessions] transcript poll failed for ${threadId}: ${sessionErrorDetail(cause)}`,
+      `[sessions] transcript poll failed for ${sessionId}: ${sessionErrorDetail(cause)}`,
     );
     if (workspaceAlreadyGone(cause)) {
-      await finish({ threadId, status: "failed", error: reason });
+      await finish({ sessionId, status: "failed", error: reason });
       return;
     }
-    if (thread.error !== reason) {
-      const row = await patch(threadId, { error: reason });
-      if (row) await publishThread(row);
+    if (session.error !== reason) {
+      const row = await patch(sessionId, { error: reason });
+      if (row) await publishThread(row.threadId);
     }
     return;
   }
@@ -406,11 +510,6 @@ async function pollOnce(threadId: string): Promise<void> {
     watch.transcriptChangedAt = now;
   }
 
-  if (text.trim().length > 0 && pendingSteers.has(threadId)) {
-    await drainSteers(threadId);
-    return;
-  }
-
   try {
     const bindings = await listAgentBindings({
       jwt,
@@ -419,8 +518,12 @@ async function pollOnce(threadId: string): Promise<void> {
     });
     const binding = bindings.find((b) => b.terminalId === watch.terminalId);
     if (bindingIsIdle(binding, SETTLE_DELAY_MS)) {
+      if (pendingSteers.has(sessionId)) {
+        await drainSteers(sessionId);
+        return;
+      }
       await finish({
-        threadId,
+        sessionId,
         status: "completed",
         error: null,
         capture: true,
@@ -434,7 +537,7 @@ async function pollOnce(threadId: string): Promise<void> {
     }
   } catch (cause) {
     console.warn(
-      `[sessions] binding check failed for ${threadId}: ${sessionErrorDetail(cause)}`,
+      `[sessions] binding check failed for ${sessionId}: ${sessionErrorDetail(cause)}`,
     );
   }
 
@@ -443,9 +546,9 @@ async function pollOnce(threadId: string): Promise<void> {
     now - watch.bindingChangedAt >= STALENESS_TIMEOUT_MS
   ) {
     console.warn(
-      `[sessions] staleness timeout for ${threadId} after ${STALENESS_TIMEOUT_MS}ms of no output and no agent events`,
+      `[sessions] staleness timeout for ${sessionId} after ${STALENESS_TIMEOUT_MS}ms of no output and no agent events`,
     );
-    await finish({ threadId, status: "completed", error: null, capture: true });
+    await finish({ sessionId, status: "completed", error: null, capture: true });
     return;
   }
 
@@ -454,11 +557,11 @@ async function pollOnce(threadId: string): Promise<void> {
     line !== null &&
     line !== watch.lastProgress &&
     now - watch.lastWriteAt >= WRITE_INTERVAL_MS;
-  const recovered = thread.error !== null;
+  const recovered = session.error !== null;
 
   if (!progressed && !recovered) return;
 
-  const values: Partial<SelectThread> = {};
+  const values: Partial<SelectThreadSession> = {};
   if (recovered) values.error = null;
   if (progressed && line !== null) {
     watch.lastProgress = line;
@@ -467,19 +570,21 @@ async function pollOnce(threadId: string): Promise<void> {
     values.transcriptOffset = text.length;
   }
 
-  const row = await patch(threadId, values);
-  if (row) await publishThread(row);
+  const row = await patch(sessionId, values);
+  if (row) await publishThread(row.threadId);
 }
 
 function startWatch(args: {
+  sessionId: string;
   threadId: string;
   hostKey: string;
   workspaceId: string;
   terminalId: string;
 }): void {
-  stopWatch(args.threadId);
+  stopWatch(args.sessionId);
 
   const watch: Watch = {
+    sessionId: args.sessionId,
     threadId: args.threadId,
     hostKey: args.hostKey,
     workspaceId: args.workspaceId,
@@ -494,23 +599,23 @@ function startWatch(args: {
     bindingEventAt: null,
     bindingChangedAt: Date.now(),
   };
-  watches.set(args.threadId, watch);
-  byTerminal.set(args.terminalId, args.threadId);
+  watches.set(args.sessionId, watch);
+  byTerminal.set(args.terminalId, args.sessionId);
 
   watch.pollTimer = setInterval(() => {
-    void pollOnce(args.threadId);
+    void pollOnce(args.sessionId);
   }, POLL_INTERVAL_MS);
 
   ensureHostLink(args.hostKey);
-  void pollOnce(args.threadId);
+  void pollOnce(args.sessionId);
 }
 
-function stopWatch(threadId: string): void {
-  const watch = watches.get(threadId);
+function stopWatch(sessionId: string): void {
+  const watch = watches.get(sessionId);
   if (!watch) return;
   if (watch.pollTimer) clearInterval(watch.pollTimer);
   byTerminal.delete(watch.terminalId);
-  watches.delete(threadId);
+  watches.delete(sessionId);
 
   if (!hasWatchesOn(watch.hostKey)) {
     const link = hosts.get(watch.hostKey);
@@ -527,38 +632,55 @@ function stopWatch(threadId: string): void {
   }
 }
 
+interface FinishOutcome {
+  resumeWith: string | null;
+}
+
+const NOTHING_TO_RESUME: FinishOutcome = { resumeWith: null };
+
 async function finish(args: {
-  threadId: string;
+  sessionId: string;
   status: ThreadStatus;
   error?: string | null;
   capture?: boolean;
 }): Promise<void> {
-  if (finishing.has(args.threadId)) return;
-  finishing.add(args.threadId);
+  if (finishing.has(args.sessionId)) return;
+  finishing.add(args.sessionId);
+
+  let outcome: FinishOutcome = NOTHING_TO_RESUME;
   try {
-    await finishOnce(args);
+    outcome = await finishOnce(args);
   } finally {
-    finishing.delete(args.threadId);
+    finishing.delete(args.sessionId);
   }
+
+  if (outcome.resumeWith === null) return;
+
+  console.warn(
+    `[sessions] turn ended with queued work for ${args.sessionId} — starting the next turn with it`,
+  );
+  await resume({ sessionId: args.sessionId, text: outcome.resumeWith });
 }
 
 async function finishOnce(args: {
-  threadId: string;
+  sessionId: string;
   status: ThreadStatus;
   error?: string | null;
   capture?: boolean;
-}): Promise<void> {
-  const watch = watches.get(args.threadId);
-  const thread = await threadById(args.threadId);
-  if (!thread || isTerminal(thread.status)) {
-    stopWatch(args.threadId);
-    return;
+}): Promise<FinishOutcome> {
+  const watch = watches.get(args.sessionId);
+  const session = await sessionById(args.sessionId);
+  if (!session || isTerminal(session.status)) {
+    stopWatch(args.sessionId);
+    if (session) await reportUndelivered(args.sessionId, "that session had already ended.");
+    else pendingSteers.delete(args.sessionId);
+    return NOTHING_TO_RESUME;
   }
 
   let finalText: string | null = null;
   if (args.capture && watch) {
     try {
-      const connection = await connectionFor(thread);
+      const connection = await connectionFor(session);
       const transcript = await readTranscript({
         jwt: connection.jwt,
         routingKey: watch.hostKey,
@@ -571,42 +693,100 @@ async function finishOnce(args: {
     }
   }
 
-  stopWatch(args.threadId);
-  pendingSteers.delete(args.threadId);
+  stopWatch(args.sessionId);
+  const queued = takeSteers(args.sessionId);
 
   /**
-   * A parked thread's agent has stopped talking, which is exactly what we told
-   * it to do after handing work off — so keep what it said, but leave it
+   * A parked session's agent has stopped talking, which is exactly what we
+   * told it to do after handing work off — so keep what it said, but leave it
    * `waiting` rather than calling it finished. It resumes when the answer
    * lands, not when its turn ends.
    */
-  if (isParked(thread.status)) {
+  if (isParked(session.status)) {
     if (finalText && finalText.trim().length > 0) {
-      await persistAgentMessage({ thread, text: finalText });
+      await persistAgentMessage({
+        thread: threadIdentity(session),
+        text: finalText,
+        agentChannelId: session.projectId,
+      });
     }
-    return;
+    return await resumable(session, queued);
   }
 
-  const values: Partial<SelectThread> = {
+  const values: Partial<SelectThreadSession> = {
     status: args.status,
     endedAt: new Date(),
   };
   if (args.error !== undefined) values.error = args.error;
 
-  const row = await patch(args.threadId, values);
-  if (!row) return;
-
-  if (finalText && finalText.trim().length > 0) {
-    await persistAgentMessage({ thread: row, text: finalText });
+  const row = await patch(args.sessionId, values);
+  if (!row) {
+    await reportUndelivered(args.sessionId, "that session is gone.", queued);
+    return NOTHING_TO_RESUME;
   }
 
-  await publishThread(row);
+  if (finalText && finalText.trim().length > 0) {
+    await persistAgentMessage({
+      thread: threadIdentity(row),
+      text: finalText,
+      agentChannelId: row.projectId,
+    });
+  }
+
+  await publishThread(row.threadId);
+
+  if (args.status === "canceled" && queued.length > 0) {
+    await reportUndelivered(row.id, "that session was canceled.", queued);
+    return NOTHING_TO_RESUME;
+  }
+
+  const outcome = await resumable(row, queued);
+  if (outcome.resumeWith !== null) return outcome;
 
   await settleIfDelegated({
-    childThreadId: row.id,
+    childThreadId: row.threadId,
     reply: finalText ?? "",
     failed: args.status !== "completed",
   });
+
+  return NOTHING_TO_RESUME;
+}
+
+function takeSteers(sessionId: string): string[] {
+  const queue = pendingSteers.get(sessionId) ?? [];
+  pendingSteers.delete(sessionId);
+  return queue;
+}
+
+async function resumable(
+  session: SessionView,
+  queued: string[],
+): Promise<FinishOutcome> {
+  if (queued.length === 0) return NOTHING_TO_RESUME;
+
+  const text = mergeSteers(queued);
+  if (text.length === 0) return NOTHING_TO_RESUME;
+
+  if (!session.supersetWorkspaceId || session.workspaceReapedAt) {
+    await reportUndelivered(session.id, "its worktree is gone.", queued);
+    return NOTHING_TO_RESUME;
+  }
+
+  return { resumeWith: text };
+}
+
+async function reportUndelivered(
+  sessionId: string,
+  reason: string,
+  taken?: string[],
+): Promise<void> {
+  const queue = taken ?? takeSteers(sessionId);
+  if (queue.length === 0) return;
+
+  console.warn(
+    `[sessions] ${queue.length} undelivered steer(s) for ${sessionId}: ${reason}`,
+  );
+  await recordSessionError(sessionId, undeliveredSteerNotice(queue.length, reason));
 }
 
 /**
@@ -636,7 +816,12 @@ async function settleIfDelegated(args: {
  * not `thread.projectId`.
  */
 export async function persistAgentMessage(args: {
-  thread: SelectThread;
+  thread: {
+    id: string;
+    organizationId: string;
+    projectId: string;
+    rootMessageId: string;
+  };
   text: string;
   agentChannelId?: string;
   dedupe?: boolean;
@@ -712,15 +897,15 @@ export async function persistAgentMessage(args: {
  * so re-sending it is what keeps a revived agent able to delegate.
  */
 async function briefedPrompt(args: {
-  thread: SelectThread;
+  session: SessionView;
   request: string;
   context?: string[];
   delegation?: DelegationContext;
 }): Promise<string> {
-  const identity = await channelAgentIdentity(args.thread.projectId);
+  const identity = await channelAgentIdentity(args.session.projectId);
   const envelope = rosterEnvelope({
-    threadId: args.thread.id,
-    channelId: args.thread.projectId,
+    threadId: args.session.threadId,
+    channelId: args.session.projectId,
     handle: identity?.agentHandle ?? "agent",
     delegation: args.delegation,
   });
@@ -737,11 +922,24 @@ export async function startSession(args: {
   context?: string[];
   delegation?: DelegationContext;
 }): Promise<void> {
-  const thread = await threadById(args.threadId);
-  if (!thread) return;
+  const session = await mainSession(args.threadId);
+  if (!session) return;
+
+  await startSessionRow({ session, ...args });
+}
+
+async function startSessionRow(args: {
+  session: SessionView;
+  text: string;
+  context?: string[];
+  delegation?: DelegationContext;
+}): Promise<void> {
+  const { session } = args;
+
+  await bumpTurn(session.threadId);
 
   try {
-    const connection = await connectionFor(thread);
+    const connection = await connectionFor(session);
 
     const workspace = await createWorkspace({
       jwt: connection.jwt,
@@ -749,13 +947,13 @@ export async function startSession(args: {
       projectId: connection.project.supersetProjectId,
       namingPrompt: args.text,
     });
-    await patch(thread.id, {
+    await patch(session.id, {
       supersetWorkspaceId: workspace.id,
       supersetHostKey: connection.hostKey,
     });
 
     const prompt = await briefedPrompt({
-      thread,
+      session,
       request: args.text,
       context: args.context,
       delegation: args.delegation,
@@ -768,26 +966,43 @@ export async function startSession(args: {
       prompt,
     });
 
-    const running = await patch(thread.id, {
+    const current = await sessionById(session.id);
+    if (current && isTerminal(current.status)) {
+      console.warn(
+        `[sessions] ${session.id} was ${current.status} before its agent came up — not reviving it`,
+      );
+      await patch(session.id, { supersetTerminalId: run.sessionId });
+      await reportUndelivered(session.id, `that session was ${current.status}.`);
+      return;
+    }
+
+    const running = await patch(session.id, {
       supersetTerminalId: run.sessionId,
       status: "running",
       error: null,
     });
-    if (running) await publishThread(running);
+    if (running) await publishThread(running.threadId);
 
     startWatch({
-      threadId: thread.id,
+      sessionId: session.id,
+      threadId: session.threadId,
       hostKey: connection.hostKey,
       workspaceId: workspace.id,
       terminalId: run.sessionId,
     });
+
+    void drainWhenReady(session.id).catch((cause: unknown) => {
+      console.warn(
+        `[sessions] drain-on-start failed for ${session.id}: ${sessionErrorDetail(cause)}`,
+      );
+    });
   } catch (cause) {
     console.warn(
-      `[sessions] start failed for ${thread.id}: ${sessionErrorDetail(cause)}`,
+      `[sessions] start failed for ${session.id}: ${sessionErrorDetail(cause)}`,
     );
-    pendingSteers.delete(thread.id);
+    await reportUndelivered(session.id, "that session never started.");
     await finish({
-      threadId: thread.id,
+      sessionId: session.id,
       status: "failed",
       error: humanSessionError(cause, {
         fallback: "Could not start a session on that machine.",
@@ -796,99 +1011,186 @@ export async function startSession(args: {
   }
 }
 
-function queueSteer(threadId: string, text: string): void {
-  const queue = pendingSteers.get(threadId) ?? [];
+function queueSteer(sessionId: string, text: string): void {
+  const queue = pendingSteers.get(sessionId) ?? [];
   queue.push(text);
-  pendingSteers.set(threadId, queue);
-  console.warn(`[sessions] queued steer for ${threadId} (${queue.length})`);
+  pendingSteers.set(sessionId, queue);
+  console.warn(`[sessions] queued steer for ${sessionId} (${queue.length})`);
 }
 
-async function drainSteers(threadId: string): Promise<void> {
-  const queue = pendingSteers.get(threadId);
-  pendingSteers.delete(threadId);
-  if (!queue) return;
-  console.warn(`[sessions] draining ${queue.length} steer(s) for ${threadId}`);
+async function drainWhenReady(sessionId: string): Promise<void> {
+  const deadline = Date.now() + STEER_READY_TIMEOUT_MS;
 
-  for (const text of queue) {
-    await interrupt({ threadId, text });
+  while (pendingSteers.has(sessionId)) {
+    const watch = watches.get(sessionId);
+    if (!watch) return;
+
+    const session = await sessionById(sessionId);
+    if (!session || isTerminal(session.status)) return;
+
+    if (await terminalIsListening(session, watch)) {
+      await drainSteers(sessionId);
+      return;
+    }
+
+    if (Date.now() >= deadline) {
+      console.warn(
+        `[sessions] agent never came up for ${sessionId} — queued steer(s) left for the watch`,
+      );
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, STEER_READY_INTERVAL_MS));
   }
+}
+
+async function terminalIsListening(
+  session: SessionView,
+  watch: Watch,
+): Promise<boolean> {
+  try {
+    const connection = await connectionFor(session);
+    const bindings = await listAgentBindings({
+      jwt: connection.jwt,
+      routingKey: watch.hostKey,
+      workspaceId: watch.workspaceId,
+    });
+    const binding = bindings.find((b) => b.terminalId === watch.terminalId);
+    return bindingIsIdle(binding, SETTLE_DELAY_MS);
+  } catch {
+    return false;
+  }
+}
+
+async function drainSteers(sessionId: string): Promise<void> {
+  const queue = takeSteers(sessionId);
+  if (queue.length === 0) return;
+  console.warn(`[sessions] draining ${queue.length} steer(s) for ${sessionId}`);
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const text = queue[index] as string;
+
+    let delivered = false;
+    try {
+      delivered = await interrupt({ sessionId, text });
+    } catch (cause) {
+      console.warn(
+        `[sessions] drain failed for ${sessionId}: ${sessionErrorDetail(cause)}`,
+      );
+    }
+
+    if (!delivered) {
+      requeueSteers(sessionId, queue.slice(index));
+      return;
+    }
+  }
+}
+
+function requeueSteers(sessionId: string, texts: string[]): void {
+  if (texts.length === 0) return;
+  const queue = pendingSteers.get(sessionId) ?? [];
+  pendingSteers.set(sessionId, [...texts, ...queue]);
+  console.warn(
+    `[sessions] ${texts.length} steer(s) held for ${sessionId} — still undelivered`,
+  );
 }
 
 async function interrupt(args: {
-  threadId: string;
+  sessionId: string;
   text: string;
-}): Promise<void> {
-  const thread = await threadById(args.threadId);
-  if (!thread) return;
-  if (!thread.supersetTerminalId || !thread.supersetWorkspaceId) {
-    queueSteer(args.threadId, args.text);
-    return;
+}): Promise<boolean> {
+  const session = await sessionById(args.sessionId);
+  if (!session) return false;
+
+  if (!session.supersetTerminalId || !session.supersetWorkspaceId) {
+    if (isTerminal(session.status)) {
+      if (session.supersetWorkspaceId && !session.workspaceReapedAt) {
+        await resume({ sessionId: args.sessionId, text: args.text });
+        return true;
+      }
+      await recordSessionError(
+        args.sessionId,
+        undeliveredSteerNotice(1, "that session had already ended."),
+      );
+      return true;
+    }
+    return false;
   }
 
   try {
-    const connection = await connectionFor(thread);
+    const connection = await connectionFor(session);
     await sendToAgent({
       jwt: connection.jwt,
       routingKey: connection.hostKey,
-      workspaceId: thread.supersetWorkspaceId,
-      terminalId: thread.supersetTerminalId,
+      workspaceId: session.supersetWorkspaceId,
+      terminalId: session.supersetTerminalId,
       text: args.text,
     });
 
-    const watch = watches.get(args.threadId);
+    const watch = watches.get(args.sessionId);
     if (watch) watch.lastStartAt = Date.now();
 
-    const row = await patch(args.threadId, { status: "running", error: null });
-    if (row) await publishThread(row);
+    const row = await patch(args.sessionId, {
+      status: "running",
+      error: null,
+    });
+    if (row) await publishThread(row.threadId);
 
-    if (!watches.has(args.threadId)) {
+    if (!watches.has(args.sessionId)) {
       startWatch({
-        threadId: args.threadId,
+        sessionId: session.id,
+        threadId: session.threadId,
         hostKey: connection.hostKey,
-        workspaceId: thread.supersetWorkspaceId,
-        terminalId: thread.supersetTerminalId,
+        workspaceId: session.supersetWorkspaceId,
+        terminalId: session.supersetTerminalId,
       });
     }
+
+    return true;
   } catch (cause) {
     console.warn(
-      `[sessions] steer failed for ${args.threadId}: ${sessionErrorDetail(cause)}`,
+      `[sessions] steer failed for ${args.sessionId}: ${sessionErrorDetail(cause)}`,
     );
-    const row = await patch(args.threadId, {
+    const row = await patch(args.sessionId, {
       error: humanSessionError(cause, {
         fallback: "Could not reach the running session.",
       }),
     });
-    if (row) await publishThread(row);
+    if (row) await publishThread(row.threadId);
+    return false;
   }
 }
 
-async function resume(args: { threadId: string; text: string }): Promise<void> {
-  const thread = await threadById(args.threadId);
-  if (!thread?.supersetWorkspaceId || thread.workspaceReapedAt) {
-    await recordThreadError(
-      args.threadId,
+async function resume(args: {
+  sessionId: string;
+  text: string;
+}): Promise<void> {
+  const session = await sessionById(args.sessionId);
+  if (!session?.supersetWorkspaceId || session.workspaceReapedAt) {
+    await recordSessionError(
+      args.sessionId,
       "That session has no worktree left to reply into.",
     );
     return;
   }
 
-  const revived = await patch(args.threadId, {
+  const revived = await patch(args.sessionId, {
     status: "running",
     endedAt: null,
     error: null,
   });
-  if (revived) await publishThread(revived);
+  if (revived) await publishThread(revived.threadId);
 
   try {
-    const connection = await connectionFor(thread);
-    let terminalId = thread.supersetTerminalId;
+    const connection = await connectionFor(session);
+    let terminalId = session.supersetTerminalId;
 
     if (terminalId) {
       try {
         await sendToAgent({
           jwt: connection.jwt,
           routingKey: connection.hostKey,
-          workspaceId: thread.supersetWorkspaceId,
+          workspaceId: session.supersetWorkspaceId,
           terminalId,
           text: args.text,
         });
@@ -901,29 +1203,30 @@ async function resume(args: { threadId: string; text: string }): Promise<void> {
       const run = await runAgent({
         jwt: connection.jwt,
         routingKey: connection.hostKey,
-        workspaceId: thread.supersetWorkspaceId,
+        workspaceId: session.supersetWorkspaceId,
         // A new terminal has no memory of the first briefing — re-send it.
-        prompt: await briefedPrompt({ thread, request: args.text }),
+        prompt: await briefedPrompt({ session, request: args.text }),
       });
       terminalId = run.sessionId;
-      await patch(args.threadId, { supersetTerminalId: terminalId });
+      await patch(args.sessionId, { supersetTerminalId: terminalId });
     }
 
     startWatch({
-      threadId: args.threadId,
+      sessionId: session.id,
+      threadId: session.threadId,
       hostKey: connection.hostKey,
-      workspaceId: thread.supersetWorkspaceId,
+      workspaceId: session.supersetWorkspaceId,
       terminalId,
     });
 
-    const watch = watches.get(args.threadId);
+    const watch = watches.get(args.sessionId);
     if (watch) watch.lastStartAt = Date.now();
   } catch (cause) {
     console.warn(
-      `[sessions] resume failed for ${args.threadId}: ${sessionErrorDetail(cause)}`,
+      `[sessions] resume failed for ${args.sessionId}: ${sessionErrorDetail(cause)}`,
     );
     await finish({
-      threadId: args.threadId,
+      sessionId: args.sessionId,
       status: "failed",
       error: humanSessionError(cause, {
         fallback: "Could not reach that machine to continue the session.",
@@ -932,12 +1235,12 @@ async function resume(args: { threadId: string; text: string }): Promise<void> {
   }
 }
 
-async function recordThreadError(
-  threadId: string,
+async function recordSessionError(
+  sessionId: string,
   reason: string,
 ): Promise<void> {
-  const row = await patch(threadId, { error: reason });
-  if (row) await publishThread(row);
+  const row = await patch(sessionId, { error: reason });
+  if (row) await publishThread(row.threadId);
 }
 
 export async function steer(args: {
@@ -946,43 +1249,49 @@ export async function steer(args: {
 }): Promise<void> {
   await ensureStarted();
 
-  const thread = await threadById(args.threadId);
-  if (!thread) return;
+  const session = await mainSession(args.threadId);
+  if (!session) return;
+
+  await bumpTurn(session.threadId);
 
   /**
-   * A parked thread's CLI has gone quiet and its watch is stopped, so it needs
-   * the same re-entry a finished thread does — its worktree is still there.
+   * A parked session's CLI has gone quiet and its watch is stopped, so it
+   * needs the same re-entry a finished one does — its worktree is still there.
    */
-  if (isTerminal(thread.status) || isParked(thread.status)) {
-    await resume(args);
+  if (isTerminal(session.status) || isParked(session.status)) {
+    await resume({ sessionId: session.id, text: args.text });
     return;
   }
 
-  await interrupt(args);
+  const delivered = await interrupt({ sessionId: session.id, text: args.text });
+  if (!delivered) queueSteer(session.id, args.text);
 }
 
-async function retryPrompt(thread: SelectThread): Promise<string> {
+async function retryPrompt(session: SessionView): Promise<string> {
   const latest = await db.query.messages.findFirst({
-    where: and(eq(messages.threadId, thread.id), eq(messages.kind, "user")),
+    where: and(
+      eq(messages.threadId, session.threadId),
+      eq(messages.kind, "user"),
+    ),
     orderBy: desc(messages.seq),
   });
   const text = latest?.text?.trim();
   if (text && text.length > 0) return text;
 
   const root = await db.query.messages.findFirst({
-    where: eq(messages.id, thread.rootMessageId),
+    where: eq(messages.id, session.rootMessageId),
   });
   const rootText = root?.text?.trim();
   return rootText && rootText.length > 0 ? rootText : "Continue.";
 }
 
-async function reattach(thread: SelectThread): Promise<void> {
-  const workspaceId = thread.supersetWorkspaceId;
+async function reattach(session: SessionView): Promise<void> {
+  const workspaceId = session.supersetWorkspaceId;
   if (!workspaceId) return;
 
   try {
-    const connection = await connectionFor(thread);
-    let terminalId = thread.supersetTerminalId;
+    const connection = await connectionFor(session);
+    let terminalId = session.supersetTerminalId;
 
     if (terminalId) {
       try {
@@ -1004,29 +1313,30 @@ async function reattach(thread: SelectThread): Promise<void> {
         workspaceId,
         // Also a fresh terminal — it needs the briefing as much as the first.
         prompt: await briefedPrompt({
-          thread,
-          request: await retryPrompt(thread),
+          session,
+          request: await retryPrompt(session),
         }),
       });
       terminalId = run.sessionId;
-      await patch(thread.id, { supersetTerminalId: terminalId });
+      await patch(session.id, { supersetTerminalId: terminalId });
     }
 
     startWatch({
-      threadId: thread.id,
+      sessionId: session.id,
+      threadId: session.threadId,
       hostKey: connection.hostKey,
       workspaceId,
       terminalId,
     });
 
-    const watch = watches.get(thread.id);
+    const watch = watches.get(session.id);
     if (watch) watch.lastStartAt = Date.now();
   } catch (cause) {
     console.warn(
-      `[sessions] retry failed for ${thread.id}: ${sessionErrorDetail(cause)}`,
+      `[sessions] retry failed for ${session.id}: ${sessionErrorDetail(cause)}`,
     );
     await finish({
-      threadId: thread.id,
+      sessionId: session.id,
       status: "failed",
       error: humanSessionError(cause, {
         fallback: "Could not reach that machine to retry the session.",
@@ -1040,35 +1350,41 @@ export async function cancelThread(args: {
 }): Promise<boolean> {
   await ensureStarted();
 
-  const thread = await threadById(args.threadId);
-  if (!thread) return false;
-  if (isTerminal(thread.status)) return false;
+  const sessions = await sessionsOf(args.threadId);
+  const live = sessions.filter((session) => !isTerminal(session.status));
+  if (live.length === 0) return false;
 
-  if (thread.supersetWorkspaceId && thread.supersetTerminalId) {
+  for (const session of live) {
+    await cancelSession(session);
+  }
+
+  return true;
+}
+
+async function cancelSession(session: SessionView): Promise<void> {
+  if (session.supersetWorkspaceId && session.supersetTerminalId) {
     try {
-      const connection = await connectionFor(thread);
+      const connection = await connectionFor(session);
       await interruptAgent({
         jwt: connection.jwt,
-        routingKey: thread.supersetHostKey ?? connection.hostKey,
-        workspaceId: thread.supersetWorkspaceId,
-        terminalId: thread.supersetTerminalId,
+        routingKey: session.supersetHostKey ?? connection.hostKey,
+        workspaceId: session.supersetWorkspaceId,
+        terminalId: session.supersetTerminalId,
       });
       await clearWorkspaceStatuses({
         jwt: connection.jwt,
-        routingKey: thread.supersetHostKey ?? connection.hostKey,
-        workspaceId: thread.supersetWorkspaceId,
-        terminalId: thread.supersetTerminalId,
+        routingKey: session.supersetHostKey ?? connection.hostKey,
+        workspaceId: session.supersetWorkspaceId,
+        terminalId: session.supersetTerminalId,
       });
     } catch (cause) {
       console.warn(
-        `[sessions] cancel on host failed for ${args.threadId}: ${sessionErrorDetail(cause)}`,
+        `[sessions] cancel on host failed for ${session.id}: ${sessionErrorDetail(cause)}`,
       );
     }
   }
 
-  await finish({ threadId: args.threadId, status: "canceled", error: null });
-
-  return true;
+  await finish({ sessionId: session.id, status: "canceled", error: null });
 }
 
 export async function retryThread(args: {
@@ -1076,48 +1392,54 @@ export async function retryThread(args: {
 }): Promise<boolean> {
   await ensureStarted();
 
-  const thread = await threadById(args.threadId);
-  if (!thread) return false;
-  if (!thread.supersetWorkspaceId || thread.workspaceReapedAt) {
-    await recordThreadError(
-      args.threadId,
+  const session = await mainSession(args.threadId);
+  if (!session) return false;
+  if (!session.supersetWorkspaceId || session.workspaceReapedAt) {
+    await recordSessionError(
+      session.id,
       "That session has no worktree left to retry.",
     );
     return false;
   }
 
-  stopWatch(args.threadId);
+  stopWatch(session.id);
 
-  const revived = await patch(args.threadId, {
+  const revived = await patch(session.id, {
     status: "running",
     endedAt: null,
     error: null,
   });
-  if (revived) await publishThread(revived);
+  if (revived) await publishThread(revived.threadId);
 
-  void reattach(revived ?? thread).catch(() => {});
+  void reattach(revived ?? session).catch(() => {});
 
   return true;
 }
 
 /**
- * Idempotent. Resumes every thread the database still calls live — all of
- * them, concurrently, since a channel can run many at once — and reaps the
- * worktrees a terminal thread still holds so a crash mid-teardown self-heals.
+ * Idempotent. Resumes every session the database still calls live — all of
+ * them, concurrently, since a channel can run many at once.
  */
 export function ensureStarted(): Promise<void> {
   if (started) return Promise.resolve();
   if (starting) return starting;
 
   starting = (async () => {
-    const rows = await db.query.threads.findMany({
-      where: inArray(threads.status, ["starting", "running"]),
-    });
+    const rows = await db
+      .select(sessionViewColumns)
+      .from(threadSessions)
+      .innerJoin(threads, eq(threadSessions.threadId, threads.id))
+      .where(inArray(threadSessions.status, ["starting", "running"]));
     started = true;
     for (const row of rows) {
-      if (row.supersetTerminalId && row.supersetWorkspaceId && row.supersetHostKey) {
+      if (
+        row.supersetTerminalId &&
+        row.supersetWorkspaceId &&
+        row.supersetHostKey
+      ) {
         startWatch({
-          threadId: row.id,
+          sessionId: row.id,
+          threadId: row.threadId,
           hostKey: row.supersetHostKey,
           workspaceId: row.supersetWorkspaceId,
           terminalId: row.supersetTerminalId,
@@ -1135,6 +1457,7 @@ export async function createThread(args: {
   organizationId: string;
   projectId: string;
   rootMessageId: string;
+  runAsMemberId?: string | null;
 }): Promise<SelectThread | null> {
   const [row] = await db
     .insert(threads)
@@ -1142,18 +1465,30 @@ export async function createThread(args: {
       organizationId: args.organizationId,
       projectId: args.projectId,
       rootMessageId: args.rootMessageId,
-      status: "starting",
     })
     .onConflictDoNothing({ target: threads.rootMessageId })
     .returning();
 
-  if (row) {
-    await db
-      .update(messages)
-      .set({ threadId: row.id })
-      .where(and(eq(messages.id, args.rootMessageId), isNull(messages.threadId)));
-    await publishThread(row);
-  }
+  if (!row) return null;
 
-  return row ?? null;
+  await db
+    .insert(threadSessions)
+    .values({
+      threadId: row.id,
+      projectId: args.projectId,
+      role: "main",
+      runAsMemberId: args.runAsMemberId ?? null,
+      status: "starting",
+    })
+    .onConflictDoNothing({
+      target: [threadSessions.threadId, threadSessions.projectId],
+    });
+
+  await db
+    .update(messages)
+    .set({ threadId: row.id })
+    .where(and(eq(messages.id, args.rootMessageId), isNull(messages.threadId)));
+  await publishThread(row.id);
+
+  return row;
 }

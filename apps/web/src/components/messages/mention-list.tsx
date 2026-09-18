@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import { HashMark } from "~/components/logo/hash-mark";
 import type { MentionItem } from "~/utils/mentions";
 
 export interface MentionListHandle {
@@ -70,10 +71,13 @@ export const MentionList = forwardRef<
           onMouseEnter={() => setSelected(index)}
           onClick={() => choose(index)}
         >
-          <span className="text-foreground font-medium">{item.handle}</span>
+          {/* Matches the sidebar: the channel glyph, or a lock when private. */}
           {item.visibility === "private" ? (
-            <Lock size={11} className="text-muted-foreground shrink-0" />
-          ) : null}
+            <Lock className="text-muted-foreground size-3.5 shrink-0" />
+          ) : (
+            <HashMark className="text-muted-foreground" />
+          )}
+          <span className="text-foreground font-medium">{item.handle}</span>
           <span className="text-muted-foreground ml-auto truncate text-xs">
             {item.display}
           </span>

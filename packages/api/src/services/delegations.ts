@@ -9,6 +9,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 
+import { DELEGATION_KIND } from "../lib/message-kind";
 import { allocateSeq, channelAgentIdentity, resolveAgentHandle } from "./channels";
 import type { ChannelScope } from "./channels";
 import { channelName, publish } from "./centrifugo";
@@ -122,11 +123,6 @@ export async function delegate(
 
   const asker = await channelAgentIdentity(parent.projectId);
 
-  /**
-   * The request is posted into the target channel as an ordinary root message
-   * so the handoff is visible to whoever is reading that channel, rather than
-   * work appearing from nowhere.
-   */
   const rootMessageId = await postRequest({
     organizationId: args.organizationId,
     targetChannelId: target.id,
@@ -205,7 +201,7 @@ async function postRequest(args: {
       projectId: args.targetChannelId,
       seq,
       authorMemberId: null,
-      kind: "agent",
+      kind: DELEGATION_KIND,
       agentChannelId: args.agentChannelId,
       body: textToTiptap(text),
       text,
@@ -213,31 +209,6 @@ async function postRequest(args: {
     .returning();
 
   if (!row) throw new Error("Could not post the request.");
-
-  const identity = await channelAgentIdentity(args.agentChannelId);
-
-  await publish(channelName(args.targetChannelId), {
-    type: "message" as const,
-    message: {
-      id: row.id,
-      projectId: row.projectId,
-      seq: Number(row.seq),
-      kind: row.kind,
-      body: row.body,
-      text: row.text,
-      clientId: null,
-      parentMessageId: null,
-      threadId: null,
-      createdAt: row.createdAt.toISOString(),
-      editedAt: null,
-      authorMemberId: null,
-      authorName: null,
-      authorEmail: null,
-      agentChannelId: row.agentChannelId,
-      agentDisplay: identity?.agentDisplay ?? null,
-      agentHandle: identity?.agentHandle ?? null,
-    },
-  });
 
   return row.id;
 }

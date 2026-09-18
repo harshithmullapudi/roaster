@@ -537,14 +537,24 @@
   line-height: 1.6;
 }
 
-/* An @-mention of a channel's agent, in the composer and in sent messages. */
+/*
+ * An @-mention of a channel's agent. Applied both to Mention nodes (picked
+ * from the autocomplete) and to decorations over plain-typed handles, so the
+ * two are indistinguishable once rendered.
+ */
 .mention {
   border-radius: 0.25rem;
-  padding: 0.0625rem 0.25rem;
-  background-color: var(--color-grayAlpha-100);
+  padding: 0.0625rem 0.1875rem;
+  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
   color: var(--color-primary);
   font-weight: 500;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.mention:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
 .editor-container .heading-node:first-child {

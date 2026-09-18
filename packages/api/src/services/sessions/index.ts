@@ -16,9 +16,11 @@ export {
   listChannelThreads,
   threadDetail,
   threadProjectId,
+  threadPublishState,
   threadSummary,
   threadTarget,
   type ThreadDetail,
+  type ThreadPublishState,
   type ThreadSummary,
   type ThreadTarget,
 } from "./queries";

@@ -10,6 +10,7 @@ import { useNow } from "~/hooks/use-now";
 import { useThreadRealtime } from "~/hooks/use-thread-realtime";
 import type { MessageItem } from "~/types";
 import { optimisticMessage } from "~/utils/message-cache";
+import { startsNewGroup } from "~/utils/message-groups";
 import { elapsedLabel } from "~/utils/relative-time";
 import {
   addReply,
@@ -114,11 +115,7 @@ export function ThreadPanel({
             <MessageRow
               key={message.clientId ?? message.id}
               message={message}
-              leading={
-                index === 0 ||
-                replies[index - 1]?.authorMemberId !== message.authorMemberId ||
-                replies[index - 1]?.kind !== message.kind
-              }
+              leading={startsNewGroup(message, replies[index - 1])}
             />
           ))}
 

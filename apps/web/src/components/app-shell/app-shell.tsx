@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { MentionPopover } from "~/components/messages/mention-popover";
 import { CommandProvider } from "~/components/providers/command-provider";
 import { AppSidebar } from "~/components/sidebar/app-sidebar";
 import type { Shell } from "~/lib/shell";
@@ -72,6 +73,9 @@ export function AppShell({
         <main className="bg-background-2 shadow-1 flex min-w-0 flex-1 overflow-hidden md:m-2 md:ml-0 md:rounded-xl">
           {rail ? <RailLayout main={column} rail={rail} /> : column}
         </main>
+
+        {/* One popover serves every mention on the page. */}
+        <MentionPopover />
       </div>
     </CommandProvider>
   );

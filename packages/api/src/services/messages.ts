@@ -1,6 +1,7 @@
 import { db, members, messages, projects, threads, users } from "@roster/db";
-import { and, asc, desc, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, ne } from "drizzle-orm";
 
+import { DELEGATION_KIND } from "../lib/message-kind";
 import { contiguousRun, type RunMessage } from "../utils/message-run";
 import {
   AGENT_IDENTITY_ON,
@@ -38,6 +39,7 @@ export async function listMessages(args: {
     eq(messages.projectId, args.projectId),
     isNull(messages.deletedAt),
     isNull(messages.parentMessageId),
+    ne(messages.kind, DELEGATION_KIND),
   ];
   if (args.before !== undefined) conditions.push(lt(messages.seq, args.before));
 
@@ -245,6 +247,7 @@ async function driveSession(message: ChannelMessage): Promise<void> {
     organizationId: project.organizationId,
     projectId: message.projectId,
     rootMessageId: message.id,
+    runAsMemberId: message.authorMemberId,
   });
   if (!thread) return;
 

@@ -1,3 +1,5 @@
+import type { EditorState } from "@tiptap/pm/state";
+import { PluginKey } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { ReactRenderer } from "@tiptap/react";
 import type { SuggestionOptions } from "@tiptap/suggestion";
@@ -7,7 +9,11 @@ import {
   type MentionListHandle,
 } from "~/components/messages/mention-list";
 
-import { filterMentions, type MentionItem } from "./mentions";
+import {
+  filterMentions,
+  type MentionAttrs,
+  type MentionItem,
+} from "./mentions";
 
 export type { MentionItem };
 
@@ -32,12 +38,27 @@ function place(element: HTMLElement, rect: DOMRect | null): void {
   element.style.zIndex = "50";
 }
 
+/**
+ * Named on purpose. Tiptap's Mention extension defaults to an anonymous
+ * `new PluginKey()`, which nothing outside the plugin can look up — and the
+ * composer has to look it up, because its own `editorProps.handleKeyDown` runs
+ * before any plugin's and must stand down while the popup is open.
+ */
+export const mentionPluginKey = new PluginKey<{ active: boolean }>(
+  "mentionSuggestion",
+);
+
+export function isMentionSuggestionOpen(state: EditorState): boolean {
+  return mentionPluginKey.getState(state)?.active === true;
+}
+
 export function createMentionSuggestion(
   getItems: () => MentionItem[],
-): Omit<SuggestionOptions<MentionItem>, "editor"> {
+): Omit<SuggestionOptions<MentionItem, MentionAttrs>, "editor"> {
   return {
     char: "@",
     allowSpaces: false,
+    pluginKey: mentionPluginKey,
 
     items: ({ query }) => filterMentions(getItems(), query),
 

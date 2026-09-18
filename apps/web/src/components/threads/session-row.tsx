@@ -4,7 +4,11 @@ import Link from "next/link";
 
 import { displayName } from "~/utils/message-groups";
 import { elapsedLabel } from "~/utils/relative-time";
-import { isLive, type ThreadItem } from "~/utils/thread-rows";
+import {
+  isActive,
+  type ThreadItem,
+  waitingOnLabel,
+} from "~/utils/thread-rows";
 
 import { SessionStatusIcon } from "./session-status";
 
@@ -21,8 +25,9 @@ export function SessionRow({
   now,
   showAuthor = true,
 }: SessionRowProps) {
-  const live = isLive(thread.status);
-  const detail = thread.error ?? thread.lastProgress;
+  const live = isActive(thread.status);
+  const detail =
+    thread.error ?? waitingOnLabel(thread.waitingOn) ?? thread.lastProgress;
 
   return (
     <Link

@@ -47,7 +47,7 @@ export default async function OnboardingPage({
         visibleSteps={visibleSteps}
         title="Create your workspace"
       >
-        <CreateTeamForm />
+        <CreateTeamForm initialUserName={session.user.name ?? ""} />
       </OnboardingShell>
     );
   }

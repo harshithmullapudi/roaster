@@ -1,18 +1,13 @@
-import { AppShell } from "~/components/app-shell/app-shell";
 import { ApiKeyManager } from "~/components/settings/api-key-manager";
-import { loadShell } from "~/lib/shell";
+import { SettingsPage } from "~/components/settings/settings-page";
 
-export default async function ApiKeysPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const { shell } = await loadShell(slug);
-
+export default function ApiKeysPage() {
   return (
-    <AppShell shell={shell} section="members" title="API keys">
+    <SettingsPage
+      title="API keys"
+      description="Keys the roster CLI uses to speak for you from a machine."
+    >
       <ApiKeyManager />
-    </AppShell>
+    </SettingsPage>
   );
 }

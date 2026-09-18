@@ -18,13 +18,14 @@ import {
   mergeReply,
   splitThread,
 } from "~/utils/thread-detail";
-import { canRetry, isLive, threadDetailKey } from "~/utils/thread-rows";
+import { canRetry, isActive, threadDetailKey } from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
 import { ReplyDivider } from "./reply-divider";
 import { ThreadCancel } from "./thread-cancel";
 import { ThreadRetry } from "./thread-retry";
 import { ThreadStatus } from "./thread-status";
+import { WaitingOnCard } from "./waiting-on";
 
 export interface ThreadPanelProps {
   projectId: string;
@@ -53,7 +54,7 @@ export function ThreadPanel({
 
   useThreadRealtime(threadId, projectId);
 
-  const live = isLive(detail.thread.status);
+  const live = isActive(detail.thread.status);
   const now = useNow(live);
   const retryable = canRetry(detail.thread.status, detail.thread.error);
   const { root, replies } = splitThread(detail);
@@ -134,6 +135,8 @@ export function ThreadPanel({
                 <span className="text-destructive text-sm">
                   {detail.thread.error}
                 </span>
+              ) : detail.thread.waitingOn ? (
+                <WaitingOnCard waiting={detail.thread.waitingOn} />
               ) : detail.thread.lastProgress ? (
                 <span className="text-muted-foreground text-sm">
                   {detail.thread.lastProgress}

@@ -155,6 +155,7 @@ export default async function ChannelPage({
           projectId={channel.id}
           channelName={channel.slug}
           basePath={basePath}
+          memberId={member.id}
           authorName={session.user.name}
           authorEmail={session.user.email}
           initialMessages={messages}

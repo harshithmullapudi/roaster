@@ -7,6 +7,7 @@ import {
   connectSuperset,
   hostsFor,
   projectsForAllHosts,
+  supersetConnectionFor,
   supersetOrganizationsFor,
 } from "../services/superset-connection";
 import { createTRPCRouter, memberProcedure } from "../trpc";
@@ -76,7 +77,18 @@ export const supersetRouter = createTRPCRouter({
 
   projects: memberProcedure.query(async ({ ctx }) => {
     try {
-      return await projectsForAllHosts(ctx.member);
+      return await projectsForAllHosts({
+        member: ctx.member,
+        organizationId: ctx.organizationId,
+      });
+    } catch (cause) {
+      toTRPCError(cause);
+    }
+  }),
+
+  connection: memberProcedure.query(async ({ ctx }) => {
+    try {
+      return await supersetConnectionFor(ctx.member);
     } catch (cause) {
       toTRPCError(cause);
     }

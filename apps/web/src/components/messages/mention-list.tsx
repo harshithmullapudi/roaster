@@ -11,7 +11,11 @@ import {
 } from "react";
 
 import { HashMark } from "~/components/logo/hash-mark";
-import type { MentionItem } from "~/utils/mentions";
+import {
+  type MentionAttrs,
+  mentionAttrs,
+  type MentionItem,
+} from "~/utils/mentions";
 
 export interface MentionListHandle {
   onKeyDown: (event: KeyboardEvent) => boolean;
@@ -19,7 +23,7 @@ export interface MentionListHandle {
 
 export const MentionList = forwardRef<
   MentionListHandle,
-  SuggestionProps<MentionItem>
+  SuggestionProps<MentionItem, MentionAttrs>
 >(function MentionList({ items, command }, ref) {
   const [selected, setSelected] = useState(0);
 
@@ -27,7 +31,7 @@ export const MentionList = forwardRef<
 
   function choose(index: number) {
     const item = items[index];
-    if (item) command(item);
+    if (item) command(mentionAttrs(item));
   }
 
   useImperativeHandle(ref, () => ({

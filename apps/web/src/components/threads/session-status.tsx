@@ -2,11 +2,14 @@
 
 import { cn, getStatusColor } from "@roster/ui";
 
-import { isLive } from "~/utils/thread-rows";
+import { isActive } from "~/utils/thread-rows";
 
 const SLOTS: Record<string, string> = {
   starting: "4",
   running: "5",
+  // Parked on another agent. Its own colour, because the grey fallback read as
+  // a session that had finished.
+  waiting: "1",
   failed: "0",
   canceled: "3",
 };
@@ -42,7 +45,7 @@ export function SessionStatusIcon({
       style={{ width: size, height: size }}
     >
       <span
-        className={cn("rounded-full", isLive(status) && "animate-pulse")}
+        className={cn("rounded-full", isActive(status) && "animate-pulse")}
         style={{
           width: Math.round(size / 2),
           height: Math.round(size / 2),

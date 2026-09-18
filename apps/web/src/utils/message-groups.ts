@@ -32,6 +32,28 @@ export function displayName(
   email: string | null,
 ): string {
   if (name && name.trim().length > 0) return name;
-  if (email) return email;
+  if (email) return email.split("@")[0] || email;
   return "Unknown";
+}
+
+export interface SpeakerMessage {
+  kind: string;
+  authorName: string | null;
+  authorEmail: string | null;
+  agentDisplay: string | null;
+}
+
+/**
+ * The one name a speaker gets. Avatar colours are a hash of this string, so
+ * every place that draws an avatar for the same person must derive it the same
+ * way — a row that hashed the full address and a reply stack that hashed the
+ * local part gave one person two colours.
+ *
+ * `replierNames` in `services/sessions/queries` builds the same string in SQL.
+ */
+export function speakerName(message: SpeakerMessage): string {
+  if (message.kind === "user") {
+    return displayName(message.authorName, message.authorEmail);
+  }
+  return message.agentDisplay ?? "Agent";
 }

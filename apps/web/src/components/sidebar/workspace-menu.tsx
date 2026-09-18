@@ -80,7 +80,7 @@ export function WorkspaceMenu({
         <DropdownMenuSeparator />
 
         <DropdownMenuItem asChild className="gap-2">
-          <Link href={`/${activeOrg.slug}/settings/members`}>
+          <Link href={`/${activeOrg.slug}/settings/preferences`}>
             <Settings className="size-3.5" />
             Settings
           </Link>

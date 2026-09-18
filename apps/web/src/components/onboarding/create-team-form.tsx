@@ -24,8 +24,13 @@ async function claimSlug(name: string): Promise<string> {
   throw new Error(`Couldn't find a free URL for "${name}".`);
 }
 
-export function CreateTeamForm() {
+export interface CreateTeamFormProps {
+  initialUserName: string;
+}
+
+export function CreateTeamForm({ initialUserName }: CreateTeamFormProps) {
   const router = useRouter();
+  const [userName, setUserName] = useState(initialUserName);
   const [name, setName] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,12 +40,22 @@ export function CreateTeamForm() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const teamName = name.trim();
-    if (!teamName) return;
+    const person = userName.trim();
+    if (!teamName || !person) return;
 
     setPending(true);
     setError(null);
 
     try {
+      if (person !== initialUserName) {
+        const { error: nameError } = await authClient.updateUser({
+          name: person,
+        });
+        if (nameError) {
+          throw new Error(nameError.message ?? "Couldn't save your name.");
+        }
+      }
+
       const slug = await claimSlug(teamName);
       const { data, error: createError } =
         await authClient.organization.create({ name: teamName, slug });
@@ -58,24 +73,40 @@ export function CreateTeamForm() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2">
-      <Label htmlFor="name" className="sr-only">
-        Workspace name
-      </Label>
-      <Input
-        id="name"
-        name="name"
-        required
-        autoFocus
-        placeholder="Workspace name"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-      />
-      {previewSlug ? (
-        <p className="text-muted-foreground font-mono text-xs">
-          /{previewSlug}
+    <form onSubmit={submit} className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="user-name">Your name</Label>
+        <Input
+          id="user-name"
+          name="user-name"
+          required
+          autoFocus
+          autoComplete="name"
+          placeholder="Harshith Mullapudi"
+          value={userName}
+          onChange={(event) => setUserName(event.target.value)}
+        />
+        <p className="text-muted-foreground text-xs">
+          How your messages are signed in every channel.
         </p>
-      ) : null}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="name">Workspace name</Label>
+        <Input
+          id="name"
+          name="name"
+          required
+          placeholder="Tegon"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        {previewSlug ? (
+          <p className="text-muted-foreground font-mono text-xs">
+            /{previewSlug}
+          </p>
+        ) : null}
+      </div>
 
       {error ? <p className="text-destructive text-sm">{error}</p> : null}
 

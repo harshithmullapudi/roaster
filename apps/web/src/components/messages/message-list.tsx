@@ -13,6 +13,8 @@ export interface MessageListProps {
   messages: MessageItem[];
   threadsByRootMessage: Map<string, ThreadItem>;
   basePath: string;
+  memberId: string;
+  onDelete: (messageId: string) => Promise<void>;
 }
 
 export function MessageList({
@@ -20,6 +22,8 @@ export function MessageList({
   messages,
   threadsByRootMessage,
   basePath,
+  memberId,
+  onDelete,
 }: MessageListProps) {
   if (messages.length === 0) {
     return (
@@ -44,6 +48,8 @@ export function MessageList({
             leading={startsNewGroup(message, messages[index - 1])}
             thread={thread}
             threadHref={thread ? `${basePath}?thread=${thread.id}` : undefined}
+            memberId={memberId}
+            onDelete={onDelete}
           />
         );
       })}

@@ -51,6 +51,7 @@ export {
   type ThreadDetail,
   type ThreadStatus,
   type ThreadSummary,
+  type WaitingOn,
 } from "./services/sessions";
 export { listTasks, type Task } from "./services/tasks";
 export {
@@ -62,8 +63,11 @@ export {
 export {
   listOrgProjects,
   projectsForAllHosts,
+  supersetConnectionFor,
   type HostProjects,
+  type PickableProject,
   type SelectedProject,
+  type SupersetConnection,
 } from "./services/superset-connection";
 export type {
   SupersetHost,

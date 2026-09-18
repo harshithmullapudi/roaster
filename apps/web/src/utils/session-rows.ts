@@ -4,6 +4,7 @@ import { statusLabel, type ThreadItem } from "./thread-rows";
 export const SESSION_STATUS_ORDER = [
   "running",
   "starting",
+  "waiting",
   "completed",
   "failed",
   "canceled",

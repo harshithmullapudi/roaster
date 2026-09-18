@@ -81,7 +81,7 @@ export function ApiKeyManager() {
           onChange={(event) => setName(event.target.value)}
           className="max-w-xs"
         />
-        <Button type="submit" disabled={pending || !name.trim()}>
+        <Button type="submit" size="lg" disabled={pending || !name.trim()}>
           {pending ? "Creating…" : "Create key"}
         </Button>
       </form>

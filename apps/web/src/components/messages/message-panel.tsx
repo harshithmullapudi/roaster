@@ -1,16 +1,22 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { useChannelRealtime } from "~/hooks/use-channel-realtime";
 import type { MessageItem } from "~/types";
-import { type ThreadItem, threadsKey } from "~/utils/thread-rows";
+import {
+  removeThread,
+  type ThreadItem,
+  threadsKey,
+} from "~/utils/thread-rows";
 import {
   channelMessagesKey,
   markFailed,
   mergeMessage,
   optimisticMessage,
+  removeMessage,
   sortMessages,
 } from "~/utils/message-cache";
 import { trpc } from "~/utils/trpc";
@@ -24,6 +30,7 @@ export interface MessagePanelProps {
   projectId: string;
   channelName: string;
   basePath: string;
+  memberId: string;
   authorName: string;
   authorEmail: string;
   initialMessages: MessageItem[];
@@ -35,6 +42,7 @@ export function MessagePanel({
   projectId,
   channelName,
   basePath,
+  memberId,
   authorName,
   authorEmail,
   initialMessages,
@@ -44,6 +52,8 @@ export function MessagePanel({
   const queryClient = useQueryClient();
   const queryKey = channelMessagesKey(projectId);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const openThreadId = useSearchParams().get("thread");
 
   const { data: messages } = useQuery({
     queryKey,
@@ -100,6 +110,28 @@ export function MessagePanel({
     }
   }
 
+  async function remove(messageId: string) {
+    const thread = threads.find((item) => item.rootMessageId === messageId);
+
+    queryClient.setQueryData<MessageItem[]>(queryKey, (previous) =>
+      removeMessage(previous ?? [], messageId),
+    );
+    if (thread) {
+      queryClient.setQueryData<ThreadItem[]>(threadsKey(projectId), (previous) =>
+        removeThread(previous ?? [], thread.id),
+      );
+      if (openThreadId === thread.id) router.replace(basePath);
+    }
+
+    try {
+      await trpc.messages.remove.mutate({ projectId, messageId });
+    } catch {
+      console.warn("[messages] delete failed");
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey: threadsKey(projectId) });
+    }
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -112,6 +144,8 @@ export function MessagePanel({
             messages={messages}
             threadsByRootMessage={threadsByRootMessage}
             basePath={basePath}
+            memberId={memberId}
+            onDelete={remove}
           />
         </div>
       </div>

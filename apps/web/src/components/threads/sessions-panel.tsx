@@ -22,7 +22,7 @@ import {
   type SessionGroupBy,
 } from "~/utils/session-rows";
 import {
-  isLive,
+  isActive,
   statusLabel,
   type ThreadItem,
   threadsKey,
@@ -60,7 +60,7 @@ export function SessionsPanel({
 
   useChannelRealtime(projectId);
 
-  const now = useNow(threads.some((thread) => isLive(thread.status)));
+  const now = useNow(threads.some((thread) => isActive(thread.status)));
 
   const groupBy: SessionGroupBy =
     searchParams.get("group") === "author" ? "author" : "status";

@@ -1,13 +1,16 @@
 import {
   db,
+  delegations,
   members,
   messages,
+  projects,
   threadSessions,
   threads,
   users,
 } from "@roster/db";
 import { and, asc, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 
+import { agentDisplay, agentHandle } from "../../lib/agent-identity";
 import { readableError } from "../../utils/session-error";
 import {
   AGENT_IDENTITY_ON,
@@ -17,6 +20,28 @@ import {
   messageColumns,
   toChannelMessage,
 } from "../message-columns";
+
+/**
+ * The agent a parked thread handed its work to, and how that agent is doing.
+ *
+ * A thread in `waiting` has nothing of its own to report — without this it
+ * reads as a thread that went quiet, when in truth someone else is mid-run on
+ * its behalf.
+ */
+export interface WaitingOn {
+  /** Who was asked, as you would type it: "sol-superset". */
+  handle: string;
+  /** How the answering agent is named on screen: "sol [superset]". */
+  display: string;
+  channelId: string;
+  channelSlug: string;
+  /** Null only if the answering thread was since deleted. */
+  threadId: string | null;
+  /** The answering thread's own lead status — "running" while it works. */
+  status: string;
+  lastProgress: string | null;
+  task: string;
+}
 
 export interface ThreadSummary {
   id: string;
@@ -33,6 +58,7 @@ export interface ThreadSummary {
   replyCount: number;
   lastReplyAt: Date | null;
   replierNames: string[];
+  waitingOn: WaitingOn | null;
 }
 
 const REPLY_SCOPE = sql`rp.thread_id = ${threads.id} and rp.id <> ${threads.rootMessageId} and rp.deleted_at is null`;
@@ -47,9 +73,15 @@ const lastReplyAtSql = sql<
  * Mirrors `agentDisplay` for agent replies, which carry no author: a thread
  * that fern [core] answered should say so rather than "Agent". Kept in SQL so
  * the aggregate stays a single subquery.
+ *
+ * The email fallback must take the part before the `@`, exactly as the web
+ * app's `speakerName` does: avatar colours are a hash of this string, so
+ * emitting the full address here painted the same person two different
+ * colours — one in the message row, another in the reply stack.
  */
 const replierNamesSql = sql<string[]>`(select coalesce(json_agg(distinct coalesce(
   nullif(btrim(ru.name), ''),
+  nullif(split_part(ru.email, '@', 1), ''),
   ru.email,
   case when ap.slug is not null
     then coalesce(nullif(btrim(lower(am.agent_name)), ''), 'agent') || ' [' || ap.slug || ']'
@@ -86,6 +118,60 @@ const sessionState = {
   startedAt: startedAtSql.as("lead_started_at"),
   endedAt: endedAtSql.as("lead_ended_at"),
 };
+
+/**
+ * The same lead-session pick as above, but for the thread a delegation points
+ * at — read as a correlated subquery so one round trip answers for every
+ * parked thread in a channel rather than one per row.
+ */
+function childLead<T>(column: string): SQL<T> {
+  return sql<T>`(select ts.${sql.raw(column)} from roster.thread_sessions ts where ts.thread_id = ${delegations.childThreadId} order by ${LEAD_ORDER} limit 1)`;
+}
+
+async function waitingOnByParent(
+  parentThreadIds: string[],
+): Promise<Map<string, WaitingOn>> {
+  const found = new Map<string, WaitingOn>();
+  if (parentThreadIds.length === 0) return found;
+
+  const rows = await db
+    .select({
+      parentThreadId: delegations.parentThreadId,
+      childThreadId: delegations.childThreadId,
+      task: delegations.task,
+      channelId: projects.id,
+      channelSlug: projects.slug,
+      ownerAgentName: members.agentName,
+      status: childLead<string | null>("status").as("child_status"),
+      lastProgress: childLead<string | null>("last_progress").as(
+        "child_progress",
+      ),
+    })
+    .from(delegations)
+    .innerJoin(projects, eq(delegations.targetChannelId, projects.id))
+    .leftJoin(members, eq(projects.addedByMemberId, members.id))
+    .where(
+      and(
+        inArray(delegations.parentThreadId, parentThreadIds),
+        eq(delegations.status, "open"),
+      ),
+    );
+
+  for (const row of rows) {
+    found.set(row.parentThreadId, {
+      handle: agentHandle(row.ownerAgentName, row.channelSlug),
+      display: agentDisplay(row.ownerAgentName, row.channelSlug),
+      channelId: row.channelId,
+      channelSlug: row.channelSlug,
+      threadId: row.childThreadId,
+      status: row.status ?? "starting",
+      lastProgress: row.lastProgress,
+      task: row.task,
+    });
+  }
+
+  return found;
+}
 
 const summaryColumns = {
   id: threads.id,
@@ -158,7 +244,13 @@ export async function listChannelThreads(
     .orderBy(desc(startedAtSql))
     .limit(100);
 
-  return rows.map((row) => ({ ...row, ...toSummary(row) }));
+  const waiting = await waitingOnByParent(rows.map((row) => row.id));
+
+  return rows.map((row) => ({
+    ...row,
+    ...toSummary(row),
+    waitingOn: waiting.get(row.id) ?? null,
+  }));
 }
 
 export async function threadProjectId(
@@ -206,6 +298,7 @@ export interface ThreadPublishState {
   error: string | null;
   startedAt: Date;
   endedAt: Date | null;
+  waitingOn: WaitingOn | null;
 }
 
 export async function threadPublishState(
@@ -224,6 +317,8 @@ export async function threadPublishState(
 
   if (!row) return null;
 
+  const waiting = await waitingOnByParent([row.id]);
+
   return {
     id: row.id,
     projectId: row.projectId,
@@ -233,6 +328,7 @@ export async function threadPublishState(
     error: readableError(row.error),
     startedAt: asDate(row.startedAt) ?? new Date(),
     endedAt: asDate(row.endedAt),
+    waitingOn: waiting.get(row.id) ?? null,
   };
 }
 
@@ -292,7 +388,11 @@ export async function threadSummary(args: {
     )
     .limit(1);
 
-  return row ? { ...row, ...toSummary(row) } : null;
+  if (!row) return null;
+
+  const waiting = await waitingOnByParent([row.id]);
+
+  return { ...row, ...toSummary(row), waitingOn: waiting.get(row.id) ?? null };
 }
 
 export async function threadDetail(args: {

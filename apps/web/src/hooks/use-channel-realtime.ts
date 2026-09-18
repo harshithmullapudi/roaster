@@ -9,13 +9,16 @@ import {
   channelMessagesKey,
   mergeMessage,
   mergeMessages,
+  parsePublishedDeletion,
   parsePublishedMessage,
+  removeMessage,
 } from "~/utils/message-cache";
-import { displayName } from "~/utils/message-groups";
+import { speakerName } from "~/utils/message-groups";
 import {
   countReply,
   mergeThread,
   parsePublishedThread,
+  removeThread,
   type ThreadItem,
   threadsKey,
 } from "~/utils/thread-rows";
@@ -95,6 +98,21 @@ export function useChannelRealtime(projectId: string): void {
       }
 
       subscription.on("publication", (ctx) => {
+        const deletion = parsePublishedDeletion(ctx.data);
+        if (deletion && deletion.projectId === projectId) {
+          queryClient.setQueryData<MessageItem[]>(queryKey, (previous) =>
+            removeMessage(previous ?? [], deletion.messageId),
+          );
+          if (deletion.threadId) {
+            const threadId = deletion.threadId;
+            queryClient.setQueryData<ThreadItem[]>(
+              threadsKey(projectId),
+              (previous) => removeThread(previous ?? [], threadId),
+            );
+          }
+          return;
+        }
+
         const thread = parsePublishedThread(ctx.data);
         if (thread && thread.projectId === projectId) {
           queryClient.setQueryData<ThreadItem[]>(
@@ -117,10 +135,7 @@ export function useChannelRealtime(projectId: string): void {
               countReply(previous ?? [], {
                 threadId,
                 createdAt: message.createdAt,
-                replierName:
-                  message.kind === "agent"
-                    ? "Agent"
-                    : displayName(message.authorName, message.authorEmail),
+                replierName: speakerName(message),
               }),
           );
           return;

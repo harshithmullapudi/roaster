@@ -6,6 +6,8 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { SendHorizonal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
+import { submitsOnEnter } from "~/utils/composer-keys";
+import { isMentionSuggestionOpen } from "~/utils/mention-suggestion";
 import type { MentionItem } from "~/utils/mentions";
 import { composerExtensions } from "~/utils/tiptap-extensions";
 import { trpc } from "~/utils/trpc";
@@ -71,11 +73,17 @@ export function Composer({ placeholder, onSend }: ComposerProps) {
       attributes: {
         class: "tiptap max-w-full focus:outline-none",
       },
-      handleKeyDown(_view, event) {
-        if (event.key !== "Enter" || event.shiftKey) return false;
-        if (event.isComposing || event.keyCode === 229) return false;
-        if (isTouchKeyboard()) return false;
-        if (!editorRef.current) return false;
+      /**
+       * ProseMirror's `someProp` consults `editorProps` before plugin props, so
+       * this handler sees Enter before the mention suggestion plugin does.
+       * Sending here unconditionally is what swallowed the popup's Enter.
+       */
+      handleKeyDown(view, event) {
+        const send = submitsOnEnter(event, {
+          suggestionOpen: isMentionSuggestionOpen(view.state),
+          touchKeyboard: isTouchKeyboard(),
+        });
+        if (!send || !editorRef.current) return false;
         event.preventDefault();
         submit(editorRef.current);
         return true;

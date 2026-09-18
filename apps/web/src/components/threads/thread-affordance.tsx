@@ -4,7 +4,11 @@ import Link from "next/link";
 
 import { useNow } from "~/hooks/use-now";
 import { relativeTime } from "~/utils/relative-time";
-import { isLive, replyCountLabel, type ThreadItem } from "~/utils/thread-rows";
+import {
+  isActive,
+  replyCountLabel,
+  type ThreadItem,
+} from "~/utils/thread-rows";
 
 import { ReplyAvatars } from "./reply-avatars";
 import { ThreadStatus } from "./thread-status";
@@ -15,7 +19,7 @@ export interface ThreadAffordanceProps {
 }
 
 export function ThreadAffordance({ thread, href }: ThreadAffordanceProps) {
-  const live = isLive(thread.status);
+  const live = isActive(thread.status);
   const now = useNow(live);
 
   return (
@@ -38,6 +42,11 @@ export function ThreadAffordance({ thread, href }: ThreadAffordanceProps) {
         </span>
       ) : null}
       {live ? <ThreadStatus status={thread.status} /> : null}
+      {thread.waitingOn ? (
+        <span className="text-muted-foreground truncate text-xs">
+          {`on @${thread.waitingOn.handle}`}
+        </span>
+      ) : null}
     </Link>
   );
 }

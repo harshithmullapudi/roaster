@@ -55,6 +55,14 @@ export function mergeMessages(
   return sortMessages([...kept, ...incoming]);
 }
 
+export function removeMessage(
+  list: MessageItem[],
+  messageId: string,
+): MessageItem[] {
+  const kept = list.filter((message) => message.id !== messageId);
+  return kept.length === list.length ? list : kept;
+}
+
 export function markFailed(
   list: MessageItem[],
   clientId: string,
@@ -100,6 +108,28 @@ function asDate(value: unknown): Date | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export interface MessageDeletion {
+  messageId: string;
+  projectId: string;
+  threadId: string | null;
+}
+
+export function parsePublishedDeletion(data: unknown): MessageDeletion | null {
+  if (typeof data !== "object" || data === null) return null;
+
+  const raw = data as Record<string, unknown>;
+  if (raw.type !== "message-deleted") return null;
+  if (typeof raw.messageId !== "string" || typeof raw.projectId !== "string") {
+    return null;
+  }
+
+  return {
+    messageId: raw.messageId,
+    projectId: raw.projectId,
+    threadId: typeof raw.threadId === "string" ? raw.threadId : null,
+  };
 }
 
 export function parsePublishedMessage(data: unknown): MessageItem | null {

@@ -1,9 +1,19 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import type { DeleteRefusal } from "../lib/message-delete";
 import { requireOrgProject } from "../services/channels";
-import { listMessages, sendMessage } from "../services/messages";
+import { deleteMessage, listMessages, sendMessage } from "../services/messages";
 import { createTRPCRouter, memberProcedure } from "../trpc";
+
+const REFUSALS: Record<DeleteRefusal, { code: "NOT_FOUND" | "FORBIDDEN"; message: string }> = {
+  missing: { code: "NOT_FOUND", message: "That message is gone." },
+  "already-deleted": { code: "NOT_FOUND", message: "That message is gone." },
+  "not-yours": {
+    code: "FORBIDDEN",
+    message: "You can only delete messages you sent.",
+  },
+};
 
 export const messagesRouter = createTRPCRouter({
   list: memberProcedure
@@ -53,10 +63,38 @@ export const messagesRouter = createTRPCRouter({
         organizationId: ctx.organizationId,
         projectId: project.id,
         authorMemberId: ctx.member.id,
+        role: ctx.member.role,
         body: input.body,
         text: input.text,
         clientId: input.clientId,
         threadId: input.threadId,
       });
+    }),
+
+  remove: memberProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        messageId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const project = await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: input.projectId,
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const result = await deleteMessage({
+        projectId: project.id,
+        messageId: input.messageId,
+        memberId: ctx.member.id,
+      });
+
+      if ("refusal" in result) throw new TRPCError(REFUSALS[result.refusal]);
+
+      return result.deleted;
     }),
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterMentions, type MentionItem } from "./mentions";
+import { filterMentions, mentionAttrs, type MentionItem } from "./mentions";
 
 function item(handle: string, slug: string, name: string): MentionItem {
   return {
@@ -49,5 +49,29 @@ describe("filterMentions", () => {
       item(`fern-c${index}`, `c${index}`, `Channel ${index}`),
     );
     expect(filterMentions(many, "fern")).toHaveLength(8);
+  });
+});
+
+describe("mentionAttrs", () => {
+  const channel: MentionItem = {
+    id: "522cf3d5-47bc-48b9-a7cf-406c289e49f6",
+    slug: "spark-wilderness",
+    name: "Spark Wilderness",
+    visibility: "public",
+    handle: "fern-spark-wilderness",
+    display: "fern [spark-wilderness]",
+  };
+
+  it("labels the node with the handle, never the channel id", () => {
+    // Both the node's HTML and its plain text render `label ?? id`, so an
+    // unset label puts the raw UUID on screen and in the agent's prompt.
+    expect(mentionAttrs(channel)).toEqual({
+      id: "522cf3d5-47bc-48b9-a7cf-406c289e49f6",
+      label: "fern-spark-wilderness",
+    });
+  });
+
+  it("keeps only the two attributes the node declares", () => {
+    expect(Object.keys(mentionAttrs(channel)).sort()).toEqual(["id", "label"]);
   });
 });

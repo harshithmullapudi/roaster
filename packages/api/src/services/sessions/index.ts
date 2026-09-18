@@ -4,6 +4,7 @@ export {
   ensureStarted,
   markWaiting,
   persistAgentMessage,
+  reapThread,
   retryThread,
   startSession,
   steer,
@@ -23,4 +24,5 @@ export {
   type ThreadPublishState,
   type ThreadSummary,
   type ThreadTarget,
+  type WaitingOn,
 } from "./queries";

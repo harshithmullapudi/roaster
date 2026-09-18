@@ -1,7 +1,18 @@
-import { db, members, messages, projects, threads, users } from "@roster/db";
-import { and, asc, desc, eq, gte, isNull, lt, ne } from "drizzle-orm";
+import {
+  db,
+  delegations,
+  members,
+  messages,
+  projects,
+  threads,
+  users,
+} from "@roster/db";
+import { and, asc, desc, eq, gte, isNull, lt, ne, or } from "drizzle-orm";
 
+import { type DeleteRefusal, deleteRefusal } from "../lib/message-delete";
 import { DELEGATION_KIND } from "../lib/message-kind";
+import { mentionedHandles } from "../lib/message-mentions";
+import { sessionErrorDetail } from "../utils/session-error";
 import { contiguousRun, type RunMessage } from "../utils/message-run";
 import {
   AGENT_IDENTITY_ON,
@@ -11,12 +22,14 @@ import {
   messageColumns,
   toChannelMessage,
 } from "./message-columns";
-import { allocateSeq } from "./channels";
+import { allocateSeq, listMentionableChannels } from "./channels";
 import { channelName, publish } from "./centrifugo";
 import {
+  cancelThread,
   createThread,
   ensureStarted,
   joinableThread,
+  reapThread,
   startSession,
   steer,
   threadChannelName,
@@ -115,10 +128,129 @@ export async function publishMessage(
   await Promise.all(targets);
 }
 
+export interface MessageDeletion {
+  messageId: string;
+  projectId: string;
+  threadId: string | null;
+}
+
+export type DeleteResult =
+  | { refusal: DeleteRefusal }
+  | { deleted: MessageDeletion };
+
+async function publishDeletion(deletion: MessageDeletion): Promise<void> {
+  const payload = {
+    type: "message-deleted" as const,
+    messageId: deletion.messageId,
+    threadId: deletion.threadId,
+    projectId: deletion.projectId,
+  };
+
+  const targets = [publish(channelName(deletion.projectId), payload)];
+  if (deletion.threadId) {
+    targets.push(publish(threadChannelName(deletion.threadId), payload));
+  }
+
+  await Promise.all(targets);
+}
+
+async function openDelegationChildren(parentThreadId: string): Promise<string[]> {
+  const rows = await db
+    .select({ childThreadId: delegations.childThreadId })
+    .from(delegations)
+    .where(
+      and(
+        eq(delegations.parentThreadId, parentThreadId),
+        eq(delegations.status, "open"),
+      ),
+    );
+
+  return rows
+    .map((row) => row.childThreadId)
+    .filter((id): id is string => id !== null);
+}
+
+export async function deleteMessage(args: {
+  projectId: string;
+  messageId: string;
+  memberId: string;
+}): Promise<DeleteResult> {
+  const row = await db.query.messages.findFirst({
+    where: and(
+      eq(messages.id, args.messageId),
+      eq(messages.projectId, args.projectId),
+    ),
+    columns: { kind: true, authorMemberId: true, deletedAt: true },
+  });
+
+  const refusal = deleteRefusal(row ?? null, args.memberId);
+  if (refusal) return { refusal };
+
+  const thread = await db.query.threads.findFirst({
+    where: eq(threads.rootMessageId, args.messageId),
+    columns: { id: true },
+  });
+
+  if (thread) {
+    const children = await openDelegationChildren(thread.id);
+    for (const threadId of [thread.id, ...children]) {
+      await stopAndReap(threadId);
+    }
+  }
+
+  await db
+    .update(messages)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(messages.projectId, args.projectId),
+        isNull(messages.deletedAt),
+        thread
+          ? or(
+              eq(messages.id, args.messageId),
+              eq(messages.threadId, thread.id),
+            )
+          : eq(messages.id, args.messageId),
+      ),
+    );
+
+  if (thread) {
+    await db.delete(threads).where(eq(threads.id, thread.id));
+  }
+
+  const deletion: MessageDeletion = {
+    messageId: args.messageId,
+    projectId: args.projectId,
+    threadId: thread?.id ?? null,
+  };
+  await publishDeletion(deletion);
+
+  return { deleted: deletion };
+}
+
+async function stopAndReap(threadId: string): Promise<void> {
+  try {
+    await cancelThread({ threadId });
+  } catch (cause) {
+    console.warn(
+      `[messages] cancel before delete failed for ${threadId}: ${sessionErrorDetail(cause)}`,
+    );
+  }
+
+  try {
+    await reapThread({ threadId });
+  } catch (cause) {
+    console.warn(
+      `[messages] reap before delete failed for ${threadId}: ${sessionErrorDetail(cause)}`,
+    );
+  }
+}
+
 export async function sendMessage(args: {
   organizationId: string;
   projectId: string;
   authorMemberId: string;
+  role: string;
   body: unknown;
   text: string;
   clientId: string;
@@ -135,10 +267,19 @@ export async function sendMessage(args: {
     throw new Error("That thread is not part of this channel.");
   }
 
-  const watching = await channelIsWatching(args.projectId);
+  /**
+   * Watch governs ambient chatter — whether the agent reacts to messages it
+   * was not addressed in. Being named is not ambient, so a mention outranks a
+   * pause and wakes the channel's own agent, which then delegates onward to
+   * any other agent the message named.
+   */
+  const addressed = (await channelIsWatching(args.projectId))
+    ? true
+    : await mentionsAnyAgent(args);
+
   const target =
     explicit ??
-    (watching
+    (addressed
       ? await joinableThread({
           projectId: args.projectId,
           authorMemberId: args.authorMemberId,
@@ -182,7 +323,7 @@ export async function sendMessage(args: {
 
   if (target) {
     void steer({ threadId: target.id, text: row.text }).catch(() => {});
-  } else if (row.parentMessageId === null && watching) {
+  } else if (row.parentMessageId === null && addressed) {
     void driveSession(row).catch(() => {});
   }
 
@@ -195,6 +336,36 @@ async function channelIsWatching(projectId: string): Promise<boolean> {
     columns: { watchEnabled: true },
   });
   return row?.watchEnabled ?? false;
+}
+
+/**
+ * Whether the message names an agent. Only consulted for a paused channel — a
+ * watching one already answers everything — so the channel list this costs is
+ * read once per message sent into silence, not on the common path.
+ *
+ * Scoped to the author's visible channels so a handle they could not have
+ * picked from the autocomplete cannot be typed out to the same effect.
+ */
+async function mentionsAnyAgent(args: {
+  organizationId: string;
+  authorMemberId: string;
+  role: string;
+  body: unknown;
+  text: string;
+}): Promise<boolean> {
+  const channels = await listMentionableChannels({
+    organizationId: args.organizationId,
+    memberId: args.authorMemberId,
+    role: args.role,
+  });
+
+  const mentioned = mentionedHandles({
+    body: args.body,
+    text: args.text,
+    known: channels.map((channel) => channel.agentHandle),
+  });
+
+  return mentioned.length > 0;
 }
 
 async function contextFor(message: ChannelMessage): Promise<string[]> {

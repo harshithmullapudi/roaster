@@ -3,6 +3,7 @@ import {
   decodeJwtClaims,
   decryptApiKey,
   encryptApiKey,
+  getOrganization,
   listHosts,
   listOrganizations,
   listProjects,
@@ -99,17 +100,31 @@ export async function hostsFor(member: SelectMember): Promise<SupersetHost[]> {
   return listHosts(jwt, supersetOrgId);
 }
 
+export interface PickableProject extends SupersetProject {
+  added: boolean;
+}
+
 export interface HostProjects {
   host: SupersetHost;
-  projects: SupersetProject[];
+  projects: PickableProject[];
   error: string | null;
 }
 
-export async function projectsForAllHosts(
-  member: SelectMember,
-): Promise<HostProjects[]> {
-  const { jwt, supersetOrgId } = await sessionFor(member);
-  const hosts = await listHosts(jwt, supersetOrgId);
+export async function projectsForAllHosts(args: {
+  member: SelectMember;
+  organizationId: string;
+}): Promise<HostProjects[]> {
+  const { jwt, supersetOrgId } = await sessionFor(args.member);
+
+  const [hosts, existing] = await Promise.all([
+    listHosts(jwt, supersetOrgId),
+    db.query.projects.findMany({
+      where: eq(projects.organizationId, args.organizationId),
+      columns: { supersetProjectId: true },
+    }),
+  ]);
+
+  const added = new Set(existing.map((row) => row.supersetProjectId));
 
   return Promise.all(
     hosts.map(async (host) => {
@@ -117,9 +132,13 @@ export async function projectsForAllHosts(
         return { host, projects: [], error: null };
       }
       try {
+        const found = await listProjects(jwt, supersetOrgId, host.id);
         return {
           host,
-          projects: await listProjects(jwt, supersetOrgId, host.id),
+          projects: found.map((project) => ({
+            ...project,
+            added: added.has(project.id),
+          })),
           error: null,
         };
       } catch (cause) {
@@ -131,6 +150,38 @@ export async function projectsForAllHosts(
       }
     }),
   );
+}
+
+export interface SupersetConnection {
+  connected: boolean;
+  organizationId: string | null;
+  organizationName: string | null;
+  connectedAt: Date | null;
+}
+
+export async function supersetConnectionFor(
+  member: SelectMember,
+): Promise<SupersetConnection> {
+  if (!member.supersetKeyEncrypted) {
+    return {
+      connected: false,
+      organizationId: null,
+      organizationName: null,
+      connectedAt: null,
+    };
+  }
+
+  const { jwt } = await jwtFor(member);
+  const organization = member.supersetOrgId
+    ? await getOrganization(jwt, member.supersetOrgId)
+    : null;
+
+  return {
+    connected: true,
+    organizationId: member.supersetOrgId,
+    organizationName: organization?.name ?? null,
+    connectedAt: member.supersetConnectedAt,
+  };
 }
 
 export interface SelectedProject {

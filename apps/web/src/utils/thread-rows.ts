@@ -1,4 +1,4 @@
-import type { ThreadSummary } from "@roster/api";
+import type { ThreadSummary, WaitingOn } from "@roster/api";
 
 export type ThreadItem = Omit<ThreadSummary, "startedAt" | "endedAt"> & {
   startedAt: Date;
@@ -17,12 +17,17 @@ export function isLive(status: string): boolean {
   return status === "starting" || status === "running";
 }
 
-/**
- * Parked on another agent's answer. Not live — its own agent has stopped
- * talking — but not finished either: it resumes when the answer lands.
- */
 export function isWaiting(status: string): boolean {
   return status === "waiting";
+}
+
+/**
+ * Still someone's turn. A parked thread is not running itself, but another
+ * agent is running on its behalf — so it keeps its status card, its cancel
+ * button and its ticking clock.
+ */
+export function isActive(status: string): boolean {
+  return isLive(status) || isWaiting(status);
 }
 
 export function canRetry(status: string, error: string | null): boolean {
@@ -47,6 +52,47 @@ export function statusLabel(status: string): string {
     default:
       return status;
   }
+}
+
+/**
+ * One line for a parked thread: who is working on it, and what they last
+ * said. Falls back to their status so it never reads as an idle agent.
+ */
+export function waitingOnLabel(waiting: WaitingOn | null): string | null {
+  if (!waiting) return null;
+
+  const progress = waiting.lastProgress?.trim();
+  const state =
+    progress && progress.length > 0 ? progress : statusLabel(waiting.status);
+  return `@${waiting.handle} · ${state}`;
+}
+
+function parseWaitingOn(value: unknown): WaitingOn | null {
+  if (typeof value !== "object" || value === null) return null;
+
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.handle !== "string" ||
+    typeof raw.display !== "string" ||
+    typeof raw.channelId !== "string" ||
+    typeof raw.channelSlug !== "string" ||
+    typeof raw.status !== "string" ||
+    typeof raw.task !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    handle: raw.handle,
+    display: raw.display,
+    channelId: raw.channelId,
+    channelSlug: raw.channelSlug,
+    threadId: typeof raw.threadId === "string" ? raw.threadId : null,
+    status: raw.status,
+    lastProgress:
+      typeof raw.lastProgress === "string" ? raw.lastProgress : null,
+    task: raw.task,
+  };
 }
 
 function asDate(value: unknown): Date | null {
@@ -96,6 +142,7 @@ export function parsePublishedThread(data: unknown): ThreadItem | null {
           (name): name is string => typeof name === "string",
         )
       : [],
+    waitingOn: parseWaitingOn(raw.waitingOn),
   };
 }
 
@@ -123,6 +170,14 @@ export function mergeThread(
   const next = [...list];
   next[index] = merged;
   return next;
+}
+
+export function removeThread(
+  list: ThreadItem[],
+  threadId: string,
+): ThreadItem[] {
+  const kept = list.filter((thread) => thread.id !== threadId);
+  return kept.length === list.length ? list : kept;
 }
 
 export function countReply(

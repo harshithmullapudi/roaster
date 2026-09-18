@@ -1,5 +1,6 @@
 import {
   db,
+  delegations,
   members,
   messages,
   projects,
@@ -50,6 +51,8 @@ const SETTLE_DELAY_MS = 1500;
 const STALENESS_TIMEOUT_MS = 60_000;
 const STEER_READY_INTERVAL_MS = 500;
 const STEER_READY_TIMEOUT_MS = 120_000;
+/** Matches the delegation depth cap — a chain cannot be longer than this. */
+const MAX_PUBLISH_HOPS = 3;
 
 const TERMINAL_STATUSES = ["completed", "failed", "canceled"] as const;
 
@@ -67,12 +70,6 @@ function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "canceled";
 }
 
-/**
- * Parked mid-conversation: this session asked another agent for something and
- * is holding its worktree until the answer arrives. Not terminal — it has an
- * outstanding delegation and will resume — but the watch loop stops, because
- * its agent's turn really has ended.
- */
 function isParked(status: string): boolean {
   return status === "waiting";
 }
@@ -114,11 +111,6 @@ const pendingSteers = new Map<string, string[]>();
 let started = false;
 let starting: Promise<void> | null = null;
 
-/**
- * A session plus the identity of the thread it belongs to: the channel the
- * conversation lives in, which is not always the channel whose agent is
- * working (`projectId` is that one).
- */
 interface SessionView {
   id: string;
   threadId: string;
@@ -223,7 +215,7 @@ async function bumpTurn(threadId: string): Promise<void> {
     .where(eq(threads.id, threadId));
 }
 
-async function publishThread(threadId: string): Promise<void> {
+async function publishThread(threadId: string, hops = 0): Promise<void> {
   const state = await threadPublishState(threadId);
   if (!state) return;
 
@@ -238,17 +230,41 @@ async function publishThread(threadId: string): Promise<void> {
       error: state.error,
       startedAt: state.startedAt.toISOString(),
       endedAt: state.endedAt ? state.endedAt.toISOString() : null,
+      waitingOn: state.waitingOn,
     },
   };
   await Promise.all([
     publish(threadChannelName(state.id), payload),
     publish(channelName(state.projectId), payload),
   ]);
+
+  if (hops >= MAX_PUBLISH_HOPS) return;
+
+  /**
+   * A parked thread shows what the agent it asked is doing, so this thread
+   * moving is news for whoever is waiting on it too — otherwise the asking
+   * channel sits on "Waiting on @sol-superset…" until the answer lands.
+   */
+  const asked = await db.query.delegations.findFirst({
+    where: and(
+      eq(delegations.childThreadId, threadId),
+      eq(delegations.status, "open"),
+    ),
+    columns: { parentThreadId: true },
+  });
+  if (asked) await publishThread(asked.parentThreadId, hops + 1);
 }
 
 /**
- * Park a session on another agent's answer. Called before the answering
- * session starts, so one that answers instantly still finds a session to wake.
+ * Park a thread on another agent's answer.
+ *
+ * The watch is deliberately left running. An agent calls `roster ask` and then
+ * *keeps talking* — "I asked @sol-superset for the details, I'll write the
+ * README once that comes back" — and those closing words are the only account
+ * the thread has of why it went quiet. Tearing the watch down here dropped the
+ * host's `Stop` event on the floor, so that turn was never captured. The park
+ * itself is safe: `finishOnce` sees a parked session and persists the reply
+ * without ending the thread.
  */
 export async function markWaiting(args: {
   threadId: string;
@@ -256,8 +272,6 @@ export async function markWaiting(args: {
 }): Promise<void> {
   const session = await mainSession(args.threadId);
   if (!session) return;
-
-  stopWatch(session.id);
 
   const row = await patch(session.id, {
     status: "waiting",
@@ -305,10 +319,6 @@ async function jwtForHostKey(hostKey: string): Promise<string | null> {
   return jwt;
 }
 
-/**
- * One socket per host, not per session: `/events` is a host-wide bus, so every
- * session on a machine is demultiplexed off the same connection by terminal id.
- */
 function ensureHostLink(hostKey: string): void {
   const existing = hosts.get(hostKey);
   if (existing && (existing.socket || existing.retryTimer)) return;
@@ -357,9 +367,7 @@ function ensureHostLink(hostKey: string): void {
       handleLifecycle(parsed.terminalId, parsed.eventType);
     };
 
-    socket.onerror = () => {
-      // `onclose` always follows and owns the retry decision.
-    };
+    socket.onerror = () => {};
 
     socket.onclose = () => {
       const current = hosts.get(hostKey);
@@ -440,12 +448,6 @@ function handleLifecycle(terminalId: string, eventType: string): void {
   }
 }
 
-/**
- * `Stop` ends a turn, not the agent: the CLI stays resident waiting for input,
- * so the terminal keeps a live foreground process either way and cannot say
- * whether work is over. A later `Start` is what distinguishes a turn boundary
- * mid-run from the agent going quiet, so settle on the race between them.
- */
 async function settle(sessionId: string): Promise<void> {
   const watch = watches.get(sessionId);
   if (!watch) return;
@@ -553,7 +555,13 @@ async function pollOnce(sessionId: string): Promise<void> {
   }
 
   const line = lastMeaningfulLine(text);
+  /**
+   * A parked thread's progress line names the agent it is waiting on, and the
+   * UI shows that agent's own progress underneath. The terminal here is still
+   * redrawing its last frame, so scraping it would only overwrite the truth.
+   */
   const progressed =
+    !isParked(session.status) &&
     line !== null &&
     line !== watch.lastProgress &&
     now - watch.lastWriteAt >= WRITE_INTERVAL_MS;
@@ -624,9 +632,7 @@ function stopWatch(sessionId: string): void {
       if (link.retryTimer) clearTimeout(link.retryTimer);
       try {
         link.socket?.close();
-      } catch {
-        // Already gone.
-      }
+      } catch {}
       hosts.delete(watch.hostKey);
     }
   }
@@ -696,12 +702,6 @@ async function finishOnce(args: {
   stopWatch(args.sessionId);
   const queued = takeSteers(args.sessionId);
 
-  /**
-   * A parked session's agent has stopped talking, which is exactly what we
-   * told it to do after handing work off — so keep what it said, but leave it
-   * `waiting` rather than calling it finished. It resumes when the answer
-   * lands, not when its turn ends.
-   */
   if (isParked(session.status)) {
     if (finalText && finalText.trim().length > 0) {
       await persistAgentMessage({
@@ -789,11 +789,6 @@ async function reportUndelivered(
   await recordSessionError(sessionId, undeliveredSteerNotice(queue.length, reason));
 }
 
-/**
- * Imported lazily: `delegations` reaches back into this module for
- * `startSession` and `steer`, and a static import here would close that loop
- * at module-load time.
- */
 async function settleIfDelegated(args: {
   childThreadId: string;
   reply: string;
@@ -809,12 +804,6 @@ async function settleIfDelegated(args: {
   }
 }
 
-/**
- * `agentChannelId` names the speaker. It is usually the thread's own channel,
- * but a delegated answer is written into the asking channel's thread while
- * still being spoken by the channel that did the work — so it is a parameter,
- * not `thread.projectId`.
- */
 export async function persistAgentMessage(args: {
   thread: {
     id: string;
@@ -887,15 +876,6 @@ export async function persistAgentMessage(args: {
   ]);
 }
 
-/**
- * The briefing that makes a terminal a Roster session: who it is and, above
- * all, its thread id — `roster ask --thread` needs it, and the prompt is the
- * only channel we have, since `runAgent` takes nothing else.
- *
- * Every path that opens a *fresh* terminal must call this. A resumed session
- * that lost its terminal gets a new one with no memory of the first briefing,
- * so re-sending it is what keeps a revived agent able to delegate.
- */
 async function briefedPrompt(args: {
   session: SessionView;
   request: string;
@@ -1204,7 +1184,6 @@ async function resume(args: {
         jwt: connection.jwt,
         routingKey: connection.hostKey,
         workspaceId: session.supersetWorkspaceId,
-        // A new terminal has no memory of the first briefing — re-send it.
         prompt: await briefedPrompt({ session, request: args.text }),
       });
       terminalId = run.sessionId;
@@ -1254,10 +1233,6 @@ export async function steer(args: {
 
   await bumpTurn(session.threadId);
 
-  /**
-   * A parked session's CLI has gone quiet and its watch is stopped, so it
-   * needs the same re-entry a finished one does — its worktree is still there.
-   */
   if (isTerminal(session.status) || isParked(session.status)) {
     await resume({ sessionId: session.id, text: args.text });
     return;
@@ -1311,7 +1286,6 @@ async function reattach(session: SessionView): Promise<void> {
         jwt: connection.jwt,
         routingKey: connection.hostKey,
         workspaceId,
-        // Also a fresh terminal — it needs the briefing as much as the first.
         prompt: await briefedPrompt({
           session,
           request: await retryPrompt(session),
@@ -1387,6 +1361,34 @@ async function cancelSession(session: SessionView): Promise<void> {
   await finish({ sessionId: session.id, status: "canceled", error: null });
 }
 
+export async function reapThread(args: { threadId: string }): Promise<void> {
+  const sessions = await sessionsOf(args.threadId);
+
+  for (const session of sessions) {
+    stopWatch(session.id);
+    pendingSteers.delete(session.id);
+
+    const workspaceId = session.supersetWorkspaceId;
+    if (!workspaceId || session.workspaceReapedAt) continue;
+
+    try {
+      const connection = await connectionFor(session);
+      await deleteWorkspace({
+        jwt: connection.jwt,
+        routingKey: session.supersetHostKey ?? connection.hostKey,
+        workspaceId,
+      });
+    } catch (cause) {
+      console.warn(
+        `[sessions] reap failed for ${session.id}: ${sessionErrorDetail(cause)}`,
+      );
+      continue;
+    }
+
+    await patch(session.id, { workspaceReapedAt: new Date() });
+  }
+}
+
 export async function retryThread(args: {
   threadId: string;
 }): Promise<boolean> {
@@ -1416,10 +1418,6 @@ export async function retryThread(args: {
   return true;
 }
 
-/**
- * Idempotent. Resumes every session the database still calls live — all of
- * them, concurrently, since a channel can run many at once.
- */
 export function ensureStarted(): Promise<void> {
   if (started) return Promise.resolve();
   if (starting) return starting;

@@ -1,0 +1,85 @@
+# syntax=docker/dockerfile:1
+
+# The Roster web app, as one image. Built for Railway, but nothing here is
+# Railway-specific: the container listens on $PORT and needs only the
+# environment variables listed in .env.example.
+#
+# The build runs from the repository root — pnpm workspace packages are
+# consumed as TypeScript source, so `apps/web` alone cannot be built.
+
+FROM node:22-alpine AS base
+ENV PNPM_HOME="/pnpm" \
+    PATH="/pnpm:$PATH"
+RUN corepack enable
+WORKDIR /app
+
+
+# ---------------------------------------------------------------- dependencies
+# Manifests only, so a source edit does not re-resolve the dependency tree.
+FROM base AS deps
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/
+COPY packages/api/package.json packages/api/
+COPY packages/auth/package.json packages/auth/
+COPY packages/cli/package.json packages/cli/
+COPY packages/db/package.json packages/db/
+COPY packages/superset/package.json packages/superset/
+COPY packages/ui/package.json packages/ui/
+
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+
+# --------------------------------------------------------------------- builder
+FROM base AS builder
+
+# `NEXT_PUBLIC_*` is inlined into the browser bundle at build time, so the
+# public URL has to be known here — not at `docker run`. On Railway, service
+# variables are passed to the build as arguments, so setting
+# NEXT_PUBLIC_APP_URL on the service is enough.
+ARG NEXT_PUBLIC_APP_URL="http://localhost:3000"
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+
+# `@roster/db` reads DATABASE_URL when it is imported, which Next does while
+# collecting routes. Nothing connects during a build, so a placeholder is
+# enough — and keeps a real connection string out of the image layers.
+ARG DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build"
+ENV DATABASE_URL=$DATABASE_URL
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
+COPY --from=deps /app/packages/auth/node_modules ./packages/auth/node_modules
+COPY --from=deps /app/packages/cli/node_modules ./packages/cli/node_modules
+COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
+COPY --from=deps /app/packages/superset/node_modules ./packages/superset/node_modules
+COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
+COPY . .
+
+RUN pnpm --filter @roster/web build
+
+
+# ---------------------------------------------------------------------- runner
+FROM base AS runner
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
+
+# `.next-build` rather than `.next`: the app's build script puts its output
+# there so a build never stomps a running `next dev`. The standalone server
+# carries that path inside it, so the image has to match.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-build/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-build/static ./apps/web/.next-build/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+
+USER nextjs
+EXPOSE 3000
+
+CMD ["node", "apps/web/server.js"]

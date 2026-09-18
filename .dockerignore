@@ -1,0 +1,41 @@
+# The image installs its own dependencies and builds from source. Anything
+# host-shaped or already built only makes the build context slower and the
+# layers wrong.
+node_modules
+**/node_modules
+.next
+**/.next
+.next-build
+**/.next-build
+dist
+**/dist
+out
+build
+.turbo
+**/.turbo
+
+.env
+.env.local
+.env.*.local
+
+.git
+.github
+.gitignore
+
+*.log
+npm-debug.log*
+pnpm-debug.log*
+coverage
+*.tsbuildinfo
+
+.DS_Store
+.gstack/
+.claude/
+.vscode/
+.idea/
+
+docker-compose.dev.yaml
+Dockerfile
+README.md
+docs
+design

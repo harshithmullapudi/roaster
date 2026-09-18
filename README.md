@@ -33,6 +33,38 @@ instead of emailed, so you can sign in without an email account wired up:
 
 Paste that link into the browser and you are signed in.
 
+## Deploying
+
+The root `Dockerfile` builds the web app into a self-contained image. The build
+context is the repository root, not `apps/web` — the workspace packages are
+consumed as TypeScript source, so the app cannot be built without them.
+
+```bash
+docker build -t roster-web --build-arg NEXT_PUBLIC_APP_URL=https://roster.example.com .
+docker run -p 3000:3000 --env-file .env roster-web
+```
+
+On [Railway](https://railway.com), point a service at this repo; `railway.json`
+already selects the Dockerfile builder. Then:
+
+1. **Add a Postgres database** to the project and set `DATABASE_URL` on the web
+   service to its connection string.
+2. **Set the rest of the variables** from `.env.example` —
+   `BETTER_AUTH_SECRET`, `SUPERSET_KEY_SECRET`, and, once the service has a
+   domain, `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` pointing at it.
+   Railway passes service variables to the build, which is what bakes
+   `NEXT_PUBLIC_APP_URL` into the browser bundle — **changing it needs a
+   rebuild, not just a restart.**
+3. **Create the schema** once the database exists: run `pnpm db:push` locally
+   with `DATABASE_URL` set to Railway's connection string. There is no
+   migration step in the image.
+4. Leave `CENTRIFUGO_*` empty and realtime turns itself off — messages fall
+   back to plain tRPC. Wire it up by running Centrifugo as a second service
+   and setting `CENTRIFUGO_URL` to its private URL.
+
+`PORT` is read from the environment, which is how Railway routes to the
+container.
+
 ## Layout
 
 | Path | What lives there |

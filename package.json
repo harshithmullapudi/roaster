@@ -9,7 +9,6 @@
     "test": "turbo test",
     "db:push": "pnpm --filter @roster/db push",
     "db:generate": "pnpm --filter @roster/db generate",
-    "db:baseline": "pnpm --filter @roster/db baseline",
     "db:studio": "pnpm --filter @roster/db studio",
     "dev:db": "docker compose -f docker-compose.dev.yaml up -d",
     "dev:db:stop": "docker compose -f docker-compose.dev.yaml down"

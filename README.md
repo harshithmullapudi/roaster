@@ -57,19 +57,11 @@ already selects the Dockerfile builder. Then:
    Railway passes service variables to the build, which is what bakes
    `NEXT_PUBLIC_APP_URL` into the browser bundle — **changing it needs a
    rebuild, not just a restart.**
-3. **Nothing, for the schema** — the service migrates itself on boot, so a new
-   database is created by the first deploy. The one exception is a database
-   built before migrations existed, back when `db:push` was the way: it has the
-   tables but no record of them, so the migrations would try to create what is
-   already there. Adopt it once, before the first deploy that carries this:
-
-   ```bash
-   DATABASE_URL="<railway connection string>" pnpm db:baseline
-   ```
-
-   That only writes drizzle's journal — it records which migrations the
-   database already reflects and touches nothing else. Running it against a
-   fresh or already-migrated database does nothing.
+3. **Nothing, for the schema.** The service migrates itself on boot, so a new
+   database is created by the first deploy. A database from before migrations
+   existed — when `db:push` was the way — is adopted on that same boot: it
+   holds the tables with no record of them, so the server writes the journal
+   rows for what is already there and runs only what is missing.
 4. Leave `CENTRIFUGO_*` empty and realtime turns itself off — messages fall
    back to plain tRPC. Wire it up by running Centrifugo as a second service
    and setting `CENTRIFUGO_URL` to its private URL.
@@ -95,7 +87,6 @@ pnpm build        # production build
 pnpm typecheck    # all packages
 pnpm test         # vitest
 pnpm db:generate  # write a migration for a schema change
-pnpm db:baseline  # adopt a database that predates migrations
 pnpm db:push      # apply a schema change without a migration (local only)
 pnpm db:studio    # drizzle studio
 pnpm dev:db:stop  # stop Postgres

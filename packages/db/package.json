@@ -12,7 +12,6 @@
     "push": "drizzle-kit push",
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "baseline": "node scripts/baseline.mjs",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit"
   },

@@ -1,19 +1,18 @@
 import type { Task, TaskStatus } from "@roster/api";
 import { describe, expect, it } from "vitest";
 
-import { buildRows, filterTasks, type TaskRow } from "./task-rows";
+import { buildRows, filterTasks, UNASSIGNED, type TaskRow } from "./task-rows";
 
 function task(
   id: string,
   status: TaskStatus,
-  channelSlug: string,
+  channelSlug: string | null,
 ): Task {
   return {
     id,
-    projectId: `project-${channelSlug}`,
+    projectId: channelSlug ? `project-${channelSlug}` : null,
+    threadId: channelSlug ? `thread-${id}` : null,
     title: `Task ${id}`,
-    description: null,
-    descriptionText: "",
     status,
     createdAt: new Date("2026-09-17T10:00:00Z"),
     completedAt: null,
@@ -89,6 +88,31 @@ describe("buildRows grouped by channel", () => {
     expect(buildRows([], "channel")).toEqual([]);
     expect(buildRows([], "status")).toEqual([]);
   });
+
+  it("puts unclaimed work first, under Backlog", () => {
+    const rows = buildRows(
+      [
+        task("a", "todo", "web"),
+        task("b", "todo", null),
+        task("c", "todo", "core"),
+      ],
+      "channel",
+    );
+
+    expect(labels(rows)).toEqual([
+      "# Backlog (1)",
+      "b",
+      "# core (1)",
+      "c",
+      "# web (1)",
+      "a",
+    ]);
+  });
+
+  it("marks the backlog heading so it is not drawn as a channel", () => {
+    const [header] = buildRows([task("b", "todo", null)], "channel");
+    expect(header).toMatchObject({ type: "header", backlog: true });
+  });
 });
 
 describe("filterTasks", () => {
@@ -118,5 +142,14 @@ describe("filterTasks", () => {
       channels: ["web"],
     });
     expect(result).toEqual([]);
+  });
+
+  it("filters the backlog like any other channel", () => {
+    const withBacklog = [...tasks, task("d", "todo", null)];
+    const result = filterTasks(withBacklog, {
+      statuses: [],
+      channels: [UNASSIGNED],
+    });
+    expect(result.map((t) => t.id)).toEqual(["d"]);
   });
 });

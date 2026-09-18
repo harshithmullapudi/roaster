@@ -3,6 +3,8 @@ import { Button } from "@roster/ui";
 import { ChevronLeft, X } from "lucide-react";
 import Link from "next/link";
 
+import { OpenSessionButton } from "~/components/terminals/open-session-button";
+
 import { ThreadPanel } from "./thread-panel";
 
 export interface ThreadSidebarProps {
@@ -37,6 +39,7 @@ export function ThreadSidebar({
             </Link>
           </Button>
           <h2 className="min-w-0 flex-1 truncate text-base">Thread</h2>
+          <OpenSessionButton projectId={projectId} threadId={threadId} />
           <Button
             variant="ghost"
             className="!rounded-md px-1.5 max-sm:hidden"

@@ -17,6 +17,7 @@ export default async function RootPage() {
 
   const state = await loadOnboardingState({
     userId: session.user.id,
+    email: session.user.email,
     organizationId: active.id,
   });
 

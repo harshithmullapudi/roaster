@@ -1,14 +1,15 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { TASK_STATUSES } from "../lib/task-status";
 import {
   listMentionableChannels,
   requireOrgProject,
 } from "../services/channels";
 import { delegate } from "../services/delegations";
 import { listMessages } from "../services/messages";
-import { createTask } from "../services/tasks";
-import { textToTiptap } from "../utils/tiptap";
+import { assignTask } from "../services/task-assignment";
+import { createTask, setTaskStatus } from "../services/tasks";
 import { cliProcedure, createTRPCRouter } from "../trpc";
 
 /**
@@ -112,32 +113,64 @@ export const cliRouter = createTRPCRouter({
       }),
     ),
 
+  /**
+   * File a task. A channel is optional on purpose: an agent should only name
+   * one when the person it is working for named one. Otherwise the task waits
+   * in the backlog, where a human decides whose it is.
+   */
   createTask: cliProcedure
     .input(
       z.object({
-        channelId: z.string().uuid(),
+        channelId: z.string().uuid().optional(),
         title: z.string().min(1).max(200),
-        description: z.string().default(""),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const task = await createTask({
         organizationId: ctx.organizationId,
         memberId: ctx.member.id,
-        role: ctx.member.role,
-        projectId: input.channelId,
         title: input.title,
-        description: input.description
-          ? textToTiptap(input.description)
-          : null,
-        descriptionText: input.description,
         status: "todo",
       });
 
       if (!task) {
         throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "This key cannot create tasks in that channel.",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Could not file that task.",
+        });
+      }
+
+      if (!input.channelId) return task;
+
+      return assignTask({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        taskId: task.id,
+        projectId: input.channelId,
+      });
+    }),
+
+  setTaskStatus: cliProcedure
+    .input(
+      z.object({
+        taskId: z.string().uuid(),
+        status: z.enum(TASK_STATUSES),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const task = await setTaskStatus({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        taskId: input.taskId,
+        status: input.status,
+      });
+
+      if (!task) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "This key cannot see a task with that id.",
         });
       }
 

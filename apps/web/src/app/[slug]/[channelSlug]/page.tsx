@@ -18,13 +18,13 @@ import { ChannelTabs } from "~/components/channels/channel-tabs";
 import { WatchToggle } from "~/components/channels/watch-toggle";
 import { HashMark } from "~/components/logo/hash-mark";
 import { MessagePanel } from "~/components/messages/message-panel";
-import { SessionsPanel } from "~/components/threads/sessions-panel";
+import { DockChannelBinding } from "~/components/terminals/dock-provider";
 import { ThreadSidebar } from "~/components/threads/thread-sidebar";
 import { TaskList } from "~/components/tasks/task-list";
 import { loadShell } from "~/lib/shell";
 import type { ChannelTab } from "~/types";
 
-const TABS: ChannelTab[] = ["messages", "tasks", "memory", "sessions"];
+const TABS: ChannelTab[] = ["messages", "tasks", "memory"];
 
 const EMPTY_STATES: Record<string, { title: string; description: string }> = {
   memory: {
@@ -69,9 +69,7 @@ export default async function ChannelPage({
           role: member.role,
         })
       : [],
-    activeTab === "messages" || activeTab === "sessions"
-      ? listChannelThreads(channel.id)
-      : [],
+    activeTab === "messages" ? listChannelThreads(channel.id) : [],
     activeTab === "messages" && channel.watchEnabled
       ? pausedMessageCount(channel.id)
       : 0,
@@ -86,6 +84,12 @@ export default async function ChannelPage({
   const placeholder = EMPTY_STATES[activeTab];
 
   return (
+    <>
+    <DockChannelBinding
+      orgSlug={organization.slug}
+      channelSlug={channel.slug}
+      projectId={channel.id}
+    />
     <AppShell
       shell={shell}
       section="channels"
@@ -143,13 +147,7 @@ export default async function ChannelPage({
           description={placeholder.description}
         />
       ) : activeTab === "tasks" ? (
-        <TaskList tasks={tasks} />
-      ) : activeTab === "sessions" ? (
-        <SessionsPanel
-          projectId={channel.id}
-          basePath={basePath}
-          initialThreads={threads}
-        />
+        <TaskList tasks={tasks} channels={shell.channels} orgSlug={slug} />
       ) : (
         <MessagePanel
           projectId={channel.id}
@@ -164,5 +162,6 @@ export default async function ChannelPage({
         />
       )}
     </AppShell>
+    </>
   );
 }

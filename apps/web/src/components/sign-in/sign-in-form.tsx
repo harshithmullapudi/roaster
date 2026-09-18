@@ -12,10 +12,15 @@ type State =
 
 export interface SignInFormProps {
   callbackURL?: string;
+  /** Prefilled when we already know who the link was meant for. */
+  initialEmail?: string;
 }
 
-export function SignInForm({ callbackURL = "/" }: SignInFormProps) {
-  const [email, setEmail] = useState("");
+export function SignInForm({
+  callbackURL = "/",
+  initialEmail = "",
+}: SignInFormProps) {
+  const [email, setEmail] = useState(initialEmail);
   const [state, setState] = useState<State>({ status: "idle" });
 
   async function submit(event: FormEvent) {

@@ -3,6 +3,14 @@ import { TASK_STATUS_ORDER, type TaskStatus } from "@roster/api/client";
 
 export type TaskGroupBy = "status" | "channel";
 
+/**
+ * Stands in for "no channel" wherever a channel slug is used as a key — group
+ * headings, filter chips, the URL. A `~` cannot appear in a slug, so this can
+ * never collide with a real channel.
+ */
+export const UNASSIGNED = "~unassigned";
+export const UNASSIGNED_LABEL = "Backlog";
+
 export type TaskRow =
   | {
       type: "header";
@@ -10,6 +18,8 @@ export type TaskRow =
       label: string;
       count: number;
       status: TaskStatus | null;
+      /** A channel heading for tasks nobody has taken yet. */
+      backlog?: true;
     }
   | { type: "item"; id: string; task: Task };
 
@@ -19,6 +29,10 @@ export interface TaskFilters {
 }
 
 export const EMPTY_FILTERS: TaskFilters = { statuses: [], channels: [] };
+
+export function channelKey(task: Task): string {
+  return task.channelSlug ?? UNASSIGNED;
+}
 
 export function filterTasks(tasks: Task[], filters: TaskFilters): Task[] {
   return tasks.filter((task) => {
@@ -30,7 +44,7 @@ export function filterTasks(tasks: Task[], filters: TaskFilters): Task[] {
     }
     if (
       filters.channels.length > 0 &&
-      !filters.channels.includes(task.channelSlug)
+      !filters.channels.includes(channelKey(task))
     ) {
       return false;
     }
@@ -61,19 +75,25 @@ export function buildRows(tasks: Task[], groupBy: TaskGroupBy): TaskRow[] {
 
   const bySlug = new Map<string, Task[]>();
   for (const task of tasks) {
-    const group = bySlug.get(task.channelSlug);
+    const key = channelKey(task);
+    const group = bySlug.get(key);
     if (group) group.push(task);
-    else bySlug.set(task.channelSlug, [task]);
+    else bySlug.set(key, [task]);
   }
 
-  for (const slug of [...bySlug.keys()].sort()) {
-    const group = bySlug.get(slug) ?? [];
+  /** Unclaimed work first — it is the pile someone has to do something about. */
+  const keys = [...bySlug.keys()].filter((key) => key !== UNASSIGNED).sort();
+  if (bySlug.has(UNASSIGNED)) keys.unshift(UNASSIGNED);
+
+  for (const key of keys) {
+    const group = bySlug.get(key) ?? [];
     rows.push({
       type: "header",
-      id: `channel:${slug}`,
-      label: slug,
+      id: `channel:${key}`,
+      label: key === UNASSIGNED ? UNASSIGNED_LABEL : key,
       count: group.length,
       status: null,
+      ...(key === UNASSIGNED ? { backlog: true as const } : {}),
     });
     for (const task of group) {
       rows.push({ type: "item", id: task.id, task });

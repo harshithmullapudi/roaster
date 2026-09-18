@@ -168,11 +168,12 @@ export async function sendToAgent(args: {
 
 const ESCAPE = "\u001b";
 
-export async function interruptAgent(args: {
+export async function writeTerminalInput(args: {
   jwt: string;
   routingKey: string;
   workspaceId: string;
   terminalId: string;
+  data: string;
 }): Promise<void> {
   await call({
     jwt: args.jwt,
@@ -181,11 +182,20 @@ export async function interruptAgent(args: {
     input: {
       terminalId: args.terminalId,
       workspaceId: args.workspaceId,
-      data: ESCAPE,
+      data: args.data,
     },
-    what: "Canceling the agent's turn",
+    what: "Typing into that session",
     method: "POST",
   });
+}
+
+export async function interruptAgent(args: {
+  jwt: string;
+  routingKey: string;
+  workspaceId: string;
+  terminalId: string;
+}): Promise<void> {
+  await writeTerminalInput({ ...args, data: ESCAPE });
 }
 
 export async function clearWorkspaceStatuses(args: {
@@ -257,6 +267,116 @@ export async function listAgentBindings(args: {
     what: "Checking the agent's state",
     method: "GET",
   });
+}
+
+export interface TerminalSession {
+  terminalId: string;
+  workspaceId: string;
+  createdAt: number;
+  exited: boolean;
+  exitCode: number;
+  attached: boolean;
+  title: string | null;
+  customTitle: string | null;
+}
+
+export async function listTerminals(args: {
+  jwt: string;
+  routingKey: string;
+  workspaceId: string;
+}): Promise<TerminalSession[]> {
+  const result = await call<{ sessions: TerminalSession[] }>({
+    jwt: args.jwt,
+    routingKey: args.routingKey,
+    procedure: "terminal.list",
+    input: { workspaceId: args.workspaceId },
+    what: "Listing that worktree's sessions",
+    method: "GET",
+  });
+  return result.sessions;
+}
+
+export interface HostAgent {
+  id: string;
+  presetId: string;
+  iconId: string | null;
+  label: string;
+  order: number;
+}
+
+export async function listHostAgents(args: {
+  jwt: string;
+  routingKey: string;
+}): Promise<HostAgent[]> {
+  const rows = await call<HostAgent[]>({
+    jwt: args.jwt,
+    routingKey: args.routingKey,
+    procedure: "settings.agentConfigs.list",
+    input: undefined,
+    what: "Listing the agents on that machine",
+    method: "GET",
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    presetId: row.presetId,
+    iconId: row.iconId ?? null,
+    label: row.label,
+    order: row.order,
+  }));
+}
+
+export async function createTerminal(args: {
+  jwt: string;
+  routingKey: string;
+  workspaceId: string;
+}): Promise<{ terminalId: string }> {
+  return call<{ terminalId: string }>({
+    jwt: args.jwt,
+    routingKey: args.routingKey,
+    procedure: "terminal.createSession",
+    input: { workspaceId: args.workspaceId, themeType: "dark" },
+    what: "Opening a shell in that worktree",
+    method: "POST",
+    timeoutMs: 60_000,
+  });
+}
+
+export async function killTerminal(args: {
+  jwt: string;
+  routingKey: string;
+  workspaceId: string;
+  terminalId: string;
+}): Promise<void> {
+  await call({
+    jwt: args.jwt,
+    routingKey: args.routingKey,
+    procedure: "terminal.killSession",
+    input: {
+      terminalId: args.terminalId,
+      workspaceId: args.workspaceId,
+    },
+    what: "Closing that session",
+    method: "POST",
+  });
+}
+
+export function terminalSocketUrl(args: {
+  routingKey: string;
+  terminalId: string;
+  workspaceId: string;
+  jwt: string;
+  seq: string;
+}): string {
+  const query = new URLSearchParams({
+    workspaceId: args.workspaceId,
+    themeType: "dark",
+    seq: args.seq,
+    token: args.jwt,
+  });
+  const base = RELAY_URL.replace(/^http/, "ws");
+  return `${base}/hosts/${args.routingKey}/terminal/${encodeURIComponent(
+    args.terminalId,
+  )}?${query.toString()}`;
 }
 
 const IDLE_EVENT_TYPES = new Set(["Stop", "Detached", "exit", "error"]);

@@ -7,7 +7,6 @@ const TABS: { value: ChannelTab; label: string }[] = [
   { value: "messages", label: "Messages" },
   { value: "tasks", label: "Tasks" },
   { value: "memory", label: "Memory" },
-  { value: "sessions", label: "Sessions" },
 ];
 
 export interface ChannelTabsProps {

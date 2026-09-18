@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { RosterLockup } from "~/components/logo/roster-lockup";
 
 export type OnboardingStepKey =
+  | "invitations"
   | "workspace"
   | "connect"
   | "organization"

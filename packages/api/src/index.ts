@@ -3,12 +3,14 @@ export { createContext, type Context } from "./context";
 export { createCallerFactory } from "./trpc";
 export {
   getInvitationPreview,
+  listInvitationsForUser,
   listOrgMembers,
   listPendingInvitations,
   listUserOrganizations,
   resolveOrgAccess,
   type InvitationPreview,
   type OrgAccess,
+  type UserInvitation,
 } from "./services/org";
 export {
   furthestStep,
@@ -54,6 +56,11 @@ export {
   type WaitingOn,
 } from "./services/sessions";
 export { listTasks, type Task } from "./services/tasks";
+export {
+  authorizeTerminalStream,
+  listWorktrees,
+  type Worktree,
+} from "./services/terminals";
 export {
   normalizeTaskStatus,
   TASK_STATUSES,

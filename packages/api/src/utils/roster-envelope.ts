@@ -19,12 +19,20 @@ export interface DelegationContext {
   originChannelId: string;
 }
 
+/** The task this thread was opened to do, when it was opened by one. */
+export interface TaskContext {
+  id: string;
+  title: string;
+  status: string;
+}
+
 export interface EnvelopeArgs {
   threadId: string;
   channelId: string;
   /** This agent's own handle, e.g. "fern-core". */
   handle: string;
   delegation?: DelegationContext;
+  task?: TaskContext;
 }
 
 export function rosterEnvelope(args: EnvelopeArgs): string {
@@ -37,13 +45,30 @@ export function rosterEnvelope(args: EnvelopeArgs): string {
     "The `roster` CLI is available:",
     "  roster channels",
     "  roster read messages --channel-id <id> [--limit N]",
-    "  roster tasks create --channel-id <id> <title>",
+    "  roster tasks create <title> [--channel-id <id>]",
+    "  roster tasks status <task-id> <todo|in_progress|done>",
     `  roster ask <handle> <task> --thread ${args.threadId}`,
+    "",
+    "Pass --channel-id only when someone named the channel the work belongs",
+    "to. Without it the task waits in the backlog for a person to assign it.",
+    "Assigning a task starts that channel's agent on it straight away.",
     "",
     "`roster ask` hands work to another channel's agent and returns straight",
     "away. After calling it, say what you asked for and end your turn — you",
     "are resumed automatically with their answer. Never poll or wait.",
   ];
+
+  if (args.task) {
+    lines.push(
+      "",
+      `You are working on this task: ${args.task.title}`,
+      `task-id: ${args.task.id}`,
+      `status: ${args.task.status}`,
+      "Keep it honest as you go — nobody else moves it for you:",
+      `  roster tasks status ${args.task.id} in_progress`,
+      `  roster tasks status ${args.task.id} done`,
+    );
+  }
 
   if (args.delegation) {
     lines.push(

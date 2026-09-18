@@ -14,12 +14,17 @@ const USAGE = `roster — talk to Roster from inside an agent session
   roster login [--api-url URL]              store this machine's API key
   roster channels                           agents you can ask, with handles
   roster read messages --channel-id ID [--limit N]
-  roster tasks create --channel-id ID <title> [--description TEXT]
+  roster tasks create <title> [--channel-id ID]
+  roster tasks status <task-id> <todo|in_progress|done>
   roster ask <handle> <task> --thread THREAD_ID
 
-Your thread id and channel id are in the <roster> block at the top of your
-session. \`roster ask\` returns immediately — say what you asked for and end
-your turn; you are resumed automatically with the answer.`;
+Pass --channel-id only when someone named the channel the work belongs to;
+that channel's agent starts on it right away. Without it the task waits in
+the backlog for a person to assign.
+
+Your thread id, channel id and task id are in the <roster> block at the top
+of your session. \`roster ask\` returns immediately — say what you asked for
+and end your turn; you are resumed automatically with the answer.`;
 
 function requireConfig(): Config {
   const config = loadConfig();
@@ -98,20 +103,51 @@ async function readMessages(parsed: ReturnType<typeof parseArgs>): Promise<void>
 
 async function createTask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
   const config = requireConfig();
-  const channelId = flagString(parsed, "channel-id");
-  if (!channelId) throw new RosterError("Pass --channel-id.");
 
   // positionals: ["tasks", "create", ...title]
   const title = parsed.positionals.slice(2).join(" ").trim();
   if (!title) throw new RosterError("Give the task a title.");
 
-  const task = (await mutate(config, "cli.createTask", {
-    channelId,
-    title,
-    description: flagString(parsed, "description") ?? "",
-  })) as { id: string; title: string };
+  const channelId = flagString(parsed, "channel-id");
 
-  console.log(`Created task "${task.title}" (${task.id}).`);
+  const task = (await mutate(config, "cli.createTask", {
+    title,
+    ...(channelId ? { channelId } : {}),
+  })) as { id: string; title: string; channelSlug: string | null };
+
+  console.log(
+    task.channelSlug
+      ? `Created task "${task.title}" (${task.id}) and started #${task.channelSlug} on it.`
+      : `Created task "${task.title}" (${task.id}). It is in the backlog until someone assigns it.`,
+  );
+}
+
+const STATUSES = ["todo", "in_progress", "done"];
+
+async function setTaskStatus(
+  parsed: ReturnType<typeof parseArgs>,
+): Promise<void> {
+  const config = requireConfig();
+
+  // positionals: ["tasks", "status", <task-id>, <status>]
+  const taskId = parsed.positionals[2];
+  const status = parsed.positionals[3];
+
+  if (!taskId) {
+    throw new RosterError(
+      "Say which task, e.g. `roster tasks status <task-id> in_progress`. Your task id is in the <roster> block.",
+    );
+  }
+  if (!status || !STATUSES.includes(status)) {
+    throw new RosterError(`Status must be one of: ${STATUSES.join(", ")}.`);
+  }
+
+  const task = (await mutate(config, "cli.setTaskStatus", {
+    taskId,
+    status,
+  })) as { title: string; status: string };
+
+  console.log(`"${task.title}" is now ${task.status}.`);
 }
 
 async function ask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
@@ -155,6 +191,7 @@ export async function main(argv: string[]): Promise<number> {
     else if (command === "channels") await channels();
     else if (command === "read" && sub === "messages") await readMessages(parsed);
     else if (command === "tasks" && sub === "create") await createTask(parsed);
+    else if (command === "tasks" && sub === "status") await setTaskStatus(parsed);
     else if (command === "ask") await ask(parsed);
     else {
       console.error(`Unknown command: ${[command, sub].filter(Boolean).join(" ")}\n`);

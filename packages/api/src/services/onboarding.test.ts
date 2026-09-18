@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { furthestStep, resolveStep, type OnboardingState } from "./onboarding";
 
 const fresh: OnboardingState = {
+  hasInvitations: false,
   hasMembership: false,
   supersetKeyStored: false,
   supersetOrgChosen: false,
@@ -28,6 +29,16 @@ describe("furthestStep", () => {
 
   it("sends an invitee straight to connect", () => {
     expect(furthestStep(state({ hasMembership: true }))).toBe("connect");
+  });
+
+  it("offers the waiting team before offering to make a new one", () => {
+    expect(furthestStep(state({ hasInvitations: true }))).toBe("invitations");
+  });
+
+  it("does not interrupt someone who already joined", () => {
+    expect(
+      furthestStep(state({ hasInvitations: true, hasMembership: true })),
+    ).toBe("connect");
   });
 
   it("asks which Superset org once a key is stored", () => {
@@ -99,11 +110,27 @@ describe("resolveStep", () => {
       ),
     ).toBe("organization");
     expect(resolveStep(fresh, "agent")).toBe("workspace");
+    expect(resolveStep(state({ hasInvitations: true }), "agent")).toBe(
+      "invitations",
+    );
   });
 
-  it("ignores any step name other than the one skip we allow", () => {
+  it("ignores any step name other than the two skips we allow", () => {
     expect(resolveStep(fresh, "done")).toBe("workspace");
     expect(resolveStep(atProjects, "nonsense")).toBe("projects");
+  });
+
+  it("lets someone turn down their invitations and start their own workspace", () => {
+    expect(resolveStep(state({ hasInvitations: true }), "workspace")).toBe(
+      "workspace",
+    );
+  });
+
+  it("does not let the workspace skip drag anyone backwards", () => {
+    expect(resolveStep(atProjects, "workspace")).toBe("projects");
+    expect(resolveStep(state({ hasMembership: true }), "workspace")).toBe(
+      "connect",
+    );
   });
 
   it("does not hold someone on agent once they are finished", () => {

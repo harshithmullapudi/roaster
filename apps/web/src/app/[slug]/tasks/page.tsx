@@ -20,7 +20,7 @@ export default async function TasksPage({
 
   return (
     <AppShell shell={shell} section="tasks" title="Tasks" flush>
-      <TaskList tasks={tasks} />
+      <TaskList tasks={tasks} channels={shell.channels} orgSlug={slug} />
     </AppShell>
   );
 }

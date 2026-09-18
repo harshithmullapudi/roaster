@@ -1,10 +1,15 @@
-import { loadOnboardingState, resolveStep } from "@roster/api";
+import {
+  listInvitationsForUser,
+  loadOnboardingState,
+  resolveStep,
+} from "@roster/api";
 import { redirect } from "next/navigation";
 
 import { AgentNameForm } from "~/components/onboarding/agent-name-form";
 import { ChooseOrganizationForm } from "~/components/onboarding/choose-organization-form";
 import { ConnectSupersetForm } from "~/components/onboarding/connect-superset-form";
 import { CreateTeamForm } from "~/components/onboarding/create-team-form";
+import { JoinTeamForm } from "~/components/onboarding/join-team-form";
 import {
   OnboardingShell,
   type OnboardingStepKey,
@@ -28,6 +33,7 @@ export default async function OnboardingPage({
 
   const state = await loadOnboardingState({
     userId: session.user.id,
+    email: session.user.email,
     organizationId: activeOrg?.id ?? null,
   });
 
@@ -35,10 +41,35 @@ export default async function OnboardingPage({
   if (step === "done") redirect(`/${activeOrg!.slug}`);
 
   const visibleSteps: OnboardingStepKey[] = [];
-  if (!state.hasMembership) visibleSteps.push("workspace");
+  if (step === "invitations") visibleSteps.push("invitations");
+  else if (!state.hasMembership) visibleSteps.push("workspace");
   visibleSteps.push("connect");
   if (step === "organization") visibleSteps.push("organization");
   visibleSteps.push("projects", "agent");
+
+  if (step === "invitations") {
+    const invitations = await listInvitationsForUser({
+      userId: session.user.id,
+      email: session.user.email,
+    });
+
+    return (
+      <OnboardingShell
+        step="invitations"
+        visibleSteps={visibleSteps}
+        title={
+          invitations.length === 1
+            ? `Join ${invitations[0]!.organization.name}`
+            : "You've been invited"
+        }
+      >
+        <JoinTeamForm
+          invitations={invitations}
+          initialUserName={session.user.name ?? ""}
+        />
+      </OnboardingShell>
+    );
+  }
 
   if (step === "workspace") {
     return (

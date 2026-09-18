@@ -17,10 +17,15 @@ import {
   PopoverPortal,
   PopoverTrigger,
 } from "@roster/ui";
-import { Check, Hash, ListFilter, X } from "lucide-react";
+import { Check, Hash, Inbox, ListFilter, X } from "lucide-react";
 import { useState } from "react";
 
-import type { TaskFilters, TaskGroupBy } from "~/utils/task-rows";
+import {
+  UNASSIGNED,
+  UNASSIGNED_LABEL,
+  type TaskFilters,
+  type TaskGroupBy,
+} from "~/utils/task-rows";
 
 import { TASK_STATUS_META, TaskStatusIcon } from "./task-status";
 
@@ -29,7 +34,8 @@ export interface TaskToolbarProps {
   onFiltersChange: (filters: TaskFilters) => void;
   groupBy: TaskGroupBy;
   onGroupByChange: (groupBy: TaskGroupBy) => void;
-  channelSlugs: string[];
+  /** Channel slugs, plus `UNASSIGNED` when some task has no channel. */
+  channelKeys: string[];
 }
 
 function toggle<T>(list: T[], value: T): T[] {
@@ -38,12 +44,24 @@ function toggle<T>(list: T[], value: T): T[] {
     : [...list, value];
 }
 
+function channelLabel(key: string): string {
+  return key === UNASSIGNED ? UNASSIGNED_LABEL : key;
+}
+
+function ChannelIcon({ channelKey }: { channelKey: string }) {
+  return channelKey === UNASSIGNED ? (
+    <Inbox size={13} className="text-muted-foreground" />
+  ) : (
+    <Hash size={13} className="text-muted-foreground" />
+  );
+}
+
 export function TaskToolbar({
   filters,
   onFiltersChange,
   groupBy,
   onGroupByChange,
-  channelSlugs,
+  channelKeys,
 }: TaskToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
@@ -100,27 +118,29 @@ export function TaskToolbar({
                 ))}
               </CommandGroup>
 
-              {channelSlugs.length > 0 && (
+              {channelKeys.length > 0 && (
                 <>
                   <CommandSeparator />
                   <CommandGroup heading="Channel">
-                    {channelSlugs.map((slug) => (
+                    {channelKeys.map((key) => (
                       <CommandItem
-                        key={slug}
-                        value={`channel ${slug}`}
+                        key={key}
+                        value={`channel ${channelLabel(key)}`}
                         onSelect={() =>
                           onFiltersChange({
                             ...filters,
-                            channels: toggle(filters.channels, slug),
+                            channels: toggle(filters.channels, key),
                           })
                         }
                       >
                         <Checkbox
-                          checked={filters.channels.includes(slug)}
+                          checked={filters.channels.includes(key)}
                           className="border-muted-foreground/50 pointer-events-none"
                         />
-                        <Hash size={13} className="text-muted-foreground" />
-                        <span className="flex-1 truncate">{slug}</span>
+                        <ChannelIcon channelKey={key} />
+                        <span className="flex-1 truncate">
+                          {channelLabel(key)}
+                        </span>
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -155,21 +175,21 @@ export function TaskToolbar({
         </Badge>
       ))}
 
-      {filters.channels.map((slug) => (
+      {filters.channels.map((key) => (
         <Badge
-          key={slug}
+          key={key}
           variant="secondary"
           className="h-(--btn-h-default) items-center gap-1.5 rounded-md px-2.5 font-normal"
         >
-          <Hash size={12} />
-          {slug}
+          {key === UNASSIGNED ? <Inbox size={12} /> : <Hash size={12} />}
+          {channelLabel(key)}
           <button
             type="button"
-            aria-label={`Clear ${slug} filter`}
+            aria-label={`Clear ${channelLabel(key)} filter`}
             onClick={() =>
               onFiltersChange({
                 ...filters,
-                channels: toggle(filters.channels, slug),
+                channels: toggle(filters.channels, key),
               })
             }
           >

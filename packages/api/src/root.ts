@@ -6,6 +6,7 @@ import { onboardingRouter } from "./routers/onboarding";
 import { realtimeRouter } from "./routers/realtime";
 import { supersetRouter } from "./routers/superset";
 import { tasksRouter } from "./routers/tasks";
+import { terminalsRouter } from "./routers/terminals";
 import { threadsRouter } from "./routers/threads";
 import { listUserOrganizations } from "./services/org";
 import { createTRPCRouter, protectedProcedure } from "./trpc";
@@ -22,6 +23,7 @@ export const appRouter = createTRPCRouter({
   apiKeys: apiKeysRouter,
   messages: messagesRouter,
   tasks: tasksRouter,
+  terminals: terminalsRouter,
   threads: threadsRouter,
   realtime: realtimeRouter,
 });

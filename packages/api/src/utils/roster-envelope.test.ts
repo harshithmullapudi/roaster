@@ -33,6 +33,31 @@ describe("rosterEnvelope", () => {
     expect(rosterEnvelope(base)).not.toContain("handed to you");
   });
 
+  it("carries the task, so the agent can move its status itself", () => {
+    const envelope = rosterEnvelope({
+      ...base,
+      task: { id: "task-id", title: "Ship the importer", status: "todo" },
+    });
+
+    expect(envelope).toContain("working on this task: Ship the importer");
+    expect(envelope).toContain("task-id: task-id");
+    expect(envelope).toContain("roster tasks status task-id in_progress");
+  });
+
+  it("says nothing about a task when the thread was not opened by one", () => {
+    expect(rosterEnvelope(base)).not.toContain("task-id:");
+  });
+
+  /**
+   * Passing a channel when nobody asked for one starts an agent on work it was
+   * never given — the backlog is the default for a reason.
+   */
+  it("tells the agent when to leave a new task unassigned", () => {
+    expect(rosterEnvelope(base)).toContain(
+      "Pass --channel-id only when someone named the channel",
+    );
+  });
+
   /**
    * The whole reason the CLI authenticates from disk: this text is echoed into
    * the terminal, and the transcript is scraped into channel messages.

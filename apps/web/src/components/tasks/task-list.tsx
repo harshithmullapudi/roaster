@@ -1,8 +1,9 @@
 "use client";
 
-import type { Task, TaskStatus } from "@roster/api";
+import type { ChannelGroups, Task, TaskStatus } from "@roster/api";
 import { Button, cn } from "@roster/ui";
-import { CircleCheck, Hash, Plus } from "lucide-react";
+import { CircleCheck, Hash, Inbox, Plus } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -18,25 +19,29 @@ import { useCommands } from "~/components/providers/command-provider";
 import { relativeTime } from "~/utils/relative-time";
 import {
   buildRows,
+  channelKey,
   filterTasks,
   type TaskFilters,
   type TaskGroupBy,
 } from "~/utils/task-rows";
 import { errorMessage, trpc } from "~/utils/trpc";
 
+import { ChannelPicker } from "./channel-picker";
 import { StatusPicker } from "./status-picker";
 import { TASK_STATUS_META, taskStatusColor } from "./task-status";
 import { TaskToolbar } from "./task-toolbar";
 
 export interface TaskListProps {
   tasks: Task[];
+  channels: ChannelGroups;
+  orgSlug: string;
 }
 
 function parseList(value: string | null): string[] {
   return value ? value.split(",").filter(Boolean) : [];
 }
 
-export function TaskList({ tasks }: TaskListProps) {
+export function TaskList({ tasks, channels, orgSlug }: TaskListProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -44,6 +49,7 @@ export function TaskList({ tasks }: TaskListProps) {
 
   const [error, setError] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Record<string, TaskStatus>>({});
+  const [assigning, setAssigning] = useState<string | null>(null);
 
   useEffect(() => setOverrides({}), [tasks]);
 
@@ -83,8 +89,8 @@ export function TaskList({ tasks }: TaskListProps) {
     [resolved, filters, groupBy],
   );
 
-  const channelSlugs = useMemo(
-    () => [...new Set(tasks.map((task) => task.channelSlug))].sort(),
+  const channelKeys = useMemo(
+    () => [...new Set(tasks.map(channelKey))].sort(),
     [tasks],
   );
 
@@ -111,6 +117,27 @@ export function TaskList({ tasks }: TaskListProps) {
           return next;
         });
         setError(errorMessage(cause, "Could not update the task."));
+      }
+    },
+    [router],
+  );
+
+  /**
+   * Handing a task to a channel starts that channel's agent on it, so this is
+   * not a field edit — the row is locked while it happens and the page is
+   * refetched, which is what brings back the thread it opened.
+   */
+  const assign = useCallback(
+    async (taskId: string, projectId: string) => {
+      setAssigning(taskId);
+      setError(null);
+      try {
+        await trpc.tasks.assign.mutate({ taskId, projectId });
+        router.refresh();
+      } catch (cause) {
+        setError(errorMessage(cause, "Could not assign the task."));
+      } finally {
+        setAssigning(null);
       }
     },
     [router],
@@ -157,7 +184,7 @@ export function TaskList({ tasks }: TaskListProps) {
                     TASK_STATUS_META[row.status].label
                   ) : (
                     <>
-                      <Hash size={12} />
+                      {row.backlog ? <Inbox size={12} /> : <Hash size={12} />}
                       {row.label}
                     </>
                   )}
@@ -182,11 +209,29 @@ export function TaskList({ tasks }: TaskListProps) {
                 >
                   {row.task.title}
                 </span>
-                {groupBy !== "channel" && (
-                  <span className="text-muted-foreground hidden shrink-0 items-center gap-0.5 text-xs sm:flex">
-                    <Hash size={11} />
-                    {row.task.channelSlug}
-                  </span>
+                {row.task.channelSlug ? (
+                  groupBy !== "channel" && (
+                    <Link
+                      href={
+                        row.task.threadId
+                          ? `/${orgSlug}/${row.task.channelSlug}?thread=${row.task.threadId}`
+                          : `/${orgSlug}/${row.task.channelSlug}`
+                      }
+                      className="text-muted-foreground hover:text-foreground hidden shrink-0 items-center gap-0.5 text-xs sm:flex"
+                    >
+                      <Hash size={11} />
+                      {row.task.channelSlug}
+                    </Link>
+                  )
+                ) : (
+                  <ChannelPicker
+                    channels={channels}
+                    value={null}
+                    disabled={assigning === row.task.id}
+                    onChange={(projectId) => {
+                      if (projectId) void assign(row.task.id, projectId);
+                    }}
+                  />
                 )}
                 <span className="text-muted-foreground w-16 shrink-0 text-right text-xs">
                   {relativeTime(row.task.createdAt)}
@@ -197,7 +242,7 @@ export function TaskList({ tasks }: TaskListProps) {
         </CellMeasurer>
       );
     },
-    [rows, cache, setStatus, groupBy],
+    [rows, cache, setStatus, groupBy, channels, orgSlug, assign, assigning],
   );
 
   return (
@@ -214,7 +259,7 @@ export function TaskList({ tasks }: TaskListProps) {
         onGroupByChange={(next) =>
           updateParams({ group: next === "status" ? null : next })
         }
-        channelSlugs={channelSlugs}
+        channelKeys={channelKeys}
       />
 
       {error && (

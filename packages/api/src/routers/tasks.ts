@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { TASK_STATUSES } from "../lib/task-status";
+import { assignTask } from "../services/task-assignment";
 import { createTask, listTasks, setTaskStatus } from "../services/tasks";
 import { createTRPCRouter, memberProcedure } from "../trpc";
 
@@ -19,13 +20,15 @@ export const tasksRouter = createTRPCRouter({
       }),
     ),
 
+  /**
+   * Filing work and handing it out are the same call: without a channel the
+   * task waits in the backlog, with one its channel's agent starts on it.
+   */
   create: memberProcedure
     .input(
       z.object({
-        projectId: z.string().uuid(),
+        projectId: z.string().uuid().optional(),
         title: z.string().trim().min(1).max(500),
-        description: z.unknown().optional(),
-        descriptionText: z.string().max(20000).default(""),
         status: statusSchema.default("todo"),
       }),
     )
@@ -33,16 +36,38 @@ export const tasksRouter = createTRPCRouter({
       const task = await createTask({
         organizationId: ctx.organizationId,
         memberId: ctx.member.id,
-        role: ctx.member.role,
-        projectId: input.projectId,
         title: input.title,
-        description: input.description ?? null,
-        descriptionText: input.descriptionText,
         status: input.status,
       });
-      if (!task) throw new TRPCError({ code: "NOT_FOUND" });
-      return task;
+      if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      if (!input.projectId) return task;
+
+      return assignTask({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        taskId: task.id,
+        projectId: input.projectId,
+      });
     }),
+
+  assign: memberProcedure
+    .input(
+      z.object({
+        taskId: z.string().uuid(),
+        projectId: z.string().uuid(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      assignTask({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        taskId: input.taskId,
+        projectId: input.projectId,
+      }),
+    ),
 
   setStatus: memberProcedure
     .input(

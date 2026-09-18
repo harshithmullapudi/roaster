@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { AuthShell } from "~/components/auth-shell";
 import { AcceptInvitation } from "~/components/invite/accept-invitation";
+import { SwitchAccount } from "~/components/invite/switch-account";
 import { SignInForm } from "~/components/sign-in/sign-in-form";
 import { getSession } from "~/lib/session";
 
@@ -42,9 +43,12 @@ export default async function InvitePage({
     return (
       <AuthShell title={`Join ${invitation.organization.name}`}>
         <p className="text-muted-foreground mb-3 text-sm">
-          Invited as {invitation.email}.
+          {invitation.inviterName} invited {invitation.email}.
         </p>
-        <SignInForm callbackURL={`/invite/${invitation.id}`} />
+        <SignInForm
+          callbackURL={`/invite/${invitation.id}`}
+          initialEmail={invitation.email}
+        />
       </AuthShell>
     );
   }
@@ -55,19 +59,23 @@ export default async function InvitePage({
   if (!emailMatches) {
     return (
       <AuthShell title={`Join ${invitation.organization.name}`}>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground mb-3 text-sm">
           This invitation is for {invitation.email}, but you&rsquo;re signed in
           as {session.user.email}.
         </p>
+        <SwitchAccount email={invitation.email} />
       </AuthShell>
     );
   }
 
   return (
     <AuthShell title={`Join ${invitation.organization.name}`}>
+      <p className="text-muted-foreground mb-3 text-sm">
+        {invitation.inviterName} invited you.
+      </p>
       <AcceptInvitation
         invitationId={invitation.id}
-        slug={invitation.organization.slug}
+        initialUserName={session.user.name ?? ""}
       />
     </AuthShell>
   );

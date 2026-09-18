@@ -7,19 +7,27 @@ export {
 export { decodeJwtClaims, type SupersetClaims } from "./jwt";
 export {
   clearWorkspaceStatuses,
+  createTerminal,
   createWorkspace,
   DEFAULT_AGENT,
   deleteWorkspace,
   eventsUrl,
   interruptAgent,
   isAgentLifecycle,
+  killTerminal,
+  listHostAgents,
+  listTerminals,
   readTranscript,
   routingKey,
   runAgent,
   sendToAgent,
+  terminalSocketUrl,
+  writeTerminalInput,
   type AgentLifecycleEvent,
   type AgentRun,
   type CreatedWorkspace,
+  type HostAgent,
+  type TerminalSession,
   type Transcript,
 } from "./agents";
 export {

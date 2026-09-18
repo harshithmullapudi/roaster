@@ -67,10 +67,10 @@ export function AppShell({
       channels={shell.channels}
       activeChannelSlug={activeChannelSlug}
     >
-      <div className="bg-background px-safe flex h-dvh">
+      <div className="bg-background px-safe flex h-full">
         <div className="hidden md:flex">{sidebar}</div>
 
-        <main className="bg-background-2 shadow-1 flex min-w-0 flex-1 overflow-hidden md:m-2 md:ml-0 md:rounded-xl">
+        <main className="bg-background-2 shadow-1 flex min-w-0 flex-1 overflow-hidden md:mr-2 md:mt-2 md:rounded-xl">
           {rail ? <RailLayout main={column} rail={rail} /> : column}
         </main>
 

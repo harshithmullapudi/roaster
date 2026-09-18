@@ -219,6 +219,14 @@ export const threadSessions = rosterSchema.table(
 export type SelectThreadSession = typeof threadSessions.$inferSelect;
 export type InsertThreadSession = typeof threadSessions.$inferInsert;
 
+/**
+ * A piece of work, which may not belong to anyone yet.
+ *
+ * `project_id` is null while a task sits in the backlog — filing work is
+ * cheap, deciding whose it is comes later. Giving it a channel is what starts
+ * the work: a message is posted there, the thread that message opens is
+ * recorded in `thread_id`, and that channel's agent picks it up.
+ */
 export const tasks = rosterSchema.table(
   "tasks",
   {
@@ -226,14 +234,16 @@ export const tasks = rosterSchema.table(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+    /** Null while unassigned. A deleted channel returns its tasks to the backlog. */
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    /** Where the work is being done — null until the task is assigned. */
+    threadId: uuid("thread_id").references(() => threads.id, {
+      onDelete: "set null",
+    }),
 
     title: text("title").notNull(),
-
-    description: jsonb("description"),
-    descriptionText: text("description_text").default("").notNull(),
 
     status: text("status").default("todo").notNull(),
 
@@ -256,6 +266,7 @@ export const tasks = rosterSchema.table(
       table.organizationId,
       table.status,
     ),
+    uniqueIndex("tasks_thread_idx").on(table.threadId),
   ],
 );
 

@@ -9,12 +9,10 @@ import {
   DialogTitle,
   Switch,
 } from "@roster/ui";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { Hash, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { composerExtensions } from "~/utils/tiptap-extensions";
 import { errorMessage, trpc } from "~/utils/trpc";
 
 import { ChannelPicker, flattenChannels } from "./channel-picker";
@@ -44,17 +42,7 @@ export function NewTaskDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const editorRef = useRef<Editor | null>(null);
   const titleRef = useRef<HTMLInputElement | null>(null);
-
-  const editor = useEditor({
-    extensions: composerExtensions("Add description..."),
-    immediatelyRender: false,
-    editorProps: {
-      attributes: { class: "tiptap max-w-full focus:outline-none" },
-    },
-  });
-  editorRef.current = editor;
 
   useEffect(() => {
     if (!open) return;
@@ -62,32 +50,25 @@ export function NewTaskDialog({
     setStatus("todo");
     setProjectId(defaultProjectId ?? null);
     setError(null);
-    editorRef.current?.commands.clearContent(true);
   }, [open, defaultProjectId]);
 
   const submit = useCallback(async () => {
     const trimmed = title.trim();
-    if (!trimmed || !projectId || saving) return;
+    if (!trimmed || saving) return;
 
     setSaving(true);
     setError(null);
     try {
-      const instance = editorRef.current;
-      const descriptionText = instance?.getText().trim() ?? "";
-
       await trpc.tasks.create.mutate({
-        projectId,
         title: trimmed,
-        description: descriptionText ? instance?.getJSON() : null,
-        descriptionText,
         status,
+        ...(projectId ? { projectId } : {}),
       });
 
       router.refresh();
 
       if (createMore) {
         setTitle("");
-        instance?.commands.clearContent(true);
         titleRef.current?.focus();
       } else {
         onOpenChange(false);
@@ -108,7 +89,7 @@ export function NewTaskDialog({
   ]);
 
   const selected = flattenChannels(channels).find((c) => c.id === projectId);
-  const canSubmit = Boolean(title.trim()) && Boolean(projectId) && !saving;
+  const canSubmit = Boolean(title.trim()) && !saving;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -135,10 +116,11 @@ export function NewTaskDialog({
           <span>New task</span>
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Create a task in a channel.
+          Create a task. Give it a channel to start that channel&apos;s agent on
+          it, or leave it in the backlog.
         </DialogDescription>
 
-        <div className="flex flex-col gap-1 px-4 pt-3">
+        <div className="flex flex-col gap-1 px-4 pb-1 pt-3">
           <input
             ref={titleRef}
             autoFocus
@@ -153,11 +135,6 @@ export function NewTaskDialog({
             placeholder="Task title"
             className="placeholder:text-muted-foreground bg-transparent text-lg focus:outline-none"
           />
-
-          <EditorContent
-            editor={editor}
-            className="editor-container max-h-56 min-h-14 overflow-y-auto text-sm"
-          />
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
@@ -166,7 +143,13 @@ export function NewTaskDialog({
             channels={channels}
             value={projectId}
             onChange={setProjectId}
+            clearable
           />
+          <span className="text-muted-foreground text-xs">
+            {selected
+              ? `#${selected.slug}'s agent starts on it`
+              : "Waits in the backlog"}
+          </span>
         </div>
 
         {error && (

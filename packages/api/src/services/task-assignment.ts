@@ -1,0 +1,147 @@
+import { db, messages } from "@roster/db";
+import { TRPCError } from "@trpc/server";
+import { and, eq } from "drizzle-orm";
+
+import { textToTiptap } from "../utils/tiptap";
+
+import { allocateSeq, requireOrgProject, type ChannelScope } from "./channels";
+import { messageById, publishMessage } from "./messages";
+import { createThread, ensureStarted, startSession } from "./sessions";
+import { linkTaskThread, reachableTask, type Task } from "./tasks";
+
+/**
+ * Give a task to a channel, which is what starts the work.
+ *
+ * The task is posted as a message there, the thread that message opens is
+ * recorded on the task, and that channel's agent is briefed with it. Kept off
+ * `sendMessage` on purpose: that path dedupes, consults the channel's watch
+ * setting before deciding to answer at all, and may fold the message into a
+ * recent thread. An assignment must start its own thread whose id we can keep,
+ * whether or not the channel was listening.
+ */
+export async function assignTask(
+  args: ChannelScope & { taskId: string; projectId: string },
+): Promise<Task> {
+  await ensureStarted();
+
+  const task = await reachableTask(args);
+  if (!task) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "That task is not one this key can see.",
+    });
+  }
+
+  /**
+   * Loud, not silent: an agent is already working this task in a thread, and
+   * quietly opening a second one would have two of them on the same work.
+   */
+  if (task.threadId) {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message:
+        "That task already has a thread working on it. Create a new task rather than moving this one.",
+    });
+  }
+
+  const project = await requireOrgProject({
+    organizationId: args.organizationId,
+    memberId: args.memberId,
+    role: args.role,
+    projectId: args.projectId,
+  });
+  if (!project) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "This key cannot assign work to that channel. It is private to someone else, or does not exist.",
+    });
+  }
+
+  const rootMessageId = await postTask({
+    organizationId: args.organizationId,
+    projectId: project.id,
+    authorMemberId: args.memberId,
+    taskId: task.id,
+    title: task.title,
+  });
+
+  const thread = await createThread({
+    organizationId: args.organizationId,
+    projectId: project.id,
+    rootMessageId,
+    runAsMemberId: args.memberId,
+  });
+  if (!thread) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Could not open a session in that channel.",
+    });
+  }
+
+  const linked = await linkTaskThread({
+    taskId: task.id,
+    projectId: project.id,
+    threadId: thread.id,
+  });
+  if (!linked) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Could not record which thread took that task.",
+    });
+  }
+
+  await startSession({ threadId: thread.id, text: task.title });
+
+  return linked;
+}
+
+/**
+ * The task, said in the channel. `client_id` is the task's own id, so a retry
+ * that lands twice posts once — the same guard the composer gets.
+ */
+async function postTask(args: {
+  organizationId: string;
+  projectId: string;
+  authorMemberId: string;
+  taskId: string;
+  title: string;
+}): Promise<string> {
+  const clientId = `task:${args.taskId}`;
+  const seq = await allocateSeq(args.projectId);
+
+  const [inserted] = await db
+    .insert(messages)
+    .values({
+      organizationId: args.organizationId,
+      projectId: args.projectId,
+      seq,
+      authorMemberId: args.authorMemberId,
+      kind: "user",
+      body: textToTiptap(args.title),
+      text: args.title,
+      clientId,
+    })
+    .onConflictDoNothing({ target: [messages.projectId, messages.clientId] })
+    .returning({ id: messages.id });
+
+  if (!inserted) {
+    const [existing] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.projectId, args.projectId),
+          eq(messages.clientId, clientId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) throw new Error("Could not post the task.");
+    return existing.id;
+  }
+
+  await publishMessage(await messageById(inserted.id));
+
+  return inserted.id;
+}

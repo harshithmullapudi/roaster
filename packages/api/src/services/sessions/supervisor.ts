@@ -9,17 +9,16 @@ import {
   threadSessions,
   threads,
 } from "@roster/db";
-import { bindingIsIdle, listAgentBindings,
+import {
+  bindingIsIdle,
   clearWorkspaceStatuses,
   createWorkspace,
-  decryptApiKey,
   deleteWorkspace,
   eventsUrl,
   interruptAgent,
   isAgentLifecycle,
-  mintJwt,
+  listAgentBindings,
   readTranscript,
-  routingKey,
   runAgent,
   sendToAgent,
 } from "@roster/superset";
@@ -40,6 +39,8 @@ import { agentReply, lastMeaningfulLine } from "../../utils/thread-progress";
 import { textToTiptap } from "../../utils/tiptap";
 import { allocateSeq, channelAgentIdentity } from "../channels";
 import { channelName, publish } from "../centrifugo";
+import { taskForThread } from "../tasks";
+import { hostConnection, jwtForHostKey } from "./connection";
 import { threadPublishState } from "./queries";
 
 const POLL_INTERVAL_MS = 2000;
@@ -281,44 +282,6 @@ export async function markWaiting(args: {
   if (row) await publishThread(row.threadId);
 }
 
-async function connectionFor(session: {
-  organizationId: string;
-  projectId: string;
-}) {
-  const project = await db.query.projects.findFirst({
-    where: eq(projects.id, session.projectId),
-  });
-  if (!project) throw new Error("This channel is no longer linked to a project.");
-
-  const member = await db.query.members.findFirst({
-    where: and(
-      eq(members.organizationId, session.organizationId),
-      eq(members.supersetOrgId, project.supersetOrgId),
-    ),
-  });
-  if (!member?.supersetKeyEncrypted) {
-    throw new Error("Nobody on this team has Superset connected.");
-  }
-
-  const { jwt } = await mintJwt(decryptApiKey(member.supersetKeyEncrypted));
-  return {
-    jwt,
-    project,
-    hostKey: routingKey(project.supersetOrgId, project.supersetHostId),
-  };
-}
-
-async function jwtForHostKey(hostKey: string): Promise<string | null> {
-  const supersetOrgId = hostKey.split(":")[0];
-  if (!supersetOrgId) return null;
-  const member = await db.query.members.findFirst({
-    where: eq(members.supersetOrgId, supersetOrgId),
-  });
-  if (!member?.supersetKeyEncrypted) return null;
-  const { jwt } = await mintJwt(decryptApiKey(member.supersetKeyEncrypted));
-  return jwt;
-}
-
 function ensureHostLink(hostKey: string): void {
   const existing = hosts.get(hostKey);
   if (existing && (existing.socket || existing.retryTimer)) return;
@@ -478,7 +441,7 @@ async function pollOnce(sessionId: string): Promise<void> {
   let text: string;
   let jwt: string;
   try {
-    const connection = await connectionFor(session);
+    const connection = await hostConnection(session);
     jwt = connection.jwt;
     const transcript = await readTranscript({
       jwt: connection.jwt,
@@ -686,7 +649,7 @@ async function finishOnce(args: {
   let finalText: string | null = null;
   if (args.capture && watch) {
     try {
-      const connection = await connectionFor(session);
+      const connection = await hostConnection(session);
       const transcript = await readTranscript({
         jwt: connection.jwt,
         routingKey: watch.hostKey,
@@ -882,12 +845,19 @@ async function briefedPrompt(args: {
   context?: string[];
   delegation?: DelegationContext;
 }): Promise<string> {
-  const identity = await channelAgentIdentity(args.session.projectId);
+  const [identity, task] = await Promise.all([
+    channelAgentIdentity(args.session.projectId),
+    taskForThread(args.session.threadId),
+  ]);
+
   const envelope = rosterEnvelope({
     threadId: args.session.threadId,
     channelId: args.session.projectId,
     handle: identity?.agentHandle ?? "agent",
     delegation: args.delegation,
+    task: task
+      ? { id: task.id, title: task.title, status: task.status }
+      : undefined,
   });
 
   return `${envelope}\n\n${sessionPrompt({
@@ -919,7 +889,7 @@ async function startSessionRow(args: {
   await bumpTurn(session.threadId);
 
   try {
-    const connection = await connectionFor(session);
+    const connection = await hostConnection(session);
 
     const workspace = await createWorkspace({
       jwt: connection.jwt,
@@ -1029,7 +999,7 @@ async function terminalIsListening(
   watch: Watch,
 ): Promise<boolean> {
   try {
-    const connection = await connectionFor(session);
+    const connection = await hostConnection(session);
     const bindings = await listAgentBindings({
       jwt: connection.jwt,
       routingKey: watch.hostKey,
@@ -1098,7 +1068,7 @@ async function interrupt(args: {
   }
 
   try {
-    const connection = await connectionFor(session);
+    const connection = await hostConnection(session);
     await sendToAgent({
       jwt: connection.jwt,
       routingKey: connection.hostKey,
@@ -1162,7 +1132,7 @@ async function resume(args: {
   if (revived) await publishThread(revived.threadId);
 
   try {
-    const connection = await connectionFor(session);
+    const connection = await hostConnection(session);
     let terminalId = session.supersetTerminalId;
 
     if (terminalId) {
@@ -1265,7 +1235,7 @@ async function reattach(session: SessionView): Promise<void> {
   if (!workspaceId) return;
 
   try {
-    const connection = await connectionFor(session);
+    const connection = await hostConnection(session);
     let terminalId = session.supersetTerminalId;
 
     if (terminalId) {
@@ -1338,7 +1308,7 @@ export async function cancelThread(args: {
 async function cancelSession(session: SessionView): Promise<void> {
   if (session.supersetWorkspaceId && session.supersetTerminalId) {
     try {
-      const connection = await connectionFor(session);
+      const connection = await hostConnection(session);
       await interruptAgent({
         jwt: connection.jwt,
         routingKey: session.supersetHostKey ?? connection.hostKey,
@@ -1372,7 +1342,7 @@ export async function reapThread(args: { threadId: string }): Promise<void> {
     if (!workspaceId || session.workspaceReapedAt) continue;
 
     try {
-      const connection = await connectionFor(session);
+      const connection = await hostConnection(session);
       await deleteWorkspace({
         jwt: connection.jwt,
         routingKey: session.supersetHostKey ?? connection.hostKey,

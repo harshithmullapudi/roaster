@@ -93,7 +93,7 @@ async function findByClientId(args: {
   return row ? toChannelMessage(row) : null;
 }
 
-async function findById(id: string): Promise<ChannelMessage> {
+export async function messageById(id: string): Promise<ChannelMessage> {
   const [row] = await db
     .select(messageColumns)
     .from(messages)
@@ -309,7 +309,7 @@ export async function sendMessage(args: {
     .returning({ id: messages.id });
 
   const row = inserted[0]
-    ? await findById(inserted[0].id)
+    ? await messageById(inserted[0].id)
     : await findByClientId({
         projectId: args.projectId,
         clientId: args.clientId,

@@ -5,7 +5,7 @@ export interface MessageItem extends ChannelMessage {
   failed?: boolean;
 }
 
-export type ChannelTab = "messages" | "tasks" | "memory" | "sessions";
+export type ChannelTab = "messages" | "tasks" | "memory";
 
 export interface OrgSummary {
   id: string;

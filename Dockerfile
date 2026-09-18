@@ -82,6 +82,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-build/standalone .
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-build/static ./apps/web/.next-build/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 
+# The generated SQL, which the server applies on boot. Next traces JavaScript
+# imports; `.sql` files are data and have to be carried across by hand.
+COPY --from=builder --chown=nextjs:nodejs /app/packages/db/drizzle ./packages/db/drizzle
+
 USER nextjs
 EXPOSE 3000
 

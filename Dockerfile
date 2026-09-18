@@ -27,8 +27,11 @@ COPY packages/db/package.json packages/db/
 COPY packages/superset/package.json packages/superset/
 COPY packages/ui/package.json packages/ui/
 
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+# No BuildKit cache mount on purpose: Railway rejects a mount whose id is not
+# scoped to the service, and pinning this file to one platform's cache key
+# buys less than the layer cache above already does — an unchanged manifest
+# skips the install outright.
+RUN pnpm install --frozen-lockfile
 
 
 # --------------------------------------------------------------------- builder

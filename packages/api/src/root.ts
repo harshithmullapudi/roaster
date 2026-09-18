@@ -1,6 +1,7 @@
 import { apiKeysRouter } from "./routers/api-keys";
 import { channelsRouter } from "./routers/channels";
 import { cliRouter } from "./routers/cli";
+import { inviteLinksRouter } from "./routers/invite-links";
 import { messagesRouter } from "./routers/messages";
 import { onboardingRouter } from "./routers/onboarding";
 import { realtimeRouter } from "./routers/realtime";
@@ -21,6 +22,7 @@ export const appRouter = createTRPCRouter({
   channels: channelsRouter,
   cli: cliRouter,
   apiKeys: apiKeysRouter,
+  inviteLinks: inviteLinksRouter,
   messages: messagesRouter,
   tasks: tasksRouter,
   terminals: terminalsRouter,

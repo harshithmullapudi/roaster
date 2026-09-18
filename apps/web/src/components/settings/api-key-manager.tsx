@@ -107,7 +107,7 @@ export function ApiKeyManager() {
             </Button>
           </div>
           <p className="text-muted-foreground font-mono text-xs">
-            npm i -g @roster/cli && roster login
+            npm i -g @redplanethq/roster-cli && roster login
           </p>
           <Button
             size="sm"

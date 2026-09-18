@@ -7,7 +7,7 @@ export interface Config {
   token: string;
 }
 
-export const DEFAULT_API_URL = "http://localhost:3000";
+export const DEFAULT_API_URL = "https://web-production-86be2.up.railway.app";
 
 export function configPath(): string {
   return (

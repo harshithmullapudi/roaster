@@ -1,10 +1,29 @@
-import { listOrgMembers, listPendingInvitations } from "@roster/api";
+import { inviteLink, listOrgMembers, listPendingInvitations } from "@roster/api";
+import { headers } from "next/headers";
 
 import { InviteForm } from "~/components/members/invite-form";
+import { InviteLinkCard } from "~/components/members/invite-link-card";
 import { MemberList } from "~/components/members/member-list";
 import { PendingInvitations } from "~/components/members/pending-invitations";
 import { SettingsPage } from "~/components/settings/settings-page";
 import { loadShell } from "~/lib/shell";
+
+/**
+ * Where the browser thinks it is, which is what a copied link has to say.
+ * Read from the request rather than `NEXT_PUBLIC_APP_URL` so a workspace
+ * reached on a second domain still hands out links that work.
+ */
+async function requestOrigin(): Promise<string> {
+  const headerList = await headers();
+  const host = headerList.get("host");
+  if (!host) return process.env.NEXT_PUBLIC_APP_URL ?? "";
+
+  const proto =
+    headerList.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") ? "http" : "https");
+
+  return `${proto}://${host}`;
+}
 
 export default async function MembersPage({
   params,
@@ -14,9 +33,13 @@ export default async function MembersPage({
   const { slug } = await params;
   const { session, organization, shell } = await loadShell(slug);
 
-  const [members, invitations] = await Promise.all([
+  const canInvite = shell.can("member:invite");
+
+  const [members, invitations, link, origin] = await Promise.all([
     listOrgMembers(organization.id),
     listPendingInvitations(organization.id),
+    canInvite ? inviteLink(organization.id) : null,
+    requestOrigin(),
   ]);
 
   return (
@@ -24,8 +47,11 @@ export default async function MembersPage({
       title="Members"
       description="Everyone in this workspace, and the invitations still open."
     >
-      {shell.can("member:invite") ? (
-        <InviteForm organizationId={organization.id} />
+      {canInvite ? (
+        <>
+          <InviteLinkCard link={link} origin={origin} />
+          <InviteForm organizationId={organization.id} />
+        </>
       ) : null}
       <MemberList
         organizationId={organization.id}
@@ -35,7 +61,8 @@ export default async function MembersPage({
       />
       <PendingInvitations
         invitations={invitations}
-        canManage={shell.can("member:invite")}
+        canManage={canInvite}
+        origin={origin}
       />
     </SettingsPage>
   );

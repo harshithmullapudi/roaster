@@ -10,6 +10,7 @@
     "db:push": "pnpm --filter @roster/db push",
     "db:generate": "pnpm --filter @roster/db generate",
     "db:studio": "pnpm --filter @roster/db studio",
+    "release:cli": "turbo build test --filter @redplanethq/roster-cli && pnpm --filter @redplanethq/roster-cli publish --access public --no-git-checks",
     "dev:db": "docker compose -f docker-compose.dev.yaml up -d",
     "dev:db:stop": "docker compose -f docker-compose.dev.yaml down"
   },

@@ -78,6 +78,23 @@ container.
 | `packages/db` | Drizzle schema (better-auth's seven tables, in an `auth` Postgres schema) and the client |
 | `packages/auth` | better-auth server + React client, magic-link and invitation emails |
 | `packages/api` | tRPC router, context, and the organization access checks |
+| `packages/cli` | The `roster` CLI agents use, published to npm as [`@redplanethq/roster-cli`](https://www.npmjs.com/package/@redplanethq/roster-cli) |
+
+## Publishing the CLI
+
+`packages/cli` is the one package in this repo that ships to the public
+registry. It has no runtime dependencies and compiles to plain `dist/`, so a
+release is a version bump and one command:
+
+```bash
+# bump "version" in packages/cli/package.json, then
+npm login              # once per machine
+pnpm release:cli       # builds, tests, publishes --access public
+```
+
+The default host agents talk to lives in `packages/cli/src/config.ts`, so
+moving the deployment means cutting a new CLI version too. Anyone pointing at
+their own Roster passes `roster login --api-url https://…` instead.
 
 ## Commands
 

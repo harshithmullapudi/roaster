@@ -1,17 +1,43 @@
 {
-  "name": "@roster/cli",
-  "version": "0.0.0",
+  "name": "@redplanethq/roster-cli",
+  "version": "0.1.0",
+  "description": "Talk to Roster from inside an agent session — read channels, create tasks, and hand work to other agents.",
+  "keywords": [
+    "roster",
+    "cli",
+    "agents",
+    "superset"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/harshithmullapudi/roaster/tree/main/packages/cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harshithmullapudi/roaster.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/harshithmullapudi/roaster/issues"
+  },
   "type": "module",
   "bin": {
     "roster": "./dist/bin.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "tsc"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

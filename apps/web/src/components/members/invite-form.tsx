@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@roster/ui";
+import { Check, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
@@ -54,17 +55,24 @@ export function InviteForm({ organizationId }: InviteFormProps) {
 
   return (
     <section className="bg-background-3 text-foreground rounded p-4">
-      <h2 className="text-sm font-medium">Invite someone</h2>
-      <p className="text-muted-foreground mt-0.5 text-sm">
-        They&rsquo;ll get an email with a link. It expires in 7 days.
+      <h2 className="flex items-center gap-1.5 text-sm font-medium">
+        <Mail size={14} className="text-muted-foreground" />
+        Invite someone
+      </h2>
+      <p className="text-muted-foreground mt-0.5 text-xs">
+        They&rsquo;ll get an email with their own link. It expires in 7 days.
       </p>
 
-      <form
-        onSubmit={submit}
-        className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end"
-      >
-        <div className="flex-1 space-y-1.5">
-          <Label htmlFor="invite-email">Email</Label>
+      {/*
+        One row of controls, all the same height — the labels are read out but
+        not drawn, since the placeholder and the role itself already say what
+        each one is.
+      */}
+      <form onSubmit={submit} className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <div className="flex-1">
+          <Label htmlFor="invite-email" className="sr-only">
+            Email
+          </Label>
           <Input
             id="invite-email"
             type="email"
@@ -74,8 +82,10 @@ export function InviteForm({ organizationId }: InviteFormProps) {
             onChange={(event) => setEmail(event.target.value)}
           />
         </div>
-        <div className="space-y-1.5 sm:w-28">
-          <Label htmlFor="invite-role">Role</Label>
+        <div className="sm:w-28">
+          <Label htmlFor="invite-role" className="sr-only">
+            Role
+          </Label>
           <Select value={role} onValueChange={setRole}>
             <SelectTrigger id="invite-role" showIcon>
               <SelectValue />
@@ -86,6 +96,7 @@ export function InviteForm({ organizationId }: InviteFormProps) {
             </SelectContent>
           </Select>
         </div>
+        {/* `lg` is 32px — the one button size that matches --input-h. */}
         <Button
           type="submit"
           size="lg"
@@ -98,8 +109,10 @@ export function InviteForm({ organizationId }: InviteFormProps) {
 
       {error ? <p className="text-destructive mt-2 text-sm">{error}</p> : null}
       {sentTo ? (
-        <p className="text-muted-foreground mt-2 text-sm">
-          Invitation sent to {sentTo}.
+        <p className="text-muted-foreground mt-2 flex items-center gap-1.5 text-xs">
+          <Check size={13} className="text-foreground" />
+          Invitation sent to {sentTo}. Copy their link below if the email
+          doesn&rsquo;t arrive.
         </p>
       ) : null}
     </section>

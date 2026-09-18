@@ -57,6 +57,14 @@ export {
 } from "./services/sessions";
 export { listTasks, type Task } from "./services/tasks";
 export {
+  claimInviteLink,
+  inviteLink,
+  resolveInviteLink,
+  INVITE_LINK_TTL_DAYS,
+  type InviteLink,
+  type LinkRefusal,
+} from "./services/invite-links";
+export {
   authorizeTerminalStream,
   listWorktrees,
   type Worktree,

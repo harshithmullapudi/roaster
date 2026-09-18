@@ -2,7 +2,9 @@
 
 import { authClient } from "@roster/auth/client";
 import { Badge, Button } from "@roster/ui";
+import { Check, Copy } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export interface InviteRow {
   id: string;
@@ -14,13 +16,17 @@ export interface InviteRow {
 export interface PendingInvitationsProps {
   invitations: InviteRow[];
   canManage: boolean;
+  /** Where this workspace is served from, so a copied link is the real one. */
+  origin: string;
 }
 
 export function PendingInvitations({
   invitations,
   canManage,
+  origin,
 }: PendingInvitationsProps) {
   const router = useRouter();
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   if (invitations.length === 0) return null;
 
@@ -50,6 +56,25 @@ export function PendingInvitations({
             <Badge variant="secondary" className="shrink-0">
               {invitation.role ?? "member"}
             </Badge>
+            {/* The way to finish an invitation when the email never lands. */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="shrink-0"
+              aria-label={`Copy the invitation link for ${invitation.email}`}
+              onClick={() => {
+                void navigator.clipboard.writeText(
+                  `${origin}/invite/${invitation.id}`,
+                );
+                setCopiedId(invitation.id);
+              }}
+            >
+              {copiedId === invitation.id ? (
+                <Check size={14} />
+              ) : (
+                <Copy size={14} />
+              )}
+            </Button>
             {canManage ? (
               <Button
                 variant="ghost"

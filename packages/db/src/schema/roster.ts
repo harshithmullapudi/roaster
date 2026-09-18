@@ -274,6 +274,46 @@ export type SelectTask = typeof tasks.$inferSelect;
 export type InsertTask = typeof tasks.$inferInsert;
 
 /**
+ * The workspace's shareable join link — one per team, or none.
+ *
+ * Unlike an invitation, this is addressed to nobody: whoever holds it can
+ * join. That is the point, and also why it carries an expiry and can be
+ * refreshed — a link that leaks stops working, and a new one costs a click.
+ * Refreshing rewrites `token` in place rather than leaving the old one alive.
+ */
+export const orgInviteLinks = rosterSchema.table(
+  "org_invite_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+
+    /** Random, not a uuid — this is a bearer credential in a URL. */
+    token: text("token").notNull(),
+
+    /** What joining grants. Held to "member" for now. */
+    role: text("role").default("member").notNull(),
+
+    createdByMemberId: uuid("created_by_member_id").references(
+      () => members.id,
+      { onDelete: "set null" },
+    ),
+
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("org_invite_links_organization_idx").on(table.organizationId),
+    uniqueIndex("org_invite_links_token_idx").on(table.token),
+  ],
+);
+
+export type SelectOrgInviteLink = typeof orgInviteLinks.$inferSelect;
+export type InsertOrgInviteLink = typeof orgInviteLinks.$inferInsert;
+
+/**
  * Credentials for the `roster` CLI, which agents run on a teammate's machine.
  *
  * Only the hash is stored — a key is shown once, at creation. Reads made with

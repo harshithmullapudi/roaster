@@ -34,9 +34,10 @@ import {
   type DelegationContext,
   rosterEnvelope,
 } from "../../utils/roster-envelope";
+import { agentIsGone } from "../../utils/agent-liveness";
 import { mergeSteers, undeliveredSteerNotice } from "../../utils/steer-queue";
 import { agentReply, lastMeaningfulLine } from "../../utils/thread-progress";
-import { textToTiptap } from "../../utils/tiptap";
+import { markdownToTiptap } from "../../utils/tiptap";
 import { allocateSeq, channelAgentIdentity } from "../channels";
 import { channelName, publish } from "../centrifugo";
 import { taskForThread } from "../tasks";
@@ -475,6 +476,7 @@ async function pollOnce(sessionId: string): Promise<void> {
     watch.transcriptChangedAt = now;
   }
 
+  let bound = true;
   try {
     const bindings = await listAgentBindings({
       jwt,
@@ -495,6 +497,7 @@ async function pollOnce(sessionId: string): Promise<void> {
       });
       return;
     }
+    bound = binding !== undefined;
     const eventAt = binding?.lastEventAt ?? null;
     if (eventAt !== watch.bindingEventAt) {
       watch.bindingEventAt = eventAt;
@@ -507,11 +510,16 @@ async function pollOnce(sessionId: string): Promise<void> {
   }
 
   if (
-    now - watch.transcriptChangedAt >= STALENESS_TIMEOUT_MS &&
-    now - watch.bindingChangedAt >= STALENESS_TIMEOUT_MS
+    agentIsGone({
+      now,
+      bound,
+      transcriptChangedAt: watch.transcriptChangedAt,
+      bindingChangedAt: watch.bindingChangedAt,
+      timeoutMs: STALENESS_TIMEOUT_MS,
+    })
   ) {
     console.warn(
-      `[sessions] staleness timeout for ${sessionId} after ${STALENESS_TIMEOUT_MS}ms of no output and no agent events`,
+      `[sessions] nothing has been bound to ${sessionId}'s terminal for ${STALENESS_TIMEOUT_MS}ms and it wrote nothing — ending it`,
     );
     await finish({ sessionId, status: "completed", error: null, capture: true });
     return;
@@ -799,7 +807,7 @@ export async function persistAgentMessage(args: {
       authorMemberId: null,
       kind: "agent",
       agentChannelId,
-      body: textToTiptap(text),
+      body: markdownToTiptap(text),
       text,
       threadId: thread.id,
       parentMessageId: thread.rootMessageId,

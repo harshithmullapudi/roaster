@@ -561,6 +561,31 @@
   margin-top: 0 !important;
 }
 
+/*
+ * A reply is still a chat message, so its headings lean on weight and spacing
+ * and climb only one size step each — h3 is body text in bold.
+ */
+.editor-container h1,
+.editor-container h2,
+.editor-container h3 {
+  font-weight: 550;
+  line-height: 1.4;
+  margin-top: 0.75rem;
+  margin-bottom: 0.125rem;
+}
+
+.editor-container h1 {
+  font-size: var(--text-lg);
+}
+
+.editor-container h2 {
+  font-size: var(--text-md);
+}
+
+.editor-container h3 {
+  font-size: var(--text-base);
+}
+
 .editor-container .paragraph-node:first-child {
   margin-top: 0 !important;
 }

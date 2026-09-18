@@ -1,12 +1,12 @@
 import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
-import StarterKit from "@tiptap/starter-kit";
+import StarterKit, { type StarterKitOptions } from "@tiptap/starter-kit";
 
 import { MentionHighlight } from "./mention-highlight";
 import { createMentionSuggestion } from "./mention-suggestion";
 import type { MentionItem } from "./mentions";
 
-const starterKit = StarterKit.configure({
+const SHARED: Partial<StarterKitOptions> = {
   heading: false,
   horizontalRule: false,
   gapcursor: false,
@@ -42,6 +42,25 @@ const starterKit = StarterKit.configure({
     openOnClick: false,
     autolink: true,
   },
+};
+
+const starterKit = StarterKit.configure(SHARED);
+
+/**
+ * Agent replies are markdown, parsed into a body on the way in, so the reader
+ * needs the two nodes the composer deliberately does without. They stay off in
+ * the composer: a chat box that turns `## ` into a heading as you type is a
+ * surprise nobody asked for.
+ */
+const readOnlyStarterKit = StarterKit.configure({
+  ...SHARED,
+  heading: {
+    levels: [1, 2, 3],
+    HTMLAttributes: { class: "heading-node" },
+  },
+  horizontalRule: {
+    HTMLAttributes: { class: "border-border my-2 border-t" },
+  },
 });
 
 /**
@@ -58,7 +77,7 @@ const MENTION_TEXT = ({ node }: { node: { attrs: Record<string, unknown> } }) =>
  * `richTextExtensions`, so the node lives here and the popup does not.
  */
 export const richTextExtensions = [
-  starterKit,
+  readOnlyStarterKit,
   Mention.configure({
     HTMLAttributes: { class: "mention" },
     renderText: MENTION_TEXT,

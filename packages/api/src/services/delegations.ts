@@ -21,7 +21,7 @@ import {
   steer,
   threadChannelName,
 } from "./sessions";
-import { textToTiptap } from "../utils/tiptap";
+import { markdownToTiptap, textToTiptap } from "../utils/tiptap";
 
 /**
  * How deep one request may be passed along. fern-core asking ash-web asking
@@ -323,7 +323,7 @@ async function writeReplyIntoParent(args: {
       authorMemberId: null,
       kind: "agent",
       agentChannelId: args.agentChannelId,
-      body: textToTiptap(args.text),
+      body: markdownToTiptap(args.text),
       text: args.text,
       threadId: args.thread.id,
       parentMessageId: args.thread.rootMessageId,

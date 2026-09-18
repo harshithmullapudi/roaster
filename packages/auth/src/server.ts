@@ -10,7 +10,7 @@ import {
 } from "@roster/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { magicLink, organization } from "better-auth/plugins";
+import { magicLink, oneTimeToken, organization } from "better-auth/plugins";
 import { desc, eq } from "drizzle-orm";
 
 import { InvitationEmail } from "./emails/invitation";
@@ -81,6 +81,16 @@ export const auth = betterAuth({
           }),
         });
       },
+    }),
+    /**
+     * Carries a session from the browser that opened a magic link into the
+     * desktop app's webview. Server-initiated only — nothing in a page can ask
+     * for a token — and stored hashed, so the verifications table never holds
+     * anything replayable.
+     */
+    oneTimeToken({
+      disableClientRequest: true,
+      storeToken: "hashed",
     }),
     organization({
       creatorRole: "owner",

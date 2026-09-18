@@ -74,11 +74,89 @@ container.
 | Path | What lives there |
 | --- | --- |
 | `apps/web` | Next 15 App Router — pages, plus the two handlers that mount better-auth and tRPC |
+| `apps/tauri` | The Mac app: a native window on the deployment, plus the `roster://` sign-in handoff |
 | `packages/ui` | shadcn/Radix components, forked from `core/packages/ui` |
 | `packages/db` | Drizzle schema (better-auth's seven tables, in an `auth` Postgres schema) and the client |
 | `packages/auth` | better-auth server + React client, magic-link and invitation emails |
 | `packages/api` | tRPC router, context, and the organization access checks |
 | `packages/cli` | The `roster` CLI agents use, published to npm as [`@redplanethq/roster-cli`](https://www.npmjs.com/package/@redplanethq/roster-cli) |
+
+## The Mac app
+
+`apps/tauri` bundles no frontend. It is a native window pointed at the
+deployment, so shipping the web app ships the desktop app — a release is only
+needed to change the shell itself.
+
+```bash
+pnpm --filter @roster/tauri dev-tauri    # window on http://localhost:3000
+```
+
+`pnpm test` runs the shell's Rust tests along with everything else, so it wants
+a Rust toolchain — the first run pays for a `cargo` build.
+
+An installed build can be pointed somewhere else without rebuilding, which
+matters because rebuilding means re-signing and re-notarizing every copy:
+
+```json
+// ~/.roster/desktop.json
+{ "frontendUrl": "https://roster.example.com" }
+```
+
+`ROSTER_APP_URL` overrides both. The file is deliberately not
+`~/.roster/config.json` — that one belongs to the CLI, which rewrites it whole
+on `roster login`.
+
+**Signing in is the one thing the shell cannot do by itself.** A magic link
+opens in the default browser, so the session cookie lands there and the app's
+webview stays signed out. Instead:
+
+1. Inside the app, the sign-in form asks for a link back to `/desktop/handoff`
+   rather than `/`. It knows it is in the app because the shell sets
+   `window.__ROSTER_DESKTOP__` before any page script runs.
+2. The link is clicked in the browser, which verifies it and holds the session.
+3. `/desktop/handoff` mints a better-auth one-time token and hands it over as
+   `roster://auth?token=…`.
+4. The shell navigates its webview to `/api/desktop/session?token=…`, which
+   verifies the token. The `Set-Cookie` is on a response the webview itself
+   received, so the session lands in the right cookie jar.
+
+The token is single-use, expires in three minutes, and is stored hashed. Both
+sides end up sharing one session row, so signing out of either signs out of
+both. A custom URL scheme is claimable by any app on the machine; closing that
+properly means universal links, which need an `apple-app-site-association` file
+on a stable custom domain.
+
+### Releasing it
+
+This repository is private, so its release assets are not downloadable by the
+people you send the app to and the updater cannot read them either. The build
+runs here and publishes to the public
+[`roster-releases`](https://github.com/harshithmullapudi/roster-releases) repo —
+`.dmg` for people, `.app.tar.gz` plus `latest.json` for the updater, which
+installed copies check once at launch.
+
+```bash
+# bump "version" in apps/tauri/src-tauri/tauri.conf.json, then
+git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
+```
+
+The tag has to match that version or the workflow stops: `latest.json` is what
+the updater compares against, so a disagreement ships an update nobody is
+offered.
+
+`roster-releases` needs to be public and to have at least one commit — a README
+is enough. `gh release create` tags a commit, and it has nothing to tag in an
+empty repository.
+
+Secrets on this repository, all but the last two shared with `core`:
+
+| Secret | What it is |
+| --- | --- |
+| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` | Developer ID cert as base64 `.p12`, and its password |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: … (TEAMID)` |
+| `APPLE_ID`, `APPLE_ID_PASSWORD`, `TEAM_ID` | Notarization — the password is an app-specific one |
+| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Updater signing key. **Not** `core`'s: the public half is baked into `tauri.conf.json`, and losing the private half means no installed copy can ever update again |
+| `RELEASES_TOKEN` | A PAT that can create releases on `roster-releases` |
 
 ## Publishing the CLI
 

@@ -20,6 +20,9 @@ FROM base AS deps
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
+# The desktop shell builds nothing here, but --frozen-lockfile compares the
+# lockfile against every workspace member, so its manifest has to be present.
+COPY apps/tauri/package.json apps/tauri/
 COPY packages/api/package.json packages/api/
 COPY packages/auth/package.json packages/auth/
 COPY packages/cli/package.json packages/cli/

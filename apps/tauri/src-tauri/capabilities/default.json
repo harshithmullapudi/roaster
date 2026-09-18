@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The window loads the deployment over https, and remote origins are granted no IPC access — every native concern (deep links, outbound links, updates) is driven from Rust.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

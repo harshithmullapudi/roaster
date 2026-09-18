@@ -1,0 +1,14 @@
+{
+  "name": "@roster/tauri",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev-tauri": "tauri dev",
+    "build-tauri": "tauri build",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

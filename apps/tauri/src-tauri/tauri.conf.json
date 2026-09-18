@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Roster",
+  "identifier": "com.superset.roaster",
+  "version": "0.1.0",
+  "build": {
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "https://web-production-86be2.up.railway.app"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "minimumSystemVersion": "10.15"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["roster"]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRENzk4NzRGNkREOTBFODYKUldTR0R0bHRUNGQ1VFl3MnlzNjV4aUdFSndZdEZKL3E0SG90dHlDMmhYaHBLaTM2ZGkvOEVJQjkK",
+      "endpoints": [
+        "https://github.com/harshithmullapudi/roster-releases/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

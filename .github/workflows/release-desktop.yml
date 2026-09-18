@@ -1,0 +1,87 @@
+name: Release desktop app
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+# This repository is private, so its own release assets are not downloadable by
+# the people we hand the app to, and the updater cannot read them either. The
+# build happens here; the artifacts are published to a public releases repo.
+env:
+  RELEASES_REPO: harshithmullapudi/roster-releases
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/tauri/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check the tag matches the app version
+        # The updater compares the version in latest.json against the running
+        # bundle, so a tag that disagrees with tauri.conf.json ships an update
+        # nobody is offered, or one offered forever.
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          tagged="${GITHUB_REF_NAME#desktop-v}"
+          declared=$(node -p "require('./apps/tauri/src-tauri/tauri.conf.json').version")
+          if [ "$tagged" != "$declared" ]; then
+            echo "tag desktop-v$tagged does not match tauri.conf.json version $declared" >&2
+            exit 1
+          fi
+
+      - name: Build, sign and notarize
+        uses: tauri-apps/tauri-action@v0
+        id: build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/tauri
+          # No tagName: tauri-action only builds. Creating the release is the
+          # next step's job, because it belongs in a different repository.
+          args: --target universal-apple-darwin
+
+      - name: Collect artifacts and write the update manifest
+        id: collect
+        env:
+          ARTIFACTS: ${{ steps.build.outputs.artifactPaths }}
+        run: node .github/scripts/desktop-release.mjs
+
+      - name: Publish to the public releases repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ steps.collect.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" \
+            --repo "$RELEASES_REPO" \
+            --title "Roster $VERSION" \
+            --notes "Roster desktop $VERSION for macOS (Apple silicon and Intel)." \
+            release/*

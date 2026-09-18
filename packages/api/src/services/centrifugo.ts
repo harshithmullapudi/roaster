@@ -4,9 +4,25 @@ const CONNECTION_TOKEN_TTL_SECONDS = 60 * 30;
 const SUBSCRIPTION_TOKEN_TTL_SECONDS = 60 * 30;
 const PUBLISH_TIMEOUT_MS = 2000;
 
+function trimmed(value: string | undefined): string | null {
+  return value && value.length > 0 ? value.replace(/\/+$/, "") : null;
+}
+
+/** Where this server publishes. Private and unroutable from a browser. */
 function apiUrl(): string | null {
-  const url = process.env.CENTRIFUGO_URL;
-  return url && url.length > 0 ? url.replace(/\/+$/, "") : null;
+  return trimmed(process.env.CENTRIFUGO_URL);
+}
+
+/**
+ * Where the browser opens its socket.
+ *
+ * Deployed, these are two different addresses: the server publishes over the
+ * private network, while the browser needs a public one. They are the same
+ * host in development, so this falls back to `CENTRIFUGO_URL` and nothing has
+ * to be set to run locally.
+ */
+function publicUrl(): string | null {
+  return trimmed(process.env.CENTRIFUGO_PUBLIC_URL) ?? apiUrl();
 }
 
 function apiKey(): string | null {
@@ -24,7 +40,7 @@ export function isEnabled(): boolean {
 }
 
 export function websocketUrl(): string | null {
-  const url = apiUrl();
+  const url = publicUrl();
   if (!url) return null;
   return `${url.replace(/^http/, "ws")}/connection/websocket`;
 }

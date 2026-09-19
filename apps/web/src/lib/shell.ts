@@ -1,6 +1,13 @@
 import "server-only";
 
-import { can, listChannels, type Capability, type ChannelGroups } from "@roster/api";
+import {
+  can,
+  listChannels,
+  listLiveThreads,
+  type Capability,
+  type ChannelGroups,
+  type LiveThread,
+} from "@roster/api";
 
 import type { OrgSummary, UserSummary } from "~/types";
 
@@ -12,19 +19,23 @@ export interface Shell {
   user: UserSummary;
   member: { id: string; role: string };
   channels: ChannelGroups;
+  liveThreads: LiveThread[];
   can: (capability: Capability) => boolean;
 }
 
 export async function loadShell(slug: string) {
   const { session, organization, member } = await requireOrg(slug);
 
-  const [organizations, channels] = await Promise.all([
+  const scope = {
+    organizationId: organization.id,
+    memberId: member.id,
+    role: member.role,
+  };
+
+  const [organizations, channels, liveThreads] = await Promise.all([
     myOrganizations(session.user.id),
-    listChannels({
-      organizationId: organization.id,
-      memberId: member.id,
-      role: member.role,
-    }),
+    listChannels(scope),
+    listLiveThreads(scope),
   ]);
 
   const shell: Shell = {
@@ -33,6 +44,7 @@ export async function loadShell(slug: string) {
     user: session.user,
     member,
     channels,
+    liveThreads,
     can: (capability) => can(member.role, capability),
   };
 

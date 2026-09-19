@@ -48,8 +48,10 @@ export {
 export {
   ensureStarted,
   listChannelThreads,
+  listLiveThreads,
   threadDetail,
   THREAD_STATUSES,
+  type LiveThread,
   type ThreadDetail,
   type ThreadStatus,
   type ThreadSummary,

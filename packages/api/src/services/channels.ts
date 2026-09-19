@@ -137,7 +137,7 @@ export async function channelAgentIdentity(projectId: string) {
   };
 }
 
-function visibleToMember(memberId: string, role: string) {
+export function visibleToMember(memberId: string, role: string) {
   if (can(role, "channel:update")) return undefined;
 
   return or(

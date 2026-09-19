@@ -21,7 +21,10 @@ import {
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
+  withAttachment,
+  withAttachments,
 } from "./message-columns";
+import { absoluteAttachmentUrl, bindAttachments } from "./attachments";
 import { allocateSeq, listMentionableChannels } from "./channels";
 import { channelName, publish } from "./centrifugo";
 import {
@@ -67,7 +70,7 @@ export async function listMessages(args: {
     .orderBy(desc(messages.seq))
     .limit(limit);
 
-  return rows.reverse().map(toChannelMessage);
+  return withAttachments(rows.reverse().map(toChannelMessage));
 }
 
 async function findByClientId(args: {
@@ -90,7 +93,7 @@ async function findByClientId(args: {
     .orderBy(asc(messages.seq))
     .limit(1);
 
-  return row ? toChannelMessage(row) : null;
+  return row ? withAttachment(toChannelMessage(row)) : null;
 }
 
 export async function messageById(id: string): Promise<ChannelMessage> {
@@ -105,7 +108,7 @@ export async function messageById(id: string): Promise<ChannelMessage> {
     .limit(1);
 
   if (!row) throw new Error("Message not found.");
-  return toChannelMessage(row);
+  return withAttachment(toChannelMessage(row));
 }
 
 export async function publishMessage(
@@ -255,6 +258,7 @@ export async function sendMessage(args: {
   text: string;
   clientId: string;
   threadId?: string;
+  attachmentIds?: string[];
 }): Promise<ChannelMessage> {
   const existing = await findByClientId({
     projectId: args.projectId,
@@ -308,6 +312,15 @@ export async function sendMessage(args: {
     })
     .returning({ id: messages.id });
 
+  if (inserted[0] && args.attachmentIds?.length) {
+    await bindAttachments({
+      attachmentIds: args.attachmentIds,
+      messageId: inserted[0].id,
+      projectId: args.projectId,
+      uploaderMemberId: args.authorMemberId,
+    });
+  }
+
   const row = inserted[0]
     ? await messageById(inserted[0].id)
     : await findByClientId({
@@ -322,12 +335,27 @@ export async function sendMessage(args: {
   if (row.kind !== "user") return row;
 
   if (target) {
-    void steer({ threadId: target.id, text: row.text }).catch(() => {});
+    void steer({ threadId: target.id, text: agentText(row) }).catch(() => {});
   } else if (row.parentMessageId === null && addressed) {
     void driveSession(row).catch(() => {});
   }
 
   return row;
+}
+
+/**
+ * What the agent is told. The agent reads text, not the message row, so files
+ * sent with a message have to be named in it — otherwise "have a look at this"
+ * arrives with nothing to look at.
+ */
+export function agentText(message: ChannelMessage): string {
+  if (message.attachments.length === 0) return message.text;
+
+  const lines = message.attachments.map(
+    (file) => `- ${file.filename} (${file.mimeType}): ${absoluteAttachmentUrl(file.id)}`,
+  );
+
+  return [message.text, "", "Attachments:", ...lines].join("\n").trim();
 }
 
 async function channelIsWatching(projectId: string): Promise<boolean> {
@@ -422,7 +450,7 @@ async function driveSession(message: ChannelMessage): Promise<void> {
   });
   if (!thread) return;
 
-  await startSession({ threadId: thread.id, text: message.text, context });
+  await startSession({ threadId: thread.id, text: agentText(message), context });
 }
 
 export async function pausedMessageCount(projectId: string): Promise<number> {
@@ -487,7 +515,7 @@ export async function startPausedSession(
 
   if (!newest) return null;
 
-  const row = toChannelMessage(newest);
+  const row = await withAttachment(toChannelMessage(newest));
   void driveSession(row).catch(() => {});
   return row;
 }

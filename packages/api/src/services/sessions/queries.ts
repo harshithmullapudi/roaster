@@ -19,6 +19,7 @@ import {
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
+  withAttachments,
 } from "../message-columns";
 
 /**
@@ -412,5 +413,5 @@ export async function threadDetail(args: {
     .where(eq(messages.threadId, args.threadId))
     .orderBy(asc(messages.seq));
 
-  return { thread, messages: rows.map(toChannelMessage) };
+  return { thread, messages: await withAttachments(rows.map(toChannelMessage)) };
 }

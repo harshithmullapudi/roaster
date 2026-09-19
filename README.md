@@ -62,7 +62,11 @@ already selects the Dockerfile builder. Then:
    existed — when `db:push` was the way — is adopted on that same boot: it
    holds the tables with no record of them, so the server writes the journal
    rows for what is already there and runs only what is missing.
-4. Leave `CENTRIFUGO_*` empty and realtime turns itself off — messages fall
+4. **Mount a volume for attachments** at whatever `UPLOADS_DIR` points to
+   (the image defaults it to `/app/uploads`). Files posted in a channel are
+   written there, and a container filesystem does not survive a redeploy —
+   without a volume the rows outlive their files and previews come back 404.
+5. Leave `CENTRIFUGO_*` empty and realtime turns itself off — messages fall
    back to plain tRPC. Wire it up by running Centrifugo as a second service
    and setting `CENTRIFUGO_URL` to its private URL.
 

@@ -89,6 +89,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 # imports; `.sql` files are data and have to be carried across by hand.
 COPY --from=builder --chown=nextjs:nodejs /app/packages/db/drizzle ./packages/db/drizzle
 
+# Message attachments. Ephemeral unless a volume is mounted here — see the
+# deployment notes in the README.
+ENV UPLOADS_DIR=/app/uploads
+RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads
+
 USER nextjs
 EXPOSE 3000
 

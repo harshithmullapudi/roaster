@@ -46,6 +46,21 @@ export {
   type ChannelMessage,
 } from "./services/messages";
 export {
+  readAttachment,
+  uploadAttachment,
+  type MessageAttachment,
+  type ReadableAttachment,
+  type UploadResult,
+} from "./services/attachments";
+export {
+  ATTACHMENT_REFUSALS,
+  ATTACHMENT_TYPES,
+  isImageType,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  type AttachmentRefusal,
+} from "./lib/attachments";
+export {
   ensureStarted,
   listChannelThreads,
   threadDetail,

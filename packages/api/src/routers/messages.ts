@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "../lib/attachments";
 import type { DeleteRefusal } from "../lib/message-delete";
 import { requireOrgProject } from "../services/channels";
 import { deleteMessage, listMessages, sendMessage } from "../services/messages";
@@ -45,10 +46,21 @@ export const messagesRouter = createTRPCRouter({
       z.object({
         projectId: z.string().uuid(),
         body: z.unknown(),
-        text: z.string().min(1).max(20000),
+        text: z.string().max(20000),
         clientId: z.string().min(1).max(100),
         threadId: z.string().uuid().optional(),
-      }),
+        attachmentIds: z
+          .array(z.string().uuid())
+          .max(MAX_ATTACHMENTS_PER_MESSAGE)
+          .optional(),
+      })
+        /** A message may be only files — but it may not be nothing at all. */
+        .refine(
+          (input) =>
+            input.text.trim().length > 0 ||
+            (input.attachmentIds?.length ?? 0) > 0,
+          { message: "Write something or attach a file." },
+        ),
     )
     .mutation(async ({ ctx, input }) => {
       const project = await requireOrgProject({
@@ -68,6 +80,7 @@ export const messagesRouter = createTRPCRouter({
         text: input.text,
         clientId: input.clientId,
         threadId: input.threadId,
+        attachmentIds: input.attachmentIds,
       });
     }),
 

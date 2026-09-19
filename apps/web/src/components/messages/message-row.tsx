@@ -9,6 +9,7 @@ import { relativeTime } from "~/utils/relative-time";
 import type { ThreadItem } from "~/utils/thread-rows";
 
 import { MessageActions } from "./message-actions";
+import { MessageAttachments } from "./message-attachments";
 import { MessageBody } from "./message-body";
 
 export interface MessageRowProps {
@@ -75,6 +76,7 @@ export function MessageRow({
         ) : null}
         <div className="min-w-0">
           <MessageBody body={message.body} text={message.text} />
+          <MessageAttachments attachments={message.attachments} />
         </div>
         {thread && threadHref ? (
           <ThreadAffordance thread={thread} href={threadHref} />

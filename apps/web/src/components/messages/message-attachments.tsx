@@ -64,7 +64,7 @@ function ImageThumbnail({
       type="button"
       onClick={onOpen}
       title={attachment.filename}
-      className="border-border hover:border-primary block overflow-hidden rounded-lg border transition-colors"
+      className="border-border hover:border-primary block cursor-zoom-in overflow-hidden rounded-lg border transition-colors"
       style={{ maxWidth: "100%" }}
     >
       {/*

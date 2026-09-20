@@ -80,10 +80,14 @@ export interface Box {
  * The space a thumbnail takes. Sized from the stored dimensions so the row
  * reserves its height before the image loads — otherwise every image that
  * arrives shoves the conversation the reader is looking at down the page.
+ *
+ * Small on purpose. A message is read as a line of conversation, and a
+ * preview that fills the pane buries the lines around it; anyone who wants to
+ * look properly clicks, which is a click away rather than a scroll away.
  */
 export function thumbnailBox(
   size: { width: number | null; height: number | null },
-  limit: Box = { width: 360, height: 280 },
+  limit: Box = { width: 200, height: 150 },
 ): Box {
   if (!size.width || !size.height) return limit;
 

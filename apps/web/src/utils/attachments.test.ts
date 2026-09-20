@@ -100,10 +100,17 @@ describe("triageFiles", () => {
 });
 
 describe("thumbnailBox", () => {
-  it("scales a large image down inside the limit", () => {
+  it("scales a large image down to a thumbnail, not an embed", () => {
     expect(thumbnailBox({ width: 2000, height: 1000 })).toEqual({
-      width: 360,
-      height: 180,
+      width: 200,
+      height: 100,
+    });
+  });
+
+  it("caps a tall image by its height", () => {
+    expect(thumbnailBox({ width: 600, height: 1200 })).toEqual({
+      width: 75,
+      height: 150,
     });
   });
 
@@ -116,8 +123,8 @@ describe("thumbnailBox", () => {
 
   it("falls back to the limit when the size was never read", () => {
     expect(thumbnailBox({ width: null, height: null })).toEqual({
-      width: 360,
-      height: 280,
+      width: 200,
+      height: 150,
     });
   });
 });

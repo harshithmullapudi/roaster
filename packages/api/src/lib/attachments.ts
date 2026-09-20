@@ -20,6 +20,56 @@ export const ATTACHMENT_TYPES: Record<string, string> = {
 
 export type AttachmentRefusal = "empty" | "too-large" | "unsupported-type";
 
+/** A file as everything outside the database sees it. */
+export interface MessageAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  /** Where the browser reads it, relative to the app. */
+  url: string;
+}
+
+export function attachmentUrl(id: string): string {
+  return `/api/files/${id}`;
+}
+
+export function absoluteAttachmentUrl(id: string): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${base.replace(/\/$/, "")}${attachmentUrl(id)}`;
+}
+
+/**
+ * How files are described to an agent. The agent reads text, not the message
+ * row, so a message's files have to be named in the prompt — with the one
+ * command that fetches them, since the route wants a credential.
+ */
+export function attachmentBrief(files: MessageAttachment[]): string {
+  if (files.length === 0) return "";
+
+  const lines = files.map(
+    (file) => `- ${file.filename} (${file.mimeType}): ${absoluteAttachmentUrl(file.id)}`,
+  );
+
+  return [
+    "Attachments — fetch one with:",
+    '  curl -fsSL -H "Authorization: Bearer $ROSTER_TOKEN" -o <filename> <url>',
+    ...lines,
+  ].join("\n");
+}
+
+/** The message text an agent is given: what was written, then what came with it. */
+export function textWithAttachments(
+  text: string,
+  files: MessageAttachment[],
+): string {
+  const brief = attachmentBrief(files);
+  if (brief.length === 0) return text;
+  return [text, "", brief].join("\n").trim();
+}
+
 export const ATTACHMENT_REFUSALS: Record<AttachmentRefusal, string> = {
   empty: "That file is empty.",
   "too-large": "Files are limited to 10 MB.",

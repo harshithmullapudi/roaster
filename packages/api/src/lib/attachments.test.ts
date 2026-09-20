@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attachmentBrief,
   attachmentRefusal,
   imageSize,
   isSafeStorageKey,
@@ -8,6 +9,7 @@ import {
   sanitizeFilename,
   sniffMimeType,
   storageKeyFor,
+  textWithAttachments,
 } from "./attachments";
 
 function bytes(...values: number[]): Uint8Array {
@@ -146,5 +148,43 @@ describe("storage keys", () => {
     expect(isSafeStorageKey("/etc/passwd")).toBe(false);
     expect(isSafeStorageKey("org/../../etc")).toBe(false);
     expect(isSafeStorageKey("")).toBe(false);
+  });
+});
+
+describe("what the agent is told", () => {
+  const file = (id: string, filename: string, mimeType: string) => ({
+    id,
+    filename,
+    mimeType,
+    size: 1024,
+    width: null,
+    height: null,
+    url: `/api/files/${id}`,
+  });
+
+  it("leaves a message with no files alone", () => {
+    expect(textWithAttachments("ship it", [])).toBe("ship it");
+    expect(attachmentBrief([])).toBe("");
+  });
+
+  it("names every file, with an absolute URL and how to fetch it", () => {
+    const brief = textWithAttachments("have a look", [
+      file("aaa", "Screenshot.png", "image/png"),
+      file("bbb", "spec.pdf", "application/pdf"),
+    ]);
+
+    expect(brief).toContain("have a look");
+    expect(brief).toContain("Screenshot.png (image/png)");
+    expect(brief).toContain("spec.pdf (application/pdf)");
+    // Absolute: the agent is not running in the browser's origin.
+    expect(brief).toContain("http://localhost:3000/api/files/aaa");
+    // The route wants a credential, so the command that works is spelled out.
+    expect(brief).toContain("Authorization: Bearer $ROSTER_TOKEN");
+  });
+
+  it("still describes the files when the message was only files", () => {
+    const brief = textWithAttachments("", [file("aaa", "chart.png", "image/png")]);
+    expect(brief.startsWith("Attachments")).toBe(true);
+    expect(brief).toContain("chart.png");
   });
 });

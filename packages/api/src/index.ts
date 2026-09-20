@@ -47,6 +47,7 @@ export {
 } from "./services/messages";
 export {
   readAttachment,
+  readAttachmentWithKey,
   uploadAttachment,
   type MessageAttachment,
   type ReadableAttachment,

@@ -76,7 +76,10 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
+# su-exec drops privileges in the entrypoint, after the volume is mounted.
+RUN apk add --no-cache su-exec \
+    && addgroup -g 1001 -S nodejs \
+    && adduser -u 1001 -S nextjs -G nodejs
 
 # `.next-build` rather than `.next`: the app's build script puts its output
 # there so a build never stomps a running `next dev`. The standalone server
@@ -94,7 +97,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/packages/db/drizzle ./packages/db
 ENV UPLOADS_DIR=/app/uploads
 RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads
 
-USER nextjs
+# A volume mounted over that directory arrives owned by root, so the entrypoint
+# re-owns it after the mount and then drops to `nextjs` with su-exec. Staying
+# root here is what makes that possible; the server itself never runs as root.
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 3000
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "apps/web/server.js"]

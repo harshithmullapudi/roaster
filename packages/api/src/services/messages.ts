@@ -24,7 +24,7 @@ import {
   withAttachment,
   withAttachments,
 } from "./message-columns";
-import { absoluteAttachmentUrl, bindAttachments } from "./attachments";
+import { bindAttachments, textWithAttachments } from "./attachments";
 import { allocateSeq, listMentionableChannels } from "./channels";
 import { channelName, publish } from "./centrifugo";
 import {
@@ -349,13 +349,7 @@ export async function sendMessage(args: {
  * arrives with nothing to look at.
  */
 export function agentText(message: ChannelMessage): string {
-  if (message.attachments.length === 0) return message.text;
-
-  const lines = message.attachments.map(
-    (file) => `- ${file.filename} (${file.mimeType}): ${absoluteAttachmentUrl(file.id)}`,
-  );
-
-  return [message.text, "", "Attachments:", ...lines].join("\n").trim();
+  return textWithAttachments(message.text, message.attachments);
 }
 
 async function channelIsWatching(projectId: string): Promise<boolean> {

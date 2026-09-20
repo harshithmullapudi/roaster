@@ -6,15 +6,20 @@ import { attachments, db, members, projects } from "@roster/db";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import {
+  absoluteAttachmentUrl,
   type AttachmentRefusal,
   attachmentRefusal,
+  attachmentUrl,
   imageSize,
   isSafeStorageKey,
   MAX_ATTACHMENTS_PER_MESSAGE,
+  type MessageAttachment,
   sanitizeFilename,
   sniffMimeType,
   storageKeyFor,
+  textWithAttachments,
 } from "../lib/attachments";
+import { keyHolderMember, verifyApiKey } from "./api-keys";
 import { requireOrgProject } from "./channels";
 
 /**
@@ -28,16 +33,13 @@ import { requireOrgProject } from "./channels";
  * storage would change is behind this one module.
  */
 
-export interface MessageAttachment {
-  id: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  width: number | null;
-  height: number | null;
-  /** Where the browser reads it, relative to the app. */
-  url: string;
-}
+export type { MessageAttachment } from "../lib/attachments";
+export {
+  absoluteAttachmentUrl,
+  attachmentBrief,
+  attachmentUrl,
+  textWithAttachments,
+} from "../lib/attachments";
 
 export type UploadResult =
   | { refusal: AttachmentRefusal | "no-access" }
@@ -45,15 +47,6 @@ export type UploadResult =
 
 export function uploadsRoot(): string {
   return process.env.UPLOADS_DIR ?? path.join(process.cwd(), ".uploads");
-}
-
-export function attachmentUrl(id: string): string {
-  return `/api/files/${id}`;
-}
-
-export function absoluteAttachmentUrl(id: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return `${base.replace(/\/$/, "")}${attachmentUrl(id)}`;
 }
 
 function toMessageAttachment(row: {
@@ -164,28 +157,25 @@ export interface ReadableAttachment {
   bytes: Buffer;
 }
 
-export async function readAttachment(args: {
-  userId: string;
+/**
+ * Reading by member, once the reader is known. Both the browser and the agent
+ * end up here, so a file is checked the same way whichever asked for it.
+ */
+async function readForMember(args: {
   attachmentId: string;
+  member: { id: string; role: string };
+  organizationId: string;
 }): Promise<ReadableAttachment | null> {
   const row = await db.query.attachments.findFirst({
     where: eq(attachments.id, args.attachmentId),
   });
   if (!row) return null;
-
-  const member = await db.query.members.findFirst({
-    where: and(
-      eq(members.organizationId, row.organizationId),
-      eq(members.userId, args.userId),
-    ),
-    columns: { id: true, role: true },
-  });
-  if (!member) return null;
+  if (row.organizationId !== args.organizationId) return null;
 
   const visible = await requireOrgProject({
     organizationId: row.organizationId,
-    memberId: member.id,
-    role: member.role,
+    memberId: args.member.id,
+    role: args.member.role,
     projectId: row.projectId,
   });
   if (!visible) return null;
@@ -204,6 +194,54 @@ export async function readAttachment(args: {
     // The row outlived its bytes — a redeploy without a mounted volume.
     return null;
   }
+}
+
+export async function readAttachment(args: {
+  userId: string;
+  attachmentId: string;
+}): Promise<ReadableAttachment | null> {
+  const row = await db.query.attachments.findFirst({
+    where: eq(attachments.id, args.attachmentId),
+    columns: { organizationId: true },
+  });
+  if (!row) return null;
+
+  const member = await db.query.members.findFirst({
+    where: and(
+      eq(members.organizationId, row.organizationId),
+      eq(members.userId, args.userId),
+    ),
+    columns: { id: true, role: true },
+  });
+  if (!member) return null;
+
+  return readForMember({
+    attachmentId: args.attachmentId,
+    member,
+    organizationId: row.organizationId,
+  });
+}
+
+/**
+ * Reading with a `roster` API key, which is how an agent gets at a file its
+ * channel was sent. The key resolves to the member who created it, so an agent
+ * reaches exactly what its operator could — the same rule the CLI runs under.
+ */
+export async function readAttachmentWithKey(args: {
+  token: string;
+  attachmentId: string;
+}): Promise<ReadableAttachment | "unauthorized" | null> {
+  const holder = await verifyApiKey(args.token);
+  if (!holder) return "unauthorized";
+
+  const member = await keyHolderMember(holder);
+  if (!member) return "unauthorized";
+
+  return readForMember({
+    attachmentId: args.attachmentId,
+    member,
+    organizationId: holder.organizationId,
+  });
 }
 
 /**

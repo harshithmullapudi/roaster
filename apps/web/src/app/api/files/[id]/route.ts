@@ -1,4 +1,4 @@
-import { readAttachment } from "@roster/api";
+import { readAttachment, readAttachmentWithKey } from "@roster/api";
 
 import { getSession } from "~/lib/session";
 
@@ -6,6 +6,10 @@ import { getSession } from "~/lib/session";
  * Reading an attachment back. Files are not served from the uploads directory
  * statically: every read passes through here, where the reader is checked
  * against the organization and channel the file was posted in.
+ *
+ * Two kinds of reader arrive: a browser with a session cookie, and an agent
+ * session carrying a `roster` API key. The agent is handed these URLs in its
+ * prompt, so without the key it would be told about a file it cannot open.
  */
 
 export const runtime = "nodejs";
@@ -15,11 +19,18 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await getSession();
-  if (!session) return new Response("Unauthorized", { status: 401 });
-
   const { id } = await context.params;
-  const file = await readAttachment({ userId: session.user.id, attachmentId: id });
+
+  const header = request.headers.get("authorization") ?? "";
+  const token = header.toLowerCase().startsWith("bearer ")
+    ? header.slice(7).trim()
+    : "";
+
+  const file = token
+    ? await readAttachmentWithKey({ token, attachmentId: id })
+    : await readWithSession(id);
+
+  if (file === "unauthorized") return new Response("Unauthorized", { status: 401 });
   if (!file) return new Response("Not found", { status: 404 });
 
   const download = new URL(request.url).searchParams.has("download");
@@ -44,4 +55,10 @@ export async function GET(
       "Cache-Control": "private, max-age=31536000, immutable",
     },
   });
+}
+
+async function readWithSession(attachmentId: string) {
+  const session = await getSession();
+  if (!session) return "unauthorized" as const;
+  return readAttachment({ userId: session.user.id, attachmentId });
 }

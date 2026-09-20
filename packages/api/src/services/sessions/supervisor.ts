@@ -38,6 +38,10 @@ import { agentIsGone } from "../../utils/agent-liveness";
 import { mergeSteers, undeliveredSteerNotice } from "../../utils/steer-queue";
 import { agentReply, lastMeaningfulLine } from "../../utils/thread-progress";
 import { markdownToTiptap } from "../../utils/tiptap";
+import {
+  attachmentsForMessages,
+  textWithAttachments,
+} from "../attachments";
 import { allocateSeq, channelAgentIdentity } from "../channels";
 import { channelName, publish } from "../centrifugo";
 import { taskForThread } from "../tasks";
@@ -1229,7 +1233,15 @@ async function retryPrompt(session: SessionView): Promise<string> {
     orderBy: desc(messages.seq),
   });
   const text = latest?.text?.trim();
-  if (text && text.length > 0) return text;
+  if (latest && text && text.length > 0) {
+    /**
+     * A retry rebuilds the prompt from the stored row, which holds the words
+     * and not the files. Without this the second attempt is handed a message
+     * whose attachments have quietly disappeared.
+     */
+    const files = await attachmentsForMessages([latest.id]);
+    return textWithAttachments(text, files.get(latest.id) ?? []);
+  }
 
   const root = await db.query.messages.findFirst({
     where: eq(messages.id, session.rootMessageId),

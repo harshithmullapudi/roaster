@@ -231,6 +231,10 @@ export const threads = rosterSchema.table(
       table.projectId,
       table.lastActivityAt.desc(),
     ),
+    index("threads_org_activity_idx").on(
+      table.organizationId,
+      table.lastActivityAt.desc(),
+    ),
   ],
 );
 

@@ -18,6 +18,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { slugifyProject, uniqueProjectSlug } from "../utils/project-slug";
+import { forgetSupersetCredentials } from "./sessions/connection";
 
 export interface ConnectResult {
   organizations: SupersetOrganization[];
@@ -41,6 +42,8 @@ export async function connectSuperset(args: {
       supersetConnectedAt: only ? new Date() : null,
     })
     .where(eq(members.id, args.memberId));
+
+  forgetSupersetCredentials();
 
   return { organizations, chosenOrganizationId: only?.id ?? null };
 }
@@ -72,6 +75,8 @@ export async function chooseSupersetOrganization(args: {
       supersetConnectedAt: new Date(),
     })
     .where(eq(members.id, args.member.id));
+
+  forgetSupersetCredentials();
 }
 
 function storedApiKey(member: SelectMember): string | null {

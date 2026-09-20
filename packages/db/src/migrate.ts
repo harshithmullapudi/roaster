@@ -3,9 +3,29 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Pool } from "pg";
 
-import { db } from "./client";
+import { requireDatabaseUrl } from "./env";
+import * as schema from "./schema";
+
+const MIGRATION_LOCK_KEY = 4_314_180_723;
+
+type MigrationDb = ReturnType<typeof migrationClient>["migrationDb"];
+
+function migrationClient() {
+  const pool = new Pool({
+    connectionString: requireDatabaseUrl(),
+    max: 2,
+    connectionTimeoutMillis: 30_000,
+  });
+
+  return {
+    pool,
+    migrationDb: drizzle({ client: pool, schema, casing: "snake_case" }),
+  };
+}
 
 function candidates(): string[] {
   const override = process.env.ROSTER_MIGRATIONS_DIR;
@@ -30,7 +50,10 @@ interface JournalEntry {
   when: number;
 }
 
-async function rowExists(query: ReturnType<typeof sql>): Promise<boolean> {
+async function rowExists(
+  db: MigrationDb,
+  query: ReturnType<typeof sql>,
+): Promise<boolean> {
   const result = await db.execute(query);
   return result.rows.length > 0;
 }
@@ -46,14 +69,17 @@ function taskColumn(name: string) {
        and column_name = ${name}`;
 }
 
-const ALREADY_APPLIED: Record<string, () => Promise<boolean>> = {
-  "0000_baseline": () => rowExists(TASKS_TABLE),
-  "0001_drop_task_descriptions": async () =>
-    !(await rowExists(taskColumn("description"))),
-  "0002_task_threads": () => rowExists(taskColumn("thread_id")),
+const ALREADY_APPLIED: Record<
+  string,
+  (db: MigrationDb) => Promise<boolean>
+> = {
+  "0000_baseline": (db) => rowExists(db, TASKS_TABLE),
+  "0001_drop_task_descriptions": async (db) =>
+    !(await rowExists(db, taskColumn("description"))),
+  "0002_task_threads": (db) => rowExists(db, taskColumn("thread_id")),
 };
 
-async function adopt(folder: string): Promise<string[]> {
+async function adopt(db: MigrationDb, folder: string): Promise<string[]> {
   await db.execute(sql`create schema if not exists drizzle`);
   await db.execute(sql`
     create table if not exists drizzle."__drizzle_migrations" (
@@ -62,7 +88,9 @@ async function adopt(folder: string): Promise<string[]> {
       created_at bigint
     )`);
 
-  if (await rowExists(sql`select 1 from drizzle."__drizzle_migrations" limit 1`)) {
+  if (
+    await rowExists(db, sql`select 1 from drizzle."__drizzle_migrations" limit 1`)
+  ) {
     return [];
   }
 
@@ -73,7 +101,7 @@ async function adopt(folder: string): Promise<string[]> {
   const stamped: string[] = [];
   for (const entry of journal.entries) {
     const check = ALREADY_APPLIED[entry.tag];
-    if (!check || !(await check())) break;
+    if (!check || !(await check(db))) break;
 
     const contents = readFileSync(
       path.join(folder, `${entry.tag}.sql`),
@@ -100,12 +128,29 @@ export async function migrateToLatest(): Promise<void> {
     );
   }
 
-  const adopted = await adopt(folder);
-  if (adopted.length > 0) {
-    console.log(
-      `[db] adopting a database that predates migrations; recorded as already applied: ${adopted.join(", ")}`,
-    );
-  }
+  const { pool, migrationDb } = migrationClient();
+  const guard = await pool.connect();
 
-  await migrate(db, { migrationsFolder: folder, migrationsSchema: "drizzle" });
+  try {
+    await guard.query("set statement_timeout = 0");
+    await guard.query("select pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+
+    const adopted = await adopt(migrationDb, folder);
+    if (adopted.length > 0) {
+      console.log(
+        `[db] adopting a database that predates migrations; recorded as already applied: ${adopted.join(", ")}`,
+      );
+    }
+
+    await migrate(migrationDb, {
+      migrationsFolder: folder,
+      migrationsSchema: "drizzle",
+    });
+  } finally {
+    try {
+      await guard.query("select pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
+    } catch {}
+    guard.release();
+    await pool.end();
+  }
 }

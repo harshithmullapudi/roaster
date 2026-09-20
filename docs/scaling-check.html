@@ -1,0 +1,1194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roster — scaling check</title>
+    <style>
+      :root {
+        --sp-measure: 74ch;
+        --gap: clamp(2.5rem, 5vw, 4.5rem);
+      }
+
+      body {
+        padding: 0;
+        background: var(--sp-bg);
+      }
+
+      .wrap {
+        max-width: 78rem;
+        margin: 0 auto;
+        padding: clamp(2rem, 5vw, 4.5rem) clamp(1.25rem, 4vw, 3.5rem) 6rem;
+      }
+
+      .eyebrow {
+        font-family: var(--sp-font-mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        margin: 0 0 0.75rem;
+      }
+
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.1rem);
+        line-height: 1.02;
+        letter-spacing: -0.022em;
+        font-weight: 620;
+        margin: 0 0 1rem;
+        max-width: 30ch;
+      }
+
+      .lede {
+        font-size: clamp(1.02rem, 1.6vw, 1.2rem);
+        line-height: 1.55;
+        max-width: var(--sp-measure);
+        margin: 0 0 1.75rem;
+      }
+
+      .meta {
+        font-family: var(--sp-font-mono);
+        font-size: 0.76rem;
+        color: var(--sp-muted);
+        line-height: 1.9;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--sp-border);
+      }
+
+      section {
+        margin-top: var(--gap);
+      }
+
+      h2 {
+        font-size: clamp(1.3rem, 2.4vw, 1.7rem);
+        letter-spacing: -0.014em;
+        font-weight: 600;
+        margin: 0 0 0.4rem;
+      }
+
+      h2 + .sub {
+        color: var(--sp-muted);
+        max-width: var(--sp-measure);
+        margin: 0 0 1.75rem;
+      }
+
+      h3 {
+        font-size: 1.02rem;
+        font-weight: 600;
+        margin: 0 0 0.35rem;
+      }
+
+      p,
+      li {
+        max-width: var(--sp-measure);
+      }
+
+      .verdict {
+        display: grid;
+        gap: 1px;
+        grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+        background: var(--sp-border);
+        border: 1px solid var(--sp-border);
+      }
+
+      .verdict > div {
+        background: var(--sp-bg);
+        padding: 1.4rem 1.5rem 1.6rem;
+      }
+
+      .verdict .n {
+        font-size: clamp(1.7rem, 3.4vw, 2.3rem);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        display: block;
+      }
+
+      .verdict .k {
+        font-family: var(--sp-font-mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        display: block;
+        margin-bottom: 0.7rem;
+      }
+
+      .verdict p {
+        margin: 0.6rem 0 0;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: var(--sp-muted);
+        max-width: none;
+      }
+
+      .scroller {
+        overflow-x: auto;
+        margin: 1.5rem 0;
+        border: 1px solid var(--sp-border);
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 44rem;
+        font-size: 0.88rem;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 0.65rem 1rem;
+        border-bottom: 1px solid var(--sp-border);
+        vertical-align: top;
+      }
+
+      thead th {
+        font-family: var(--sp-font-mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      td.num,
+      th.num {
+        font-family: var(--sp-font-mono);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      figure {
+        margin: 1.75rem 0;
+      }
+
+      figure svg {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+
+      figcaption {
+        font-size: 0.82rem;
+        color: var(--sp-muted);
+        margin-top: 0.85rem;
+        max-width: var(--sp-measure);
+      }
+
+      .diagram {
+        color: var(--sp-text);
+      }
+      .diagram .box {
+        fill: var(--sp-surface);
+        stroke: var(--sp-border);
+      }
+      .diagram .lbl {
+        fill: var(--sp-text);
+        font:
+          500 13px var(--sp-font-sans),
+          sans-serif;
+      }
+      .diagram .small {
+        fill: var(--sp-muted);
+        font:
+          400 11px var(--sp-font-mono),
+          monospace;
+      }
+      .diagram .wire {
+        stroke: var(--sp-border);
+        fill: none;
+        stroke-width: 1.5;
+      }
+      .diagram .hot {
+        stroke: var(--sp-chart-1);
+        fill: none;
+        stroke-width: 2;
+      }
+      .diagram .hotfill {
+        fill: var(--sp-chart-1);
+      }
+      .diagram .cap {
+        fill: var(--sp-chart-2);
+      }
+      .diagram .capstroke {
+        stroke: var(--sp-chart-2);
+        fill: none;
+        stroke-width: 1.5;
+        stroke-dasharray: 4 3;
+      }
+
+      ol.ceilings {
+        list-style: none;
+        counter-reset: c;
+        padding: 0;
+        margin: 0;
+      }
+
+      ol.ceilings > li {
+        counter-increment: c;
+        max-width: none;
+        display: grid;
+        grid-template-columns: 3.25rem 1fr;
+        gap: 0 1.25rem;
+        padding: 1.5rem 0;
+        border-top: 1px solid var(--sp-border);
+      }
+
+      ol.ceilings > li::before {
+        content: counter(c, decimal-leading-zero);
+        font-family: var(--sp-font-mono);
+        font-size: 0.8rem;
+        color: var(--sp-muted);
+        padding-top: 0.2rem;
+      }
+
+      .body {
+        min-width: 0;
+      }
+
+      .body > p {
+        margin: 0.5rem 0 0;
+      }
+
+      .tag {
+        font-family: var(--sp-font-mono);
+        font-size: 0.66rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 0.15rem 0.45rem;
+        border: 1px solid var(--sp-border);
+        color: var(--sp-muted);
+        white-space: nowrap;
+        margin-left: 0.5rem;
+        vertical-align: 0.15em;
+      }
+
+      .tag.blocker {
+        border-color: var(--sp-chart-1);
+        color: var(--sp-chart-1);
+      }
+
+      .tag.done {
+        border-color: var(--sp-chart-2);
+        color: var(--sp-chart-2);
+      }
+
+      ol.ceilings > li.done > .body > h3 {
+        color: var(--sp-muted);
+      }
+
+      .shipped {
+        border: 1px solid var(--sp-border);
+        padding: 1.5rem 1.75rem 1.75rem;
+        margin-top: 2rem;
+      }
+
+      .shipped ul {
+        margin: 1.1rem 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .shipped li {
+        max-width: none;
+        padding: 0.75rem 0;
+        border-top: 1px solid var(--sp-border);
+        line-height: 1.6;
+      }
+
+      .shipped li strong {
+        font-weight: 600;
+      }
+
+      .shipped li span {
+        color: var(--sp-muted);
+      }
+
+      .tier li > .tag:first-child {
+        margin-left: 0;
+        margin-right: 0.4rem;
+      }
+
+      .shipped .note {
+        margin: 1.2rem 0 0;
+        font-size: 0.88rem;
+        color: var(--sp-muted);
+      }
+
+      .where {
+        font-family: var(--sp-font-mono);
+        font-size: 0.76rem;
+        color: var(--sp-muted);
+        margin: 0.55rem 0 0;
+        line-height: 1.7;
+        word-break: break-word;
+      }
+
+      .good {
+        display: grid;
+        gap: 1.4rem 2.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+        margin-top: 1.5rem;
+      }
+
+      .good > div {
+        max-width: none;
+      }
+
+      .good p {
+        margin: 0.3rem 0 0;
+        font-size: 0.9rem;
+        color: var(--sp-muted);
+        max-width: none;
+      }
+
+      .tier {
+        border-left: 2px solid var(--sp-border);
+        padding: 0 0 0.5rem 1.5rem;
+        margin: 2rem 0 0;
+      }
+
+      .tier > h3 {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: baseline;
+        margin-bottom: 0.9rem;
+      }
+
+      .tier .cost {
+        font-family: var(--sp-font-mono);
+        font-size: 0.72rem;
+        font-weight: 400;
+        color: var(--sp-muted);
+        letter-spacing: 0.04em;
+      }
+
+      .tier ol {
+        padding-left: 1.3rem;
+        margin: 0;
+      }
+
+      .tier li {
+        margin-bottom: 0.7rem;
+        line-height: 1.6;
+      }
+
+      code {
+        font-size: 0.86em;
+      }
+
+      .caveat {
+        margin-top: var(--gap);
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--sp-border);
+        font-size: 0.9rem;
+        color: var(--sp-muted);
+      }
+
+      .caveat h2 {
+        font-size: 1rem;
+        color: var(--sp-text);
+      }
+    </style>
+  </head>
+  <body class="auto">
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">Scaling check · Roster</p>
+        <h1>One process, two seconds, ten connections</h1>
+        <p class="lede">
+          Roster is well-built for the size it is aimed at, and three specific
+          decisions cap it hard. The fan-out layer already scales; the
+          <em>supervisor</em> does not, and it lives inside the web server. This
+          is a read of the code as it stands on this branch — where the load
+          comes from, what saturates first, and what it costs to lift each
+          ceiling.
+        </p>
+        <p class="meta">
+          branch <strong>we-want-notification-system-fo</strong> · head
+          <strong>2761a6c</strong> · 350 TS/TSX files, ~35k lines<br />
+          reviewed 2026-09-20 · rev 2: five fixes landed · static read, no load test — see
+          <a href="#method">method</a>
+        </p>
+      </header>
+
+      <section>
+        <h2>Verdict</h2>
+        <p class="sub">
+          Capacity is set by concurrent <em>agent sessions</em>, not by users or
+          messages. Each live session is a 2-second polling loop inside the
+          Next.js process.
+        </p>
+        <div class="verdict">
+          <div>
+            <span class="k">Comfortable today</span>
+            <span class="n">5–15</span>
+            <p>
+              concurrent live sessions, one org, ≤25 members, ≤100 channels.
+              This is the shape the code was written for and it will feel fast.
+            </p>
+          </div>
+          <div>
+            <span class="k">First thing that breaks</span>
+            <span class="n">~30–50</span>
+            <p>
+              concurrent sessions, as written. The token-exchange half of that
+              pair is now gone and the pool is wider, so this has moved up —
+              by how much is unmeasured, and the number above is the one that
+              was reasoned about, not a new claim.
+            </p>
+          </div>
+          <div>
+            <span class="k">Hard wall</span>
+            <span class="n">1 instance</span>
+            <p>
+              A second container cannot be added at all. Session state and
+              uploaded files both live in process memory and on local disk.
+            </p>
+          </div>
+        </div>
+
+        <div class="shipped">
+          <h3>Landed since this was written</h3>
+          <p style="margin: 0.4rem 0 0; max-width: var(--sp-measure)">
+            The changes that lift a ceiling without anyone noticing — no UI
+            change, no behaviour change, no deployment change.
+          </p>
+          <ul>
+            <li>
+              <strong>Superset JWTs are cached per credential</strong>
+              <span>
+                — keyed by a hash of the stored ciphertext and held until a
+                minute before expiry, with concurrent callers sharing one mint
+                and failures never cached. Rotating a key invalidates it
+                immediately. Removes one HTTP round-trip and two queries from
+                every tick of every session.</span
+              >
+            </li>
+            <li>
+              <strong>Eight correlated subqueries per row became two batched
+                lookups</strong>
+              <span>
+                — reply counts, last-reply times, replier names and the lead
+                session now resolve in one grouped query and one
+                <code>DISTINCT ON</code> across the whole result set, the same
+                way delegation state already did.</span
+              >
+            </li>
+            <li>
+              <strong>The pool is sized deliberately</strong>
+              <span>
+                — 20 rather than pg's implicit 10, with a connection timeout so
+                a starved pool fails instead of hanging forever, and a generous
+                statement timeout so one slow query cannot hold a connection
+                indefinitely. Both overridable by env.</span
+              >
+            </li>
+            <li>
+              <strong><code>threads (organization_id, last_activity_at desc)</code>
+                is indexed</strong>
+              <span>
+                — the filter behind the live-thread query that runs on every
+                page load.</span
+              >
+            </li>
+            <li>
+              <strong>Migrations take an advisory lock</strong>
+              <span>
+                — and run on their own pool, so overlapping boots serialize
+                rather than race, and a long migration is not subject to the
+                runtime statement timeout.</span
+              >
+            </li>
+          </ul>
+          <p class="note">
+            Verified against Postgres with a 33-assertion equivalence harness
+            over the rewritten queries (including lead-session ordering and
+            deleted-reply exclusion), three concurrent migrators, and eight new
+            unit tests on the token cache. Full suite green.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Where the load actually comes from</h2>
+        <p class="sub">
+          Not requests. A single agent session generates more sustained traffic
+          than a browsing user does, and it generates it whether anyone is
+          watching or not.
+        </p>
+
+        <figure>
+          <svg
+            class="diagram"
+            viewBox="0 0 900 380"
+            role="img"
+            aria-labelledby="digtitle"
+          >
+            <title id="digtitle">
+              Every live session runs a 2-second poll loop inside the single web
+              process, which reaches Postgres, the Superset auth API and the
+              agent host on each tick.
+            </title>
+
+            <rect
+              class="box"
+              x="16"
+              y="70"
+              width="150"
+              height="74"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="34" y="100">Browsers</text>
+            <text class="small" x="34" y="120">RSC + tRPC</text>
+
+            <rect
+              class="box"
+              x="16"
+              y="196"
+              width="150"
+              height="74"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="34" y="226">Centrifugo</text>
+            <text class="small" x="34" y="246">ws fan-out</text>
+
+            <rect
+              x="250"
+              y="40"
+              width="230"
+              height="280"
+              rx="3"
+              fill="none"
+              class="capstroke"
+            ></rect>
+            <text class="small cap" x="250" y="30">
+              single node process — no second copy possible
+            </text>
+
+            <rect
+              class="box"
+              x="272"
+              y="64"
+              width="186"
+              height="64"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="288" y="90">Next.js server</text>
+            <text class="small" x="288" y="109">13–17 queries / page</text>
+
+            <rect
+              class="box"
+              x="272"
+              y="150"
+              width="186"
+              height="76"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="288" y="176">supervisor.ts</text>
+            <text class="small" x="288" y="195">in-memory Maps</text>
+            <text class="small" x="288" y="211">setInterval, 2000 ms</text>
+
+            <rect
+              class="box"
+              x="272"
+              y="248"
+              width="186"
+              height="54"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="288" y="272">.uploads/</text>
+            <text class="small" x="288" y="290">local disk</text>
+
+            <rect
+              class="box"
+              x="620"
+              y="30"
+              width="170"
+              height="64"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="636" y="56">Postgres</text>
+            <text class="small" x="636" y="75">pool max = 10</text>
+
+            <rect
+              class="box"
+              x="620"
+              y="140"
+              width="170"
+              height="64"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="636" y="166">api.superset.sh</text>
+            <text class="small" x="636" y="185">/auth/token</text>
+
+            <rect
+              class="box"
+              x="620"
+              y="250"
+              width="170"
+              height="64"
+              rx="3"
+            ></rect>
+            <text class="lbl" x="636" y="276">agent host</text>
+            <text class="small" x="636" y="295">transcript + bindings</text>
+
+            <path class="wire" d="M166 100 H272"></path>
+            <path class="wire" d="M166 226 H272 M366 150 V226 H176"></path>
+            <path class="wire" d="M458 90 H560 V62 H620"></path>
+
+            <path class="hot" d="M458 176 H545 V62 H620"></path>
+            <path class="hot" d="M458 182 H580 V172 H620"></path>
+            <path class="hot" d="M458 200 H580 V282 H620"></path>
+
+            <circle class="hotfill" cx="545" cy="62" r="3"></circle>
+            <circle class="hotfill" cx="580" cy="172" r="3"></circle>
+            <circle class="hotfill" cx="580" cy="282" r="3"></circle>
+
+            <text class="small" x="492" y="150">per tick, per session:</text>
+            <text class="small hotfill" x="492" y="232">
+              3–7 queries · 3 HTTP calls
+            </text>
+            <text class="small hotfill" x="492" y="248">
+              1 fresh JWT · ≤32 KB transcript
+            </text>
+
+            <text class="small cap" x="620" y="118">
+              shared with every page load
+            </text>
+          </svg>
+          <figcaption>
+            Red paths run on a timer, not on demand. The dashed box is the unit
+            of deployment: everything inside it exists exactly once.
+          </figcaption>
+        </figure>
+
+        <p>
+          <code>pollOnce</code> fires every 2 seconds for each live session. On
+          every tick it reads the session row, then calls
+          <code>hostConnection</code>, which does two more queries, decrypts the
+          stored Superset key, and <strong>mints a fresh JWT over HTTP</strong> —
+          there is no cache. Then it pulls up to 32 KB of transcript and lists
+          the agent bindings. When the progress line has changed (the normal
+          case while an agent is working) it writes the session row and
+          republishes thread state, which costs four more queries and two
+          Centrifugo publishes.
+        </p>
+      </section>
+
+      <section>
+        <h2>Capacity model</h2>
+        <p class="sub">
+          Polling cost only — page loads, message sends and terminal streams sit
+          on top of these numbers and share the same ten connections.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr>
+                <th>Concurrent live sessions</th>
+                <th class="num">Queries / s</th>
+                <th class="num">Outbound HTTP / s</th>
+                <th class="num">JWT mints / s</th>
+                <th class="num">Transcript ingress</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="num">5</td>
+                <td class="num">~18</td>
+                <td class="num">~13</td>
+                <td class="num">2.5</td>
+                <td class="num">80 KB/s</td>
+                <td>Comfortable.</td>
+              </tr>
+              <tr>
+                <td class="num">20</td>
+                <td class="num">~70</td>
+                <td class="num">~50</td>
+                <td class="num">10</td>
+                <td class="num">320 KB/s</td>
+                <td>
+                  Page latency starts to jitter behind the thread-list queries.
+                </td>
+              </tr>
+              <tr>
+                <td class="num">50</td>
+                <td class="num">~175</td>
+                <td class="num">~125</td>
+                <td class="num">25</td>
+                <td class="num">800 KB/s</td>
+                <td>
+                  Pool queuing is visible; 25 token exchanges/s from one IP is
+                  throttle territory.
+                </td>
+              </tr>
+              <tr>
+                <td class="num">100</td>
+                <td class="num">~350</td>
+                <td class="num">~250</td>
+                <td class="num">50</td>
+                <td class="num">1.6 MB/s</td>
+                <td>
+                  Not reachable on the current shape without the Tier&nbsp;0
+                  fixes.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Postgres itself is nowhere near its limit at 175 queries/s. What
+          saturates is the <strong>pool of ten</strong>, and the trigger is head-of-line
+          blocking: the thread-list queries build eight correlated subqueries per
+          row and sort on one of them, so a handful of slow ones hold connections
+          while every 2-second poller queues behind them.
+        </p>
+      </section>
+
+      <section>
+        <h2>Ceilings, ranked</h2>
+        <p class="sub">
+          Ordered by how much they cap the system, not by how hard they are to
+          fix. The first three are the ones that decide the architecture.
+        </p>
+
+        <ol class="ceilings">
+          <li>
+            <div class="body">
+              <h3>
+                The app cannot run two instances<span class="tag blocker"
+                  >blocker</span
+                >
+              </h3>
+              <p>
+                <code>hosts</code>, <code>watches</code>, <code>byTerminal</code>
+                and <code>pendingSteers</code> are module-level Maps.
+                <code>ensureStarted()</code> adopts <em>every</em> session in
+                <code>starting</code> or <code>running</code> into the local
+                process, and it is triggered by a page render. Two instances
+                means both poll every session and both can call
+                <code>finish()</code> — which double-posts the agent's reply
+                (the dedupe only compares against the immediately-previous agent
+                message) and settles the same delegation twice, steering the
+                parent thread twice.
+              </p>
+              <p class="where">
+                packages/api/src/services/sessions/supervisor.ts:114–118,
+                1423–1454 · apps/web/src/app/[slug]/[channelSlug]/page.tsx:55
+              </p>
+            </div>
+          </li>
+
+          <li class="done">
+            <div class="body">
+              <h3>
+                A JWT is minted from scratch on every poll tick<span class="tag done"
+                  >fixed</span
+                >
+              </h3>
+              <p>
+                <code>hostConnection</code> runs two queries, an AES-GCM
+                decrypt, and a live HTTP round-trip to
+                <code>api.superset.sh/api/auth/token</code> — every 2 seconds,
+                per session, and again inside <code>finish</code>,
+                <code>interrupt</code>, <code>resume</code> and
+                <code>cancelSession</code>. At 50 sessions that is 25 token
+                exchanges per second from a single IP. Caching by host key until
+                expiry removes a third of all polling traffic for about twenty
+                lines of code.
+              </p>
+              <p class="where">
+                packages/api/src/services/sessions/connection.ts:11–43 ·
+                packages/superset/src/client.ts:26
+              </p>
+            </div>
+          </li>
+
+          <li>
+            <div class="body">
+              <h3>
+                Attachments live on the container filesystem<span
+                  class="tag blocker"
+                  >blocker</span
+                >
+              </h3>
+              <p>
+                Uploads are written with <code>writeFile</code> under
+                <code>UPLOADS_DIR</code> and read back into memory in full to be
+                streamed through the Node process. That needs a single-attach
+                volume, which reinforces the one-instance limit, and it puts up
+                to 10 MB per download through the same event loop that renders
+                pages. No CDN, no range requests, no presigned URLs.
+              </p>
+              <p class="where">
+                packages/api/src/services/attachments.ts:37, 96–118, 165–168 ·
+                apps/web/src/app/api/files/[id]/route.ts
+              </p>
+            </div>
+          </li>
+
+          <li>
+            <div class="body">
+              <h3>Mention resolution rescans the whole org per message</h3>
+              <p>
+                <code>notifyForMessage</code> calls
+                <code>listMentionableChannels</code> (every channel in the org)
+                and <code>listMentionableMembers</code> (every member) just to
+                find <code>@handles</code> — on every message, including every
+                agent progress message the supervisor writes.
+                <code>sendMessage</code> does the same pair again when watch is
+                off. Two full org scans per message, twice.
+              </p>
+              <p class="where">
+                packages/api/src/services/notifications.ts:110–141 ·
+                packages/api/src/services/messages.ts:323–349 ·
+                packages/api/src/services/channels.ts:34
+              </p>
+            </div>
+          </li>
+
+          <li class="done">
+            <div class="body">
+              <h3>Eight correlated subqueries per thread row<span class="tag done">fixed</span></h3>
+              <p>
+                <code>replyCount</code>, <code>lastReplyAt</code> and
+                <code>replierNames</code> (itself a four-table join), plus four
+                lead-session lookups and <code>startedAt</code>, are computed
+                per row — up to 100 rows for a channel, 200 for the inbox. Worse,
+                the ordering is <code>desc(startedAtSql)</code>: sorting on a
+                correlated subquery means Postgres must evaluate it for every
+                candidate row before it can sort, so no index can help. This is
+                the query class that holds pool connections.
+              </p>
+              <p class="where">
+                packages/api/src/services/sessions/queries.ts:70–108, 227–247,
+                258–311
+              </p>
+            </div>
+          </li>
+
+          <li class="done">
+            <div class="body">
+              <h3>
+                No index on <code>threads.organization_id</code
+                ><span class="tag done">fixed</span>
+              </h3>
+              <p>
+                The table is indexed on <code>root_message_id</code>,
+                <code>project_id</code> and
+                <code>(project_id, last_activity_at)</code> — but
+                <code>listLiveThreads</code>, <code>listInboxThreads</code> and
+                the notification scope all filter on
+                <code>organization_id</code>. <code>listLiveThreads</code> runs
+                on <em>every page load</em> with a correlated
+                <code>EXISTS</code> per row. Fine at ten thousand threads,
+                not at a million.
+              </p>
+              <p class="where">
+                packages/db/src/schema/roster.ts:227–234 ·
+                packages/api/src/services/sessions/queries.ts:331–355
+              </p>
+            </div>
+          </li>
+
+          <li>
+            <div class="body">
+              <h3>
+                <code>threadDetail</code> loads every message in the thread
+              </h3>
+              <p>
+                No limit, no paging. Agent progress messages accumulate, and the
+                whole set is serialized through superjson into the RSC payload
+                whenever someone opens a thread. A long-running thread gets
+                slower to open forever.
+              </p>
+              <p class="where">
+                packages/api/src/services/sessions/queries.ts:530–548
+              </p>
+            </div>
+          </li>
+
+          <li>
+            <div class="body">
+              <h3>Every message serializes on one row</h3>
+              <p>
+                <code>allocateSeq</code> does
+                <code>UPDATE projects SET last_seq = last_seq + 1</code>, taking
+                a row lock on the channel for every message written. That caps
+                per-channel write rate and makes <code>projects</code> a
+                hot-update table — one dead tuple per message, on a row that
+                every page load also reads.
+              </p>
+              <p class="where">packages/api/src/services/channels.ts:335–344</p>
+            </div>
+          </li>
+
+          <li>
+            <div class="body">
+              <h3>Realtime publishes are fire-and-forget</h3>
+              <p>
+                <code>publish</code> has a 2-second timeout; failures are logged
+                and swallowed with no retry or outbox. Clients only reconcile on
+                subscribe or resubscribe, so a three-second Centrifugo hiccup
+                silently drops messages until someone reloads. Correctness of
+                the feed currently depends on the hop never failing.
+              </p>
+              <p class="where">
+                packages/api/src/services/centrifugo.ts:52–97 ·
+                apps/web/src/hooks/use-channel-realtime.ts
+              </p>
+            </div>
+          </li>
+
+          <li>
+            <div class="body">
+              <h3>Two or three queries before any handler runs</h3>
+              <p>
+                better-auth has no <code>cookieCache</code>, so every request
+                does a session lookup, and <code>memberProcedure</code> then does
+                a membership lookup. Multiplied across 13–17 queries per channel
+                page, this is a meaningful slice of the pool. The built-in rate
+                limiter is in-memory, so it resets on deploy and coordinates
+                with nothing.
+              </p>
+              <p class="where">
+                packages/auth/src/server.ts:47–50 ·
+                packages/api/src/trpc.ts:22–49
+              </p>
+            </div>
+          </li>
+
+          <li class="done">
+            <div class="body">
+              <h3>Migrations race on boot<span class="tag done">fixed</span></h3>
+              <p>
+                <code>instrumentation.register()</code> runs
+                <code>migrateToLatest()</code> in every booting instance with no
+                advisory lock. Harmless with one container; a rolling redeploy
+                that briefly overlaps two is a schema race.
+              </p>
+              <p class="where">apps/web/src/instrumentation.ts</p>
+            </div>
+          </li>
+
+          <li>
+            <div class="body">
+              <h3>Terminal streams are proxied through the app</h3>
+              <p>
+                Each open terminal holds an SSE response plus an outbound
+                WebSocket in the web process, base64-encoding every output chunk
+                on the way through. Cheap individually; at a few hundred
+                concurrent it makes the single instance a bandwidth bottleneck it
+                does not need to be — the browser could hold a scoped token and
+                talk to the relay directly.
+              </p>
+              <p class="where">
+                apps/web/src/app/api/terminals/stream/route.ts
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>What is already built right</h2>
+        <p class="sub">
+          These are the decisions that mean the fixes above are additive rather
+          than a rewrite.
+        </p>
+        <div class="good">
+          <div>
+            <h3>Fan-out is delegated, not homegrown</h3>
+            <p>
+              Centrifugo carries the WebSocket fan-out with short-lived HMAC
+              subscription tokens per channel. That layer is already horizontal
+              and needs nothing.
+            </p>
+          </div>
+          <div>
+            <h3>Notifications are subscriber-scoped</h3>
+            <p>
+              Fan-out is bounded by thread subscribers rather than broadcast to
+              the org, and a partial unique index on
+              <code>(member_id, message_id)</code> makes delivery idempotent.
+            </p>
+          </div>
+          <div>
+            <h3>Agent recursion is bounded</h3>
+            <p>
+              Depth capped at 3, cycles rejected by walking the ancestor chain,
+              and one open delegation per parent enforced by a partial unique
+              index. No runaway fan-out is possible.
+            </p>
+          </div>
+          <div>
+            <h3>Pagination is keyset, not offset</h3>
+            <p>
+              Messages page by <code>seq</code>; notifications use a proper
+              <code>(created_at, id)</code> tuple cursor. Both stay flat as the
+              tables grow.
+            </p>
+          </div>
+          <div>
+            <h3>Writes are idempotent at the edge</h3>
+            <p>
+              A unique index on <code>(project_id, client_id)</code> plus
+              <code>onConflictDoNothing</code> makes a retried send safe, which
+              is what lets the client be aggressive.
+            </p>
+          </div>
+          <div>
+            <h3>The host already pushes lifecycle</h3>
+            <p>
+              Start / Stop / Failed arrive over a WebSocket per host. The polling
+              loop is a belt-and-braces layer on top of a push channel that
+              already exists — which is exactly why it can be backed off.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Fix ladder</h2>
+        <p class="sub">
+          Each tier is independently shippable and each one buys roughly an
+          order of magnitude. Nothing in Tier 0 changes the architecture.
+        </p>
+
+        <div class="tier">
+          <h3>
+            Tier 0 — buy 5× without changing anything
+            <span class="cost">4 of 6 landed</span>
+          </h3>
+          <ol>
+            <li>
+              <span class="tag done">done</span>
+              <strong>Cache the Superset JWT per credential</strong> until expiry
+              minus a minute. Removes one HTTP call and two queries from every
+              tick of every session.
+            </li>
+            <li>
+              <span class="tag done">done</span>
+              <strong>Set <code>max</code> on the pg Pool explicitly</strong> —
+              it was the pg default of 10, which was the system's invisible
+              ceiling. Now 20, with a connection timeout and a generous
+              <code>statement_timeout</code>.
+            </li>
+            <li>
+              <span class="tag done">done</span>
+              <strong
+                >Index <code>threads (organization_id, last_activity_at desc)</code>.</strong
+              >
+            </li>
+            <li>
+              <strong>Enable better-auth <code>cookieCache</code></strong> to
+              drop a query from every single request.
+            </li>
+            <li>
+              <strong>Bound <code>threadDetail</code></strong> to the latest N
+              messages with paging backwards.
+            </li>
+            <li>
+              <strong>Resolve mentions with a targeted query</strong> by handle
+              instead of listing every channel and member in the org — or cache
+              those two lists per org for a few seconds.
+            </li>
+          </ol>
+        </div>
+
+        <div class="tier">
+          <h3>
+            Tier 1 — buy 10× and unlock a second instance
+            <span class="cost">~4 days left</span>
+          </h3>
+          <ol start="7">
+            <li>
+              <strong>Move attachments to object storage</strong> with presigned
+              URLs. Removes file bytes from the Node process and removes the
+              volume that pins the app to one container.
+            </li>
+            <li>
+              <span class="tag done">done</span>
+              <strong>Kill the eight-subqueries-per-row pattern.</strong> Taken
+              the no-drift route: batch the counters and the lead session across
+              the result set rather than denormalizing them onto
+              <code>threads</code>. Same numbers, no backfill, nothing that can
+              fall out of sync. Denormalizing is still available later if the
+              batched queries become the bottleneck.
+            </li>
+            <li>
+              <strong>Back the poll off adaptively.</strong> Lifecycle already
+              arrives by push. Poll at 2 s only while the transcript is actually
+              changing; decay to 10–30 s when it is not. On a typical session
+              this alone cuts polling traffic by most of it.
+            </li>
+          </ol>
+        </div>
+
+        <div class="tier">
+          <h3>
+            Tier 2 — become horizontal
+            <span class="cost">~2–3 weeks</span>
+          </h3>
+          <ol start="10">
+            <li>
+              <strong>Lift the supervisor out of the web process</strong> into a
+              dedicated worker, with session ownership claimed in Postgres — an
+              <code>owner_id</code> and <code>claimed_at</code> heartbeat on
+              <code>thread_sessions</code>, taken with
+              <code>SELECT … FOR UPDATE SKIP LOCKED</code>. The web tier then
+              becomes stateless and scales out, and the worker can be sharded by
+              host key.
+            </li>
+            <li>
+              <strong>Give realtime an outbox.</strong> Persist the event, then
+              publish, so a Centrifugo blip is a delay rather than a loss, and
+              let clients resync from a <code>seq</code> instead of refetching
+              the window.
+            </li>
+            <li>
+              <span class="tag done">done</span>
+              <strong>Take a <code>pg_advisory_lock</code> around migrations.</strong>
+              They also run on a dedicated pool now, so a long migration is not
+              cut short by the runtime statement timeout.
+            </li>
+          </ol>
+        </div>
+
+        <p style="margin-top: 2rem">
+          After Tier 0 and 1, one instance should carry roughly
+          <strong>150–250 concurrent sessions</strong> and a few hundred active
+          users. After Tier 2 the ceiling stops being Roster and becomes
+          Postgres write throughput and the agent hosts themselves.
+        </p>
+      </section>
+
+      <section class="caveat" id="method">
+        <h2>Method and caveats</h2>
+        <p>
+          This is a static read of the code on this branch — schema, services,
+          the supervisor, the realtime hooks and the deployment files — with no
+          load test and no production telemetry behind it. Query counts are
+          exact (traced by hand through the call paths). The throughput numbers
+          are arithmetic on those counts and on the constants in
+          <code>supervisor.ts</code>; they are a model, accurate to the right
+          order of magnitude, not measurements. The session-count thresholds are
+          the least certain figures here: where exactly the pool starts queuing
+          depends on Postgres round-trip time and on how large the thread tables
+          have grown, and the Superset token-exchange limit is set by that
+          service, not by this code. Measure before trusting the boundary; trust
+          the ranking.
+        </p>
+      </section>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1 @@
+CREATE INDEX "threads_org_activity_idx" ON "roster"."threads" USING btree ("organization_id","last_activity_at" DESC NULLS LAST);

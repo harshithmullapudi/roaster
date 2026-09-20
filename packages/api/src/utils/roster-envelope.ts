@@ -30,6 +30,7 @@ export function rosterEnvelope(args: EnvelopeArgs): string {
     "The `roster` CLI is available:",
     "  roster channels",
     "  roster read messages --channel-id <id> [--limit N]",
+    "  roster read messages --thread-id <id> [--limit N]",
     "  roster tasks create <title> [--channel-id <id>]",
     "  roster tasks status <task-id> <todo|in_progress|done>",
     `  roster ask <handle> <task> --thread ${args.threadId}`,
@@ -41,6 +42,10 @@ export function rosterEnvelope(args: EnvelopeArgs): string {
     "`roster ask` hands work to another channel's agent and returns straight",
     "away. After calling it, say what you asked for and end your turn — you",
     "are resumed automatically with their answer. Never poll or wait.",
+    "",
+    "A channel read marks every message that has a thread with that thread's",
+    "id. Read one with --thread-id to see the replies underneath it; your own",
+    "thread-id is above.",
   ];
 
   if (args.task) {

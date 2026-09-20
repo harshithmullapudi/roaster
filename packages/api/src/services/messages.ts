@@ -7,7 +7,20 @@ import {
   threads,
   users,
 } from "@roster/db";
-import { and, asc, desc, eq, gte, isNull, lt, ne, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { type DeleteRefusal, deleteRefusal } from "../lib/message-delete";
 import { DELEGATION_KIND } from "../lib/message-kind";
@@ -75,6 +88,33 @@ export async function listMessages(args: {
     .limit(limit);
 
   return withAttachments(rows.reverse().map(toChannelMessage));
+}
+
+export async function replyCountsByThread(
+  threadIds: string[],
+): Promise<Map<string, number>> {
+  if (threadIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      threadId: messages.threadId,
+      replies: sql<number>`count(*)::int`,
+    })
+    .from(messages)
+    .where(
+      and(
+        inArray(messages.threadId, threadIds),
+        isNotNull(messages.parentMessageId),
+        isNull(messages.deletedAt),
+      ),
+    )
+    .groupBy(messages.threadId);
+
+  return new Map(
+    rows.flatMap((row) =>
+      row.threadId ? [[row.threadId, Number(row.replies)] as const] : [],
+    ),
+  );
 }
 
 async function findByClientId(args: {

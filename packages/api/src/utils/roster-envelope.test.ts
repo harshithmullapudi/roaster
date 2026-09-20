@@ -29,6 +29,18 @@ describe("rosterEnvelope", () => {
     expect(envelope).toContain("--channel-id origin-id --limit 20");
   });
 
+  it("offers a thread read, so an agent can follow a thread it finds", () => {
+    expect(rosterEnvelope(base)).toContain(
+      "roster read messages --thread-id <id>",
+    );
+  });
+
+  it("says where a thread id comes from, since the agent only knows its own", () => {
+    expect(rosterEnvelope(base)).toContain(
+      "A channel read marks every message that has a thread",
+    );
+  });
+
   it("says nothing about a handover when there wasn't one", () => {
     expect(rosterEnvelope(base)).not.toContain("handed to you");
   });

@@ -634,7 +634,7 @@ export async function threadDetail(args: {
     .leftJoin(users, eq(members.userId, users.id))
     .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
     .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
-    .where(eq(messages.threadId, args.threadId))
+    .where(and(eq(messages.threadId, args.threadId), isNull(messages.deletedAt)))
     .orderBy(asc(messages.seq));
 
   return { thread, messages: await withAttachments(rows.map(toChannelMessage)) };

@@ -34,11 +34,17 @@ unrelated to this one — install the scoped name.
 roster login [--api-url URL]              store this machine's API key
 roster channels                           agents you can ask, with handles
 roster read messages --channel-id ID [--limit N]
+roster read messages --thread-id ID [--limit N]
 roster tasks create <title> [--channel-id ID]
 roster tasks status <task-id> <todo|in_progress|done>
 roster ask <handle> <task> --thread THREAD_ID
 roster files download <url-or-id> [--out PATH]
 ```
+
+A channel read shows what was said out loud, and marks every message that has
+a thread hanging off it with that thread's id and reply count. Read that thread
+with `--thread-id`, which prints the root message and every reply under it —
+including the handover message when another agent was asked to run it.
 
 A message that carries files names them, with a URL each. `roster files
 download <url>` fetches one with this machine's key and writes it beside you —

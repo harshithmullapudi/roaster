@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import type { ReactionRef, ThreadDetail } from "@roster/api";
+import type { MessageAttachment, ReactionRef, ThreadDetail } from "@roster/api";
 
 import type { MessageItem } from "~/types";
 
@@ -85,6 +85,7 @@ export function optimisticMessage(args: {
   text: string;
   authorName: string;
   authorEmail: string;
+  attachments?: MessageAttachment[];
 }): MessageItem {
   return {
     id: args.clientId,
@@ -104,6 +105,7 @@ export function optimisticMessage(args: {
     authorMemberId: null,
     authorName: args.authorName,
     authorEmail: args.authorEmail,
+    attachments: args.attachments ?? [],
     reactions: [],
     pending: true,
   };
@@ -195,8 +197,45 @@ export function parsePublishedMessage(data: unknown): MessageItem | null {
       typeof raw.authorMemberId === "string" ? raw.authorMemberId : null,
     authorName: typeof raw.authorName === "string" ? raw.authorName : null,
     authorEmail: typeof raw.authorEmail === "string" ? raw.authorEmail : null,
+    attachments: parseAttachments(raw.attachments),
     reactions: toReactionRefs(raw.reactions),
   };
+}
+
+/**
+ * Realtime carries a message as plain JSON, and every field it is read back
+ * from is named explicitly — a file list left out here would arrive over tRPC
+ * and vanish over the socket.
+ */
+function parseAttachments(value: unknown): MessageAttachment[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+
+    const raw = entry as Record<string, unknown>;
+    if (
+      typeof raw.id !== "string" ||
+      typeof raw.filename !== "string" ||
+      typeof raw.mimeType !== "string" ||
+      typeof raw.size !== "number" ||
+      typeof raw.url !== "string"
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        id: raw.id,
+        filename: raw.filename,
+        mimeType: raw.mimeType,
+        size: raw.size,
+        width: typeof raw.width === "number" ? raw.width : null,
+        height: typeof raw.height === "number" ? raw.height : null,
+        url: raw.url,
+      },
+    ];
+  });
 }
 
 export interface MessageReaction {

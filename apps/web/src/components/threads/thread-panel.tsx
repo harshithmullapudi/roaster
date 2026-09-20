@@ -4,7 +4,10 @@ import type { ThreadDetail } from "@roster/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
-import { Composer } from "~/components/messages/composer";
+import {
+  Composer,
+  type ComposerSendPayload,
+} from "~/components/messages/composer";
 import { MessageRow } from "~/components/messages/message-row";
 import { useNow } from "~/hooks/use-now";
 import { useThreadRealtime } from "~/hooks/use-thread-realtime";
@@ -66,7 +69,7 @@ export function ThreadPanel({
     if (node) node.scrollTop = node.scrollHeight;
   }, [detail]);
 
-  async function send(payload: { body: unknown; text: string }) {
+  async function send(payload: ComposerSendPayload) {
     const clientId = crypto.randomUUID();
     const optimistic: MessageItem = {
       ...optimisticMessage({
@@ -76,6 +79,7 @@ export function ThreadPanel({
         text: payload.text,
         authorName,
         authorEmail,
+        attachments: payload.attachments,
       }),
       threadId,
       parentMessageId: detail.thread.rootMessageId,
@@ -92,6 +96,7 @@ export function ThreadPanel({
         text: payload.text,
         clientId,
         threadId,
+        attachmentIds: payload.attachmentIds,
       });
       queryClient.setQueryData<ThreadDetail>(queryKey, (previous) =>
         previous ? mergeReply(previous, saved as MessageItem) : previous,
@@ -170,7 +175,7 @@ export function ThreadPanel({
       </div>
 
       <div className="pb-safe-2 shrink-0 px-2 sm:px-3 sm:pb-3">
-        <Composer placeholder="Reply…" onSend={send} />
+        <Composer placeholder="Reply…" projectId={projectId} onSend={send} />
       </div>
     </div>
   );

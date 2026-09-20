@@ -141,6 +141,53 @@ export const messages = rosterSchema.table(
 export type SelectMessage = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
 
+/**
+ * A file attached to a message. The row is written when the file is uploaded,
+ * before the message it belongs to exists — the composer uploads on paste or
+ * drop, and the author may never press send. `message_id` is therefore null
+ * until the message binds it, and a null one is an upload in flight or one
+ * that was abandoned.
+ */
+export const attachments = rosterSchema.table(
+  "attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+
+    messageId: uuid("message_id").references(() => messages.id, {
+      onDelete: "cascade",
+    }),
+
+    uploaderMemberId: uuid("uploader_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    size: integer("size").notNull(),
+
+    /** Path under the uploads root. Never interpolated from user input. */
+    storageKey: text("storage_key").notNull(),
+
+    width: integer("width"),
+    height: integer("height"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("attachments_message_idx").on(table.messageId),
+    index("attachments_project_idx").on(table.projectId),
+  ],
+);
+
+export type SelectAttachment = typeof attachments.$inferSelect;
+export type InsertAttachment = typeof attachments.$inferInsert;
+
 export const reactions = rosterSchema.table(
   "reactions",
   {

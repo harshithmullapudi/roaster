@@ -62,7 +62,25 @@ already selects the Dockerfile builder. Then:
    existed — when `db:push` was the way — is adopted on that same boot: it
    holds the tables with no record of them, so the server writes the journal
    rows for what is already there and runs only what is missing.
-4. Leave `CENTRIFUGO_*` empty and realtime turns itself off — messages fall
+4. **Mount a volume for attachments** at `/app/uploads`, which is where the
+   image points `UPLOADS_DIR`. Files posted in a channel are written there,
+   and a container filesystem does not survive a redeploy — without a volume
+   the rows outlive their files and every preview comes back 404.
+
+   Railway mounts a volume owned by root, and a `chown` in the image runs
+   under the mount point rather than on it, so an unprivileged server would
+   be unable to write to it. `docker-entrypoint.sh` re-owns the directory
+   after the mount and then drops to `nextjs`, which is why this needs no
+   `RAILWAY_RUN_UID=0`. What the volume does cost is worth knowing:
+   **replicas cannot be used with a volume**, so the service cannot scale
+   horizontally, and a redeploy takes a moment of downtime because only one
+   deployment can hold the mount. A service gets one volume, sized by plan —
+   0.5 GB on Free, 5 GB on Hobby, 50 GB on Pro.
+
+   Outgrowing that, or wanting more than one instance, means moving the
+   bytes to object storage: `packages/api/src/services/attachments.ts` is
+   the only module that touches the disk.
+5. Leave `CENTRIFUGO_*` empty and realtime turns itself off — messages fall
    back to plain tRPC. Wire it up by running Centrifugo as a second service
    and setting `CENTRIFUGO_URL` to its private URL.
 

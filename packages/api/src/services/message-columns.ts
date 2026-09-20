@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { agentDisplay, agentHandle } from "../lib/agent-identity";
+import { attachmentsForMessages, type MessageAttachment } from "./attachments";
 import { type ReactionRef, toReactionRefs } from "./reactions";
 
 /**
@@ -32,6 +33,8 @@ export interface ChannelMessage {
   agentChannelId: string | null;
   agentDisplay: string | null;
   agentHandle: string | null;
+  /** Files sent with the message. Empty for everything that carries none. */
+  attachments: MessageAttachment[];
   reactions: ReactionRef[];
 }
 
@@ -106,5 +109,32 @@ export function toChannelMessage(row: MessageRow): ChannelMessage {
     agentHandle: agentChannelSlug
       ? agentHandle(agentOwnerName, agentChannelSlug)
       : null,
+    attachments: [],
   };
+}
+
+/**
+ * Fills in the attachments for messages already read. One query for the whole
+ * page rather than one per row — and every reader has to call it, or a message
+ * comes back looking like it was sent without its files.
+ */
+export async function withAttachments(
+  list: ChannelMessage[],
+): Promise<ChannelMessage[]> {
+  if (list.length === 0) return list;
+
+  const grouped = await attachmentsForMessages(list.map((message) => message.id));
+  if (grouped.size === 0) return list;
+
+  return list.map((message) => {
+    const files = grouped.get(message.id);
+    return files ? { ...message, attachments: files } : message;
+  });
+}
+
+export async function withAttachment(
+  message: ChannelMessage,
+): Promise<ChannelMessage> {
+  const [hydrated] = await withAttachments([message]);
+  return hydrated ?? message;
 }

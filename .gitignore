@@ -21,3 +21,6 @@ coverage
 
 # What the desktop release workflow stages for upload.
 release/
+
+# Message attachments, written to disk in development.
+.uploads/

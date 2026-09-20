@@ -29,6 +29,7 @@ const message = (id: string, seq: number): MessageItem => ({
   authorMemberId: "member-1",
   authorName: "Harshith",
   authorEmail: "harshith@tegon.ai",
+  attachments: [],
   reactions: [],
 });
 

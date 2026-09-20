@@ -5,6 +5,7 @@ import { useEditorState } from "@tiptap/react";
 import {
   Bold,
   Code,
+  Paperclip,
   Italic,
   Link as LinkIcon,
   List,
@@ -18,9 +19,10 @@ import { ToolbarButton } from "./toolbar-button";
 
 export interface ComposerToolbarProps {
   editor: Editor;
+  onAttach: () => void;
 }
 
-export function ComposerToolbar({ editor }: ComposerToolbarProps) {
+export function ComposerToolbar({ editor, onAttach }: ComposerToolbarProps) {
   const state = useEditorState({
     editor,
     selector: ({ editor: instance }) => ({
@@ -109,6 +111,12 @@ export function ComposerToolbar({ editor }: ComposerToolbarProps) {
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
       >
         <Code size={14} />
+      </ToolbarButton>
+
+      <div className="bg-border mx-1 h-4 w-px shrink-0" />
+
+      <ToolbarButton title="Attach a file" onClick={onAttach}>
+        <Paperclip size={14} />
       </ToolbarButton>
     </div>
   );

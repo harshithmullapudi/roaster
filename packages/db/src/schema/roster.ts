@@ -141,6 +141,32 @@ export const messages = rosterSchema.table(
 export type SelectMessage = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
 
+export const reactions = rosterSchema.table(
+  "reactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("reactions_message_member_emoji_idx").on(
+      table.messageId,
+      table.memberId,
+      table.emoji,
+    ),
+    index("reactions_message_idx").on(table.messageId),
+  ],
+);
+
+export type SelectReaction = typeof reactions.$inferSelect;
+export type InsertReaction = typeof reactions.$inferInsert;
+
 export const threads = rosterSchema.table(
   "threads",
   {
@@ -155,6 +181,12 @@ export const threads = rosterSchema.table(
     rootMessageId: uuid("root_message_id").notNull(),
 
     turnCount: integer("turn_count").default(0).notNull(),
+
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedByMemberId: uuid("completed_by_member_id").references(
+      () => members.id,
+      { onDelete: "set null" },
+    ),
   },
   (table) => [
     uniqueIndex("threads_root_message_idx").on(table.rootMessageId),

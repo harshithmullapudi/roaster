@@ -10,6 +10,7 @@ import type { ThreadItem } from "~/utils/thread-rows";
 
 import { MessageActions } from "./message-actions";
 import { MessageBody } from "./message-body";
+import { MessageReactions } from "./message-reactions";
 
 export interface MessageRowProps {
   message: MessageItem;
@@ -30,13 +31,16 @@ export function MessageRow({
 }: MessageRowProps) {
   const name = speakerName(message);
 
+  const live = !message.pending && !message.failed;
+
   const deletable =
     onDelete !== undefined &&
     memberId !== undefined &&
     message.kind === "user" &&
     message.authorMemberId === memberId &&
-    !message.pending &&
-    !message.failed;
+    live;
+
+  const completable = thread !== undefined && memberId !== undefined && live;
 
   return (
     <div
@@ -46,10 +50,13 @@ export function MessageRow({
         message.pending && "opacity-60",
       )}
     >
-      {deletable ? (
+      {deletable || completable ? (
         <MessageActions
           hasSession={Boolean(thread)}
-          onDelete={() => onDelete(message.id)}
+          thread={completable ? thread : undefined}
+          onDelete={
+            deletable && onDelete ? () => onDelete(message.id) : undefined
+          }
         />
       ) : null}
 
@@ -76,6 +83,14 @@ export function MessageRow({
         <div className="min-w-0">
           <MessageBody body={message.body} text={message.text} />
         </div>
+        {memberId && !message.pending && !message.failed ? (
+          <MessageReactions
+            messageId={message.id}
+            projectId={message.projectId}
+            reactions={message.reactions}
+            memberId={memberId}
+          />
+        ) : null}
         {thread && threadHref ? (
           <ThreadAffordance thread={thread} href={threadHref} />
         ) : null}

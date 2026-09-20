@@ -49,6 +49,10 @@ export function channelName(projectId: string): string {
   return `channel:${projectId}`;
 }
 
+export function threadChannelName(threadId: string): string {
+  return `thread:${threadId}`;
+}
+
 export async function publish(
   channel: string,
   data: unknown,

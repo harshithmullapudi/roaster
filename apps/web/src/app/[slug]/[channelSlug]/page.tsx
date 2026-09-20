@@ -133,6 +133,7 @@ export default async function ChannelPage({
           <ThreadSidebar
             projectId={channel.id}
             threadId={openThreadId}
+            memberId={member.id}
             authorName={session.user.name}
             authorEmail={session.user.email}
             detail={openThread}

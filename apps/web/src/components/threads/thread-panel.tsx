@@ -30,6 +30,7 @@ import { WaitingOnCard } from "./waiting-on";
 export interface ThreadPanelProps {
   projectId: string;
   threadId: string;
+  memberId: string;
   authorName: string;
   authorEmail: string;
   initialDetail: ThreadDetail;
@@ -38,6 +39,7 @@ export interface ThreadPanelProps {
 export function ThreadPanel({
   projectId,
   threadId,
+  memberId,
   authorName,
   authorEmail,
   initialDetail,
@@ -108,7 +110,9 @@ export function ThreadPanel({
         className="overscroll-contain flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
         <div className="flex w-full flex-col pb-3">
-          {root ? <MessageRow message={root} leading /> : null}
+          {root ? (
+            <MessageRow message={root} memberId={memberId} leading />
+          ) : null}
 
           <ReplyDivider count={replies.length} />
 
@@ -116,6 +120,7 @@ export function ThreadPanel({
             <MessageRow
               key={message.clientId ?? message.id}
               message={message}
+              memberId={memberId}
               leading={startsNewGroup(message, replies[index - 1])}
             />
           ))}

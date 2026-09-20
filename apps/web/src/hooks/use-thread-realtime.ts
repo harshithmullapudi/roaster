@@ -7,7 +7,11 @@ import { useEffect } from "react";
 import type { ThreadDetail } from "@roster/api";
 
 import type { MessageItem } from "~/types";
-import { parsePublishedMessage } from "~/utils/message-cache";
+import {
+  applyReactionToCaches,
+  parsePublishedMessage,
+  parsePublishedReaction,
+} from "~/utils/message-cache";
 import { mergeReply } from "~/utils/thread-detail";
 import { parsePublishedThread, threadDetailKey } from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
@@ -77,6 +81,13 @@ export function useThreadRealtime(threadId: string, projectId: string): void {
           queryClient.setQueryData<ThreadDetail>(queryKey, (previous) =>
             previous ? mergeReply(previous, message as MessageItem) : previous,
           );
+          return;
+        }
+
+        const reaction = parsePublishedReaction(ctx.data);
+        if (reaction) {
+          if (reaction.threadId !== threadId) return;
+          applyReactionToCaches(queryClient, reaction);
           return;
         }
 

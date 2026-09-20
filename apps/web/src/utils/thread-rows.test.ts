@@ -1,7 +1,21 @@
 import type { WaitingOn } from "@roster/api";
 import { describe, expect, it } from "vitest";
 
-import { isActive, parsePublishedThread, waitingOnLabel } from "./thread-rows";
+import {
+  isActive,
+  parsePublishedThread,
+  statusLabel,
+  waitingOnLabel,
+} from "./thread-rows";
+
+const STATUSES = [
+  "starting",
+  "running",
+  "waiting",
+  "completed",
+  "failed",
+  "canceled",
+];
 
 const waiting: WaitingOn = {
   handle: "sol-superset",
@@ -37,6 +51,35 @@ describe("isActive", () => {
     expect(isActive("completed")).toBe(false);
     expect(isActive("failed")).toBe(false);
     expect(isActive("canceled")).toBe(false);
+  });
+
+  it("settles a completed thread whatever its session was doing", () => {
+    const completedAt = new Date("2026-09-18T11:00:00.000Z");
+    for (const status of STATUSES) {
+      expect(isActive(status, completedAt)).toBe(false);
+    }
+  });
+
+  it("leaves a thread that was never completed to its session", () => {
+    expect(isActive("running", null)).toBe(true);
+    expect(isActive("waiting", undefined)).toBe(true);
+    expect(isActive("failed", null)).toBe(false);
+  });
+});
+
+describe("statusLabel", () => {
+  it("reads as completed off the completion flag alone", () => {
+    const completedAt = new Date("2026-09-18T11:00:00.000Z");
+    for (const status of STATUSES) {
+      expect(statusLabel(status, completedAt)).toBe("Completed");
+    }
+  });
+
+  it("still names the session status when nobody completed the thread", () => {
+    expect(statusLabel("running")).toBe("Running");
+    expect(statusLabel("waiting", null)).toBe("Waiting");
+    expect(statusLabel("completed")).toBe("Completed");
+    expect(statusLabel("canceled", null)).toBe("Canceled");
   });
 });
 
@@ -80,6 +123,35 @@ describe("parsePublishedThread", () => {
     expect(
       parsePublishedThread(published({ waitingOn: { handle: "sol-superset" } }))
         ?.waitingOn,
+    ).toBeNull();
+  });
+
+  it("carries the completion across the wire, so other viewers see it", () => {
+    const parsed = parsePublishedThread(
+      published({
+        completedAt: "2026-09-18T11:00:00.000Z",
+        completedByMemberId: "member-1",
+      }),
+    );
+    expect(parsed?.completedAt).toEqual(new Date("2026-09-18T11:00:00.000Z"));
+    expect(parsed?.completedByMemberId).toBe("member-1");
+    expect(isActive(parsed?.status ?? "", parsed?.completedAt)).toBe(false);
+  });
+
+  it("leaves an open thread uncompleted", () => {
+    const parsed = parsePublishedThread(published({}));
+    expect(parsed?.completedAt).toBeNull();
+    expect(parsed?.completedByMemberId).toBeNull();
+  });
+
+  it("refuses a completion it cannot read", () => {
+    const parsed = parsePublishedThread(
+      published({ completedAt: "not a date", completedByMemberId: 7 }),
+    );
+    expect(parsed?.completedAt).toBeNull();
+    expect(parsed?.completedByMemberId).toBeNull();
+    expect(
+      parsePublishedThread(published({ completedAt: {} }))?.completedAt,
     ).toBeNull();
   });
 });

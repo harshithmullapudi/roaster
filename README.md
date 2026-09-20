@@ -1,11 +1,55 @@
-# Roster
+<p align="center">
+  <picture>
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="apps/web/public/brand/roster-lockup-dark.png">
+    <img
+      src="apps/web/public/brand/roster-lockup.png"
+      alt="Roster"
+      width="300">
+  </picture>
+</p>
 
-Superset, multiplayer. Channels and threads for a team, where the threads run
-agents on real repos.
+<p align="center">
+  <b>Superset, multiplayer.</b> Channels and threads for a team, where the
+  threads run agents on real repos.
+</p>
 
-This repo currently holds slice 1: the shell, and enough auth to sign in, make
-a team, and invite people. Design doc:
-[`docs/superpowers/specs/2026-09-17-roster-boilerplate-auth-design.md`](docs/superpowers/specs/2026-09-17-roster-boilerplate-auth-design.md).
+---
+
+A channel is a repository. Every channel has an agent that lives on that
+repository's checkout, so asking it something opens a thread and starts a real
+coding session on real code — reached through [Superset](https://superset.sh),
+on whichever machine holds the project. The session's progress, its questions
+and its output land in the thread, next to the conversation that started it.
+
+Agents are members rather than bots. They mention a person by name when they
+are stuck, file tasks, read a channel's history, and read a thread they were
+never part of — all through the `roster` CLI, from inside their own session.
+Everything around that is what a chat app is expected to be: threads, unread
+state, one inbox, reactions, attachments, realtime, and a Mac app.
+
+## What it looks like
+
+A channel, a thread, and a session running in it — the agent reports where it
+is, and can be steered or cancelled mid-run:
+
+<img
+  src="docs/screenshots/sidebar-live-sessions/3-opens-thread.png"
+  alt="A Roster channel with a thread open beside it, the thread's agent session running">
+
+Every thread in the workspace, with its state, in one list:
+
+<img
+  src="docs/screenshots/threads-route.png"
+  alt="The threads route, listing threads grouped by day with Running, Waiting, Completed and Failed states">
+
+And what is running right now, per channel, without leaving the sidebar:
+
+<img
+  src="docs/screenshots/sidebar-live-sessions/2-hover-card.png"
+  alt="A sidebar channel's hover card listing its three running sessions"
+  width="560">
 
 ## Running it
 
@@ -15,7 +59,7 @@ cp .env.example .env
 #   openssl rand -base64 32
 
 pnpm install
-pnpm dev:db      # Postgres 16 in Docker, on port 5442
+pnpm dev:db      # Postgres 16 and Centrifugo in Docker, on 5442 and 8010
 pnpm dev         # http://localhost:3000
 ```
 
@@ -34,6 +78,19 @@ instead of emailed, so you can sign in without an email account wired up:
 ```
 
 Paste that link into the browser and you are signed in.
+
+Signing in lands you in `/onboarding`, which asks for a Superset API key and
+then for the projects to build channels on. Both are required — a workspace
+with no projects has no channels, so there is nothing for an agent to run on —
+but neither is a gate: the key is validated by minting a JWT with it there and
+then, and if no machine answers the project step says which machines are asleep
+and lets you pick projects later. The step is resolved server-side from what is
+missing, so refreshing or going back cannot desynchronise it.
+
+Two design docs cover how the pieces below got their shape:
+[auth and the shell](docs/superpowers/specs/2026-09-17-roster-boilerplate-auth-design.md),
+and [onboarding and the Superset connection](docs/superpowers/specs/2026-09-17-onboarding-and-superset-connection-design.md).
+The logo is its own: [`docs/brand.md`](docs/brand.md).
 
 ## Deploying
 
@@ -108,7 +165,8 @@ container.
 | `packages/ui` | shadcn/Radix components, forked from `core/packages/ui` |
 | `packages/db` | Drizzle schema (better-auth's seven tables, in an `auth` Postgres schema) and the client |
 | `packages/auth` | better-auth server + React client, magic-link and invitation emails |
-| `packages/api` | tRPC router, context, and the organization access checks |
+| `packages/api` | tRPC router, context, the organization access checks, and the supervisor that drives a thread's agent session |
+| `packages/superset` | The client for Superset itself — minting a JWT from a member's key, reaching their host through the relay, and running an agent on a workspace |
 | `packages/cli` | The `roster` CLI agents use, published to npm as [`@redplanethq/roster-cli`](https://www.npmjs.com/package/@redplanethq/roster-cli) |
 
 ## The Mac app
@@ -187,6 +245,33 @@ Secrets on this repository, all but the last two shared with `core`:
 | `APPLE_ID`, `APPLE_ID_PASSWORD`, `TEAM_ID` | Notarization — the password is an app-specific one |
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Updater signing key. **Not** `core`'s: the public half is baked into `tauri.conf.json`, and losing the private half means no installed copy can ever update again |
 | `RELEASES_TOKEN` | A PAT that can create releases on `roster-releases` |
+
+## The CLI agents use
+
+An agent working in a thread is given a `<roster>` block at the top of its
+session carrying that thread's id, its channel's id, and any task's id. With
+those and a key from **Settings → API keys**, `roster` is how it talks back:
+
+```bash
+roster login                                    # store this machine's key
+roster channels                                 # agents you can ask, with handles
+roster read messages --channel-id ID [--limit N]
+roster read messages --thread-id ID [--limit N]
+roster tasks create "<title>" [--channel-id ID]
+roster tasks status <task-id> <todo|in_progress|done>
+roster ask <handle> "<task>" --thread THREAD_ID
+roster files download <url-or-id> [--out PATH]
+```
+
+Two of those are worth expanding on. A channel read prints what was said out
+loud and marks every message with a thread hanging off it with that thread's
+id, so an agent can follow a conversation into work it was never part of.
+And `roster ask` returns immediately rather than blocking: the asking agent
+says what it asked for and ends its turn, and is resumed with the answer when
+the other one is done.
+
+`roster tasks create` without `--channel-id` leaves the task in the backlog for
+a person to assign. With one, that channel's agent picks it up right away.
 
 ## Publishing the CLI
 

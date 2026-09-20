@@ -365,13 +365,16 @@ wm_boxes = scaled(wm, 1)
 render(out / "roster-mark.png", mark_cells, mark_w, mark_h, 100, FG)
 render(out / "roster-wordmark.png", wm, wm_w, wm_h, 40, FG)
 # The lockup PNG needs the two cell sizes, so it is drawn rather than rendered.
+# It comes in both inks because the ground is transparent: dark ink vanishes on
+# a dark page, which is what the README's <picture> switches between.
 LK_SCALE = 4
-lk_px = canvas(lk_w * LK_SCALE, lk_h * LK_SCALE, (0, 0, 0, 0))
-for x, y, s in lk:
-    for py in range(y * LK_SCALE, (y + s) * LK_SCALE):
-        for px in range(x * LK_SCALE, (x + s) * LK_SCALE):
-            lk_px[py][px] = list(FG)
-png(out / "roster-lockup.png", lk_px, lk_w * LK_SCALE, lk_h * LK_SCALE)
+for name, ink in (("roster-lockup.png", FG), ("roster-lockup-dark.png", LIGHT_FG)):
+    lk_px = canvas(lk_w * LK_SCALE, lk_h * LK_SCALE, (0, 0, 0, 0))
+    for x, y, s in lk:
+        for py in range(y * LK_SCALE, (y + s) * LK_SCALE):
+            for px in range(x * LK_SCALE, (x + s) * LK_SCALE):
+                lk_px[py][px] = list(ink)
+    png(out / name, lk_px, lk_w * LK_SCALE, lk_h * LK_SCALE)
 
 # Web icons: light glyph on Superset's dark ground, on the 9-cell icon grid.
 ICON_GRID = mark_w + ICON_MARGIN * 2

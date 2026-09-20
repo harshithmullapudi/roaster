@@ -48,6 +48,7 @@ python3 scripts/generate-logo.py     # no dependencies
 | File | Grid | Use |
 | --- | --- | --- |
 | `apps/web/public/brand/roster-lockup.svg` / `.png` | 210x35 | Mark + ROSTER. Default where there's room. |
+| `apps/web/public/brand/roster-lockup-dark.png` | 210x35 | The same lockup in light ink. The ground is transparent, so dark ink disappears on a dark page — the README picks between the two on `prefers-color-scheme`. |
 | `apps/web/public/brand/roster-wordmark.svg` / `.png` | 23x5 | ROSTER alone. |
 | `apps/web/public/brand/roster-mark.svg` / `.png` | 7x7 | The mark alone. |
 | `apps/web/public/brand/roster-icon.svg` | 9x9 | Square app icon with margin. |

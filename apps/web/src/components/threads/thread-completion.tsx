@@ -10,8 +10,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  DropdownMenuItem,
 } from "@roster/ui";
 import { useQueryClient } from "@tanstack/react-query";
+import { CircleCheck, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 import { liveThreadsKey } from "~/utils/live-threads";
@@ -39,7 +41,7 @@ export interface ThreadCompletion {
   confirming: boolean;
   error: string | null;
   start: () => void;
-  complete: () => Promise<void>;
+  complete: () => Promise<boolean>;
   setConfirming: (open: boolean) => void;
   setError: (message: string | null) => void;
 }
@@ -73,18 +75,22 @@ export function useThreadCompletion({
           (previous) => (previous ? mergeThread(previous, fresh) : previous),
         );
       }
-      await Promise.all([
+      setDone(true);
+      setConfirming(false);
+      // The mutation already handed back the completed thread, so the tick
+      // lands now and the other views catch up in the background.
+      void Promise.all([
         queryClient.invalidateQueries({ queryKey: liveThreadsKey() }),
         queryClient.invalidateQueries({
           queryKey: channelMessagesKey(projectId),
         }),
         queryClient.invalidateQueries({ queryKey: threadDetailKey(threadId) }),
-      ]);
-      setDone(true);
-      setConfirming(false);
+      ]).catch(() => undefined);
+      return true;
     } catch (cause) {
       setConfirming(false);
       setError(errorMessage(cause, "Could not complete that thread."));
+      return false;
     } finally {
       setPending(false);
     }
@@ -106,6 +112,56 @@ export function useThreadCompletion({
     setConfirming,
     setError,
   };
+}
+
+export function ThreadCompleteMenuItem({
+  completion,
+  closeMenu,
+}: {
+  completion: ThreadCompletion;
+  closeMenu: () => void;
+}) {
+  if (completion.completed) {
+    return (
+      <DropdownMenuItem disabled className="gap-2">
+        <CircleCheck size={14} />
+        Completed
+      </DropdownMenuItem>
+    );
+  }
+
+  return (
+    <DropdownMenuItem
+      className="gap-2"
+      disabled={completion.pending}
+      onSelect={(event) => {
+        event.preventDefault();
+        // A live thread asks first — the dialog carries its own pending state.
+        if (completion.live) {
+          closeMenu();
+          completion.start();
+          return;
+        }
+        // Stay open on success so the spinner turns into the tick in place.
+        // On failure the error dialog takes over, so get out of its way.
+        void completion.complete().then((ok) => {
+          if (!ok) closeMenu();
+        });
+      }}
+    >
+      {completion.pending ? (
+        <>
+          <Loader2 size={14} className="animate-spin" />
+          Completing…
+        </>
+      ) : (
+        <>
+          <CircleCheck size={14} />
+          Mark as complete
+        </>
+      )}
+    </DropdownMenuItem>
+  );
 }
 
 export function ThreadCompleteDialogs({

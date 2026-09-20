@@ -78,8 +78,8 @@ export function NotificationRow({ item, now, onOpen }: NotificationRowProps) {
 
         <span className="text-muted-foreground flex min-w-0 items-center gap-1 text-[11px]">
           <Hash size={11} className="shrink-0" />
-          <span className="truncate">{item.channelName}</span>
-          {title ? <span className="truncate">· {title}</span> : null}
+          <span className="shrink-0">{item.channelName}</span>
+          {title ? <span className="min-w-0 truncate">· {title}</span> : null}
         </span>
       </span>
 

@@ -5,8 +5,12 @@ import { Centrifuge } from "centrifuge";
 import { useEffect } from "react";
 
 import {
+  prepareDesktopNotifications,
+  showDesktopNotification,
+} from "~/utils/desktop-notify";
+import {
   applyUnreadDelta,
-  publishedNotificationId,
+  parsePublishedNotification,
   unreadCountKey,
 } from "~/utils/notification-cache";
 import { trpc } from "~/utils/trpc";
@@ -73,13 +77,15 @@ export function useUserRealtime(): void {
       }
 
       subscription.on("publication", (ctx) => {
-        const id = publishedNotificationId(ctx.data);
-        if (!id || counted.has(id)) return;
-        counted.add(id);
+        const item = parsePublishedNotification(ctx.data);
+        if (!item || counted.has(item.id)) return;
+        counted.add(item.id);
 
         queryClient.setQueryData<number>(unreadCountKey(), (previous) =>
           applyUnreadDelta(previous, 1),
         );
+
+        void showDesktopNotification(item);
       });
 
       subscription.on("subscribed", (ctx) => {
@@ -97,6 +103,7 @@ export function useUserRealtime(): void {
       instance.connect();
     }
 
+    void prepareDesktopNotifications();
     void start();
 
     return () => {

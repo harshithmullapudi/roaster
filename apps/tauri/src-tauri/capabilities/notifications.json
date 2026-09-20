@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "notifications",
+  "description": "The deployment may raise a native notification when a thread the signed-in member follows moves. Scoped to the origins the window is allowed to load, and to notifications alone — no other native capability is reachable from remote content.",
+  "windows": ["main"],
+  "remote": {
+    "urls": [
+      "https://web-production-86be2.up.railway.app",
+      "http://localhost:*"
+    ]
+  },
+  "permissions": ["notification:default"]
+}

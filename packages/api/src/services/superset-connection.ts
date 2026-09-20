@@ -1,7 +1,6 @@
 import { db, members, projects, type SelectMember } from "@roster/db";
 import {
   decodeJwtClaims,
-  decryptApiKey,
   encryptApiKey,
   getOrganization,
   listHosts,
@@ -9,6 +8,8 @@ import {
   listProjects,
   mintJwt,
   SupersetError,
+  tryDecryptApiKey,
+  UndecryptableKeyError,
   type SupersetHost,
   type SupersetOrganization,
   type SupersetProject,
@@ -73,14 +74,23 @@ export async function chooseSupersetOrganization(args: {
     .where(eq(members.id, args.member.id));
 }
 
+function storedApiKey(member: SelectMember): string | null {
+  return member.supersetKeyEncrypted
+    ? tryDecryptApiKey(member.supersetKeyEncrypted)
+    : null;
+}
+
 async function jwtFor(member: SelectMember) {
-  if (!member.supersetKeyEncrypted) {
+  const apiKey = storedApiKey(member);
+  if (!apiKey) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
-      message: "Superset is not connected for this member.",
+      message: member.supersetKeyEncrypted
+        ? new UndecryptableKeyError().message
+        : "Superset is not connected for this member.",
     });
   }
-  const { jwt } = await mintJwt(decryptApiKey(member.supersetKeyEncrypted));
+  const { jwt } = await mintJwt(apiKey);
   return { jwt, claims: decodeJwtClaims(jwt) };
 }
 
@@ -162,7 +172,7 @@ export interface SupersetConnection {
 export async function supersetConnectionFor(
   member: SelectMember,
 ): Promise<SupersetConnection> {
-  if (!member.supersetKeyEncrypted) {
+  if (!storedApiKey(member)) {
     return {
       connected: false,
       organizationId: null,

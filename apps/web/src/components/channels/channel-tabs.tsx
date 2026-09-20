@@ -20,7 +20,6 @@ export function ChannelTabs({
   channelSlug,
   active,
 }: ChannelTabsProps) {
-  // Tasks is the org-wide list, so the tab link pre-fills its channel filter.
   const href = (tab: ChannelTab) =>
     tab === "tasks"
       ? `${basePath}?tab=tasks&channel=${encodeURIComponent(channelSlug)}`

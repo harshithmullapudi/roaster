@@ -9,7 +9,6 @@ const SECRET_BYTES = 32;
 export interface MintedKey {
   id: string;
   name: string;
-  /** Shown once, at creation. Never recoverable afterwards. */
   key: string;
   prefix: string;
   createdAt: Date;
@@ -19,10 +18,6 @@ function hashKey(key: string): string {
   return createHash("sha256").update(key, "utf8").digest("hex");
 }
 
-/**
- * `rst_<43 url-safe chars>`. The prefix makes a leaked key greppable in logs
- * and recognisable to its owner; the entropy is all in the tail.
- */
 function generateKey(): string {
   return `${PREFIX}_${randomBytes(SECRET_BYTES).toString("base64url")}`;
 }
@@ -62,11 +57,6 @@ export interface KeyHolder {
   memberId: string;
 }
 
-/**
- * Looks a key up by hash. Constant-time comparison is redundant given the
- * lookup is already by digest, but costs nothing and keeps the intent obvious
- * if this ever grows a scan.
- */
 export async function verifyApiKey(
   presented: string,
 ): Promise<KeyHolder | null> {
@@ -123,7 +113,6 @@ export async function revokeApiKey(args: {
   return Boolean(row);
 }
 
-/** The member a key acts as, with the role its permissions are drawn from. */
 export async function keyHolderMember(holder: KeyHolder) {
   const member = await db.query.members.findFirst({
     where: eq(members.id, holder.memberId),

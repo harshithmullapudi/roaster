@@ -79,8 +79,6 @@ describe("filterMentions", () => {
   });
 
   it("offers people and agents from the one list", () => {
-    // "@ash" is both a person and half of "ash-web"; the list ranks them, it
-    // does not choose between them.
     expect(filterMentions(mixed, "ash").map((one) => one.handle)).toEqual([
       "ash",
       "ash-web",
@@ -100,8 +98,6 @@ describe("mentionAttrs", () => {
   };
 
   it("labels the node with the handle, never the channel id", () => {
-    // Both the node's HTML and its plain text render `label ?? id`, so an
-    // unset label puts the raw UUID on screen and in the agent's prompt.
     expect(mentionAttrs(channel)).toEqual({
       id: "522cf3d5-47bc-48b9-a7cf-406c289e49f6",
       label: "fern-spark-wilderness",

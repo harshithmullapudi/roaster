@@ -6,13 +6,6 @@ import { HandoffRedirect } from "~/components/desktop/handoff-redirect";
 import { requireSession } from "~/lib/session";
 import { safeNext } from "~/utils/desktop-session";
 
-/**
- * Where a magic link lands when sign-in started in the desktop app. The browser
- * has the session at this point; the app does not. A one-time token crosses the
- * gap over the `roster://` scheme, and the app redeems it at
- * `/api/desktop/session` so the cookie is set on a response its own webview
- * receives.
- */
 export default async function DesktopHandoffPage({
   searchParams,
 }: {

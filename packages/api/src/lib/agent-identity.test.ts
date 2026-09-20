@@ -61,11 +61,6 @@ describe("matchAgentHandle", () => {
     expect(matchAgentHandle("@ash-web", channels)).toEqual(channels[2]);
   });
 
-  /**
-   * The reason handles are matched instead of split: tearing this at the first
-   * hyphen yields slug "spark-wilderness" with name "fern" only by luck, and
-   * tearing at the last yields nonsense. Neither guess is sound.
-   */
   it("resolves handles where both halves carry hyphens", () => {
     expect(matchAgentHandle("fern-spark-wilderness", channels)).toEqual(
       channels[1],

@@ -20,10 +20,6 @@ export const tasksRouter = createTRPCRouter({
       }),
     ),
 
-  /**
-   * Filing work and handing it out are the same call: without a channel the
-   * task waits in the backlog, with one its channel's agent starts on it.
-   */
   create: memberProcedure
     .input(
       z.object({

@@ -53,7 +53,6 @@ const SETTLE_DELAY_MS = 1500;
 const STALENESS_TIMEOUT_MS = 60_000;
 const STEER_READY_INTERVAL_MS = 500;
 const STEER_READY_TIMEOUT_MS = 120_000;
-/** Matches the delegation depth cap — a chain cannot be longer than this. */
 const MAX_PUBLISH_HOPS = 3;
 
 const TERMINAL_STATUSES = ["completed", "failed", "canceled"] as const;
@@ -242,11 +241,6 @@ async function publishThread(threadId: string, hops = 0): Promise<void> {
 
   if (hops >= MAX_PUBLISH_HOPS) return;
 
-  /**
-   * A parked thread shows what the agent it asked is doing, so this thread
-   * moving is news for whoever is waiting on it too — otherwise the asking
-   * channel sits on "Waiting on @sol-superset…" until the answer lands.
-   */
   const asked = await db.query.delegations.findFirst({
     where: and(
       eq(delegations.childThreadId, threadId),
@@ -257,17 +251,6 @@ async function publishThread(threadId: string, hops = 0): Promise<void> {
   if (asked) await publishThread(asked.parentThreadId, hops + 1);
 }
 
-/**
- * Park a thread on another agent's answer.
- *
- * The watch is deliberately left running. An agent calls `roster ask` and then
- * *keeps talking* — "I asked @sol-superset for the details, I'll write the
- * README once that comes back" — and those closing words are the only account
- * the thread has of why it went quiet. Tearing the watch down here dropped the
- * host's `Stop` event on the floor, so that turn was never captured. The park
- * itself is safe: `finishOnce` sees a parked session and persists the reply
- * without ending the thread.
- */
 export async function markWaiting(args: {
   threadId: string;
   waitingOn: string;
@@ -526,11 +509,6 @@ async function pollOnce(sessionId: string): Promise<void> {
   }
 
   const line = lastMeaningfulLine(text);
-  /**
-   * A parked thread's progress line names the agent it is waiting on, and the
-   * UI shows that agent's own progress underneath. The terminal here is still
-   * redrawing its last frame, so scraping it would only overwrite the truth.
-   */
   const progressed =
     !isParked(session.status) &&
     line !== null &&

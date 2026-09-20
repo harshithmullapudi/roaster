@@ -25,7 +25,6 @@ export interface ChannelPickerProps {
   channels: ChannelGroups;
   value: string | null;
   onChange: (projectId: string | null) => void;
-  /** Offer "leave it in the backlog" as a choice. Off once work has started. */
   clearable?: boolean;
   disabled?: boolean;
 }

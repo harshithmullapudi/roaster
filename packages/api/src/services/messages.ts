@@ -271,12 +271,6 @@ export async function sendMessage(args: {
     throw new Error("That thread is not part of this channel.");
   }
 
-  /**
-   * Watch governs ambient chatter — whether the agent reacts to messages it
-   * was not addressed in. Being named is not ambient, so a mention outranks a
-   * pause and wakes the channel's own agent, which then delegates onward to
-   * any other agent the message named.
-   */
   const addressed = (await channelIsWatching(args.projectId))
     ? true
     : await mentionsAnyAgent(args);
@@ -342,19 +336,6 @@ async function channelIsWatching(projectId: string): Promise<boolean> {
   return row?.watchEnabled ?? false;
 }
 
-/**
- * Whether the message names an agent. Only consulted for a paused channel — a
- * watching one already answers everything — so the channel list this costs is
- * read once per message sent into silence, not on the common path.
- *
- * Scoped to the author's visible channels so a handle they could not have
- * picked from the autocomplete cannot be typed out to the same effect.
- *
- * People are passed in as candidates too, not to wake anything but to be
- * claimed: "@harshith" has to resolve to the person, or the longest-first
- * match would leave it unattached and "@harshith-roster" is the only reading
- * left. Only `.agents` decides the wake.
- */
 async function mentionsAnyAgent(args: {
   organizationId: string;
   authorMemberId: string;

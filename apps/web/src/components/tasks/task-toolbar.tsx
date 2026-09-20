@@ -34,7 +34,6 @@ export interface TaskToolbarProps {
   onFiltersChange: (filters: TaskFilters) => void;
   groupBy: TaskGroupBy;
   onGroupByChange: (groupBy: TaskGroupBy) => void;
-  /** Channel slugs, plus `UNASSIGNED` when some task has no channel. */
   channelKeys: string[];
 }
 

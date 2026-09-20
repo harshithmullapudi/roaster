@@ -1,25 +1,11 @@
-/**
- * The briefing every session opens with: who this agent is, what the `roster`
- * CLI can do, and — when the work was handed over by another agent — where it
- * came from.
- *
- * Deliberately free of secrets. The CLI authenticates from `~/.roster/config
- * .json` written by `roster login`, precisely so nothing here can leak: this
- * text is echoed into the terminal, and the transcript is scraped into channel
- * messages and progress lines.
- */
-
 export const ENVELOPE_OPEN = "<roster>";
 export const ENVELOPE_CLOSE = "</roster>";
 
 export interface DelegationContext {
-  /** Handle of the agent that asked, e.g. "ash-spark". */
   askedBy: string;
-  /** Channel the request came from — readable for context. */
   originChannelId: string;
 }
 
-/** The task this thread was opened to do, when it was opened by one. */
 export interface TaskContext {
   id: string;
   title: string;
@@ -29,7 +15,6 @@ export interface TaskContext {
 export interface EnvelopeArgs {
   threadId: string;
   channelId: string;
-  /** This agent's own handle, e.g. "fern-core". */
   handle: string;
   delegation?: DelegationContext;
   task?: TaskContext;
@@ -86,12 +71,6 @@ export function rosterEnvelope(args: EnvelopeArgs): string {
 
 const ENVELOPE_BLOCK = /<roster>[\s\S]*?<\/roster>\s*/g;
 
-/**
- * Strips the briefing back out of anything scraped from the terminal. The
- * envelope is echoed by the harness, and `agentReply` slices from the last
- * `Assistant:` marker — so without this the agent's own instructions can
- * surface as a channel message or a progress line.
- */
 export function stripEnvelope(text: string): string {
   return text.replace(ENVELOPE_BLOCK, "").trim();
 }

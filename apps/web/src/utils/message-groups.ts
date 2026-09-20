@@ -6,11 +6,6 @@ export interface GroupableMessage {
   createdAt: Date;
 }
 
-/**
- * Agent messages carry no author, so grouping on `authorMemberId` alone would
- * fold every agent into one speaker — and a delegated reply from fern [core]
- * sitting next to ash [spark]'s would silently lose its name header.
- */
 function speaker(message: GroupableMessage): string | null {
   return message.authorMemberId ?? message.agentChannelId ?? null;
 }
@@ -43,14 +38,6 @@ export interface SpeakerMessage {
   agentDisplay: string | null;
 }
 
-/**
- * The one name a speaker gets. Avatar colours are a hash of this string, so
- * every place that draws an avatar for the same person must derive it the same
- * way — a row that hashed the full address and a reply stack that hashed the
- * local part gave one person two colours.
- *
- * `replierNames` in `services/sessions/queries` builds the same string in SQL.
- */
 export function speakerName(message: SpeakerMessage): string {
   if (message.kind === "user") {
     return displayName(message.authorName, message.authorEmail);

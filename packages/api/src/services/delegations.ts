@@ -29,17 +29,10 @@ import {
 } from "./sessions";
 import { markdownToTiptap, textToTiptap } from "../utils/tiptap";
 
-/**
- * How deep one request may be passed along. fern-core asking ash-web asking
- * fern-docs is already unusual; past this it is a loop burning real compute on
- * someone's laptop.
- */
 export const MAX_DEPTH = 3;
 
 export interface DelegationRequest extends ChannelScope {
-  /** The thread doing the asking — it parks until this is answered. */
   parentThreadId: string;
-  /** Whose agent to ask, as typed: "fern-core" or "@fern-core". */
   handle: string;
   task: string;
 }
@@ -52,15 +45,6 @@ export interface DelegationResult {
   depth: number;
 }
 
-/**
- * `@harshith` is a person; `@harshith-roster` is their agent. Both are real
- * handles in the same namespace, so an agent that has read a message naming
- * the person will try to `roster ask` them — and "no agent called harshith"
- * reads as a typo when the handle was perfectly good, just not a channel.
- *
- * Throws if the handle names a person. Returns quietly otherwise, leaving the
- * caller to raise its own NOT_FOUND.
- */
 async function rejectPersonHandle(args: ChannelScope & { handle: string }) {
   const person = await findMemberByHandle({
     organizationId: args.organizationId,
@@ -68,8 +52,6 @@ async function rejectPersonHandle(args: ChannelScope & { handle: string }) {
   });
   if (!person) return;
 
-  // Their agent in some channel the asker can already see. There may be
-  // several; any of them makes the distinction concrete.
   const channels = await listMentionableChannels(args);
   const theirs = channels.find(
     (channel) => channel.agentName.toLowerCase() === person.handle,
@@ -85,12 +67,6 @@ async function rejectPersonHandle(args: ChannelScope & { handle: string }) {
   });
 }
 
-/**
- * Hand a task to another channel's agent.
- *
- * The parent thread is parked before the child starts, so a child that answers
- * immediately still finds a thread in `waiting` to wake.
- */
 export async function delegate(
   args: DelegationRequest,
 ): Promise<DelegationResult> {
@@ -203,7 +179,6 @@ export async function delegate(
     });
   }
 
-  // Park before starting: a fast child must find a thread to wake.
   await markWaiting({ threadId: parent.id, waitingOn: target.agentHandle });
 
   await startSession({
@@ -253,7 +228,6 @@ async function postRequest(args: {
   return row.id;
 }
 
-/** How many hops of delegation already stand behind this thread. */
 async function ancestorDepth(threadId: string): Promise<number> {
   let depth = 0;
   let current: string | null = threadId;
@@ -271,7 +245,6 @@ async function ancestorDepth(threadId: string): Promise<number> {
   return depth;
 }
 
-/** Every channel already waiting further up this chain. */
 async function ancestorChannels(threadId: string): Promise<string[]> {
   const chain: string[] = [];
   let current: string | null = threadId;
@@ -294,11 +267,6 @@ async function ancestorChannels(threadId: string): Promise<string[]> {
   return chain;
 }
 
-/**
- * Called when a thread finishes. If it was answering a delegation, the reply
- * is written into the asking thread under the answering agent's name and that
- * thread is woken with it.
- */
 export async function settleDelegationFor(args: {
   childThreadId: string;
   reply: string;
@@ -403,7 +371,6 @@ async function writeReplyIntoParent(args: {
   ]);
 }
 
-/** What a channel is allowed to read, for `roster read messages`. */
 export async function openDelegationOrigins(
   targetChannelId: string,
 ): Promise<string[]> {

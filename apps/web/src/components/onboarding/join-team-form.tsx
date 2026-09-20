@@ -11,7 +11,6 @@ import { errorMessage } from "~/utils/trpc";
 
 export interface JoinTeamFormProps {
   invitations: UserInvitation[];
-  /** Empty for anyone who signed up by magic link, which is everyone. */
   initialUserName: string;
 }
 
@@ -24,8 +23,6 @@ export function JoinTeamForm({
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // The invitation can be revoked, or accepted in another tab, between the
-  // page rendering and the click landing.
   if (invitations.length === 0) {
     return (
       <div className="space-y-3">
@@ -58,8 +55,6 @@ export function JoinTeamForm({
         }
       }
 
-      // Accepting also points the session at the workspace just joined, so
-      // the rest of onboarding runs against the right one.
       const { error: joinError } =
         await authClient.organization.acceptInvitation({ invitationId });
 

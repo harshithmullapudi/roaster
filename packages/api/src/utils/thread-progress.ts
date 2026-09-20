@@ -25,10 +25,6 @@ function isChrome(line: string): boolean {
   return !/[A-Za-z0-9]/.test(line);
 }
 
-/**
- * Terminal agents redraw their whole frame, so the useful line is the last one
- * carrying words — box rules, spinners and prompt chrome are not progress.
- */
 export function lastMeaningfulLine(transcript: string): string | null {
   const lines = stripEnvelope(stripAnsi(transcript)).split("\n");
   for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -41,10 +37,6 @@ export function lastMeaningfulLine(transcript: string): string | null {
   return null;
 }
 
-/**
- * What the agent leaves behind when it finishes: the readable tail of the
- * transcript, with redraw chrome dropped and blank runs collapsed.
- */
 export function transcriptTail(transcript: string, maxLines = 40): string {
   const lines = stripEnvelope(stripAnsi(transcript))
     .split("\n")
@@ -70,11 +62,6 @@ export function transcriptTail(transcript: string, maxLines = 40): string {
 
 const ASSISTANT_TURN = /^Assistant:[ \t]*/gm;
 
-/**
- * The harness transcript replays the whole conversation, prompt echoes and
- * all. Only the newest assistant turn belongs in the channel — the user's own
- * words are already the root message above it.
- */
 export function agentReply(transcript: string): string {
   const tail = transcriptTail(transcript, 200);
 

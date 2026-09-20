@@ -3,11 +3,6 @@ import { TASK_STATUS_ORDER, type TaskStatus } from "@roster/api/client";
 
 export type TaskGroupBy = "status" | "channel";
 
-/**
- * Stands in for "no channel" wherever a channel slug is used as a key — group
- * headings, filter chips, the URL. A `~` cannot appear in a slug, so this can
- * never collide with a real channel.
- */
 export const UNASSIGNED = "~unassigned";
 export const UNASSIGNED_LABEL = "Backlog";
 
@@ -18,7 +13,6 @@ export type TaskRow =
       label: string;
       count: number;
       status: TaskStatus | null;
-      /** A channel heading for tasks nobody has taken yet. */
       backlog?: true;
     }
   | { type: "item"; id: string; task: Task };
@@ -81,7 +75,6 @@ export function buildRows(tasks: Task[], groupBy: TaskGroupBy): TaskRow[] {
     else bySlug.set(key, [task]);
   }
 
-  /** Unclaimed work first — it is the pile someone has to do something about. */
   const keys = [...bySlug.keys()].filter((key) => key !== UNASSIGNED).sort();
   if (bySlug.has(UNASSIGNED)) keys.unshift(UNASSIGNED);
 

@@ -58,15 +58,6 @@ export type InvitationPreview = NonNullable<
   Awaited<ReturnType<typeof getInvitationPreview>>
 >;
 
-/**
- * Every invitation this person could still act on, newest last.
- *
- * Matched on email rather than user id, because an invitation is written
- * before its recipient has an account — this is what lets someone who signed
- * up straight from the front door still find the team that invited them.
- * Invitations to a workspace they already belong to are dropped: accepting one
- * would only fail.
- */
 export async function listInvitationsForUser(args: {
   userId: string;
   email: string;

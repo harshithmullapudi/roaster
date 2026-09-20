@@ -38,10 +38,6 @@ describe("findMentions", () => {
     expect(findMentions("@nobody-here hello", agents)).toEqual([]);
   });
 
-  /**
-   * "sol-core" is a prefix of "sol-core-docs"; matching shortest-first would
-   * style half the handle and leave "-docs" dangling.
-   */
   it("prefers the longest matching handle", () => {
     const withLonger = [...agents, agent("sol-core-docs")];
     const found = findMentions("ping @sol-core-docs now", withLonger);
@@ -81,10 +77,6 @@ describe("findMentions", () => {
     expect(found).toEqual([{ from: 0, to: 4, handle: "sol", kind: "member" }]);
   });
 
-  /**
-   * "@sol" is a person and "@sol-core" their agent. Longest-first is what
-   * keeps the two apart, and the person must not swallow the agent's prefix.
-   */
   it("prefers the agent @sol-core over the person @sol", () => {
     const found = findMentions("@sol-core ship it", [...agents, person("sol")]);
     expect(found).toEqual([

@@ -22,23 +22,12 @@ import {
   toChannelMessage,
 } from "../message-columns";
 
-/**
- * The agent a parked thread handed its work to, and how that agent is doing.
- *
- * A thread in `waiting` has nothing of its own to report — without this it
- * reads as a thread that went quiet, when in truth someone else is mid-run on
- * its behalf.
- */
 export interface WaitingOn {
-  /** Who was asked, as you would type it: "sol-superset". */
   handle: string;
-  /** How the answering agent is named on screen: "sol [superset]". */
   display: string;
   channelId: string;
   channelSlug: string;
-  /** Null only if the answering thread was since deleted. */
   threadId: string | null;
-  /** The answering thread's own lead status — "running" while it works. */
   status: string;
   lastProgress: string | null;
   task: string;
@@ -70,16 +59,6 @@ const lastReplyAtSql = sql<
   Date | string | null
 >`(select max(rp.created_at) from roster.messages rp where ${REPLY_SCOPE})`;
 
-/**
- * Mirrors `agentDisplay` for agent replies, which carry no author: a thread
- * that fern [core] answered should say so rather than "Agent". Kept in SQL so
- * the aggregate stays a single subquery.
- *
- * The email fallback must take the part before the `@`, exactly as the web
- * app's `speakerName` does: avatar colours are a hash of this string, so
- * emitting the full address here painted the same person two different
- * colours — one in the message row, another in the reply stack.
- */
 const replierNamesSql = sql<string[]>`(select coalesce(json_agg(distinct coalesce(
   nullif(btrim(ru.name), ''),
   nullif(split_part(ru.email, '@', 1), ''),
@@ -120,11 +99,6 @@ const sessionState = {
   endedAt: endedAtSql.as("lead_ended_at"),
 };
 
-/**
- * The same lead-session pick as above, but for the thread a delegation points
- * at — read as a correlated subquery so one round trip answers for every
- * parked thread in a channel rather than one per row.
- */
 function childLead<T>(column: string): SQL<T> {
   return sql<T>`(select ts.${sql.raw(column)} from roster.thread_sessions ts where ts.thread_id = ${delegations.childThreadId} order by ${LEAD_ORDER} limit 1)`;
 }

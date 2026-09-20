@@ -63,11 +63,6 @@ export function InviteForm({ organizationId }: InviteFormProps) {
         They&rsquo;ll get an email with their own link. It expires in 7 days.
       </p>
 
-      {/*
-        One row of controls, all the same height — the labels are read out but
-        not drawn, since the placeholder and the role itself already say what
-        each one is.
-      */}
       <form onSubmit={submit} className="mt-3 flex flex-col gap-2 sm:flex-row">
         <div className="flex-1">
           <Label htmlFor="invite-email" className="sr-only">
@@ -96,7 +91,6 @@ export function InviteForm({ organizationId }: InviteFormProps) {
             </SelectContent>
           </Select>
         </div>
-        {/* `lg` is 32px — the one button size that matches --input-h. */}
         <Button
           type="submit"
           size="lg"

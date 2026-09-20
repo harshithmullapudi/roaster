@@ -9,11 +9,6 @@ import {
   type ChannelScope,
 } from "./channels";
 
-/**
- * A task is a title and a status. Everything else on it is about *where* the
- * work went: a channel once someone decided whose it is, and the thread that
- * channel's agent is doing it in. Both are null while it sits in the backlog.
- */
 export interface Task {
   id: string;
   projectId: string | null;
@@ -81,10 +76,6 @@ export async function listTasks(
     ...groups.private,
   ].map((channel) => channel.id);
 
-  /**
-   * Backlog tasks belong to nobody, so no channel can vouch for them — they
-   * are visible to the whole team, which is the point of a backlog.
-   */
   const reachable =
     visibleIds.length > 0
       ? or(isNull(tasks.projectId), inArray(tasks.projectId, visibleIds))
@@ -100,11 +91,6 @@ export async function listTasks(
   return rows.map(toTask);
 }
 
-/**
- * File a task. It lands in the backlog: a channel is never set here, only by
- * `assignTask`, which sets it together with the thread doing the work — so a
- * task with a channel always has somewhere to point at.
- */
 export async function createTask(args: {
   organizationId: string;
   memberId: string;
@@ -144,11 +130,6 @@ export async function setTaskStatus(
   return findById(task.id);
 }
 
-/**
- * A task as the member asking for it may see it: it must be their team's, and
- * if it has a channel they must be able to open that channel. A backlog task
- * clears on team membership alone.
- */
 export async function reachableTask(
   args: ChannelScope & { taskId: string },
 ): Promise<Task | null> {
@@ -180,7 +161,6 @@ export async function reachableTask(
   return task;
 }
 
-/** Point a task at the channel and thread now carrying it. */
 export async function linkTaskThread(args: {
   taskId: string;
   projectId: string;
@@ -198,11 +178,6 @@ export async function linkTaskThread(args: {
   return findById(args.taskId);
 }
 
-/**
- * The task a session is working on, if it was started by an assignment. Read
- * when briefing an agent, so the task travels with every prompt into that
- * thread — the first one and every resume after it.
- */
 export async function taskForThread(threadId: string): Promise<Task | null> {
   const [row] = await db
     .select(taskColumns)

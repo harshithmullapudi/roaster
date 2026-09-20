@@ -12,12 +12,6 @@ import { assignTask } from "../services/task-assignment";
 import { createTask, setTaskStatus } from "../services/tasks";
 import { cliProcedure, createTRPCRouter } from "../trpc";
 
-/**
- * What the `roster` CLI can do, as an agent running on someone's machine.
- *
- * Every procedure here is scoped by the member who created the API key, so an
- * agent reaches exactly what its operator could reach by hand — no more.
- */
 export const cliRouter = createTRPCRouter({
   whoami: cliProcedure.query(async ({ ctx }) => ({
     memberId: ctx.member.id,
@@ -57,10 +51,6 @@ export const cliRouter = createTRPCRouter({
         projectId: input.channelId,
       });
 
-      /**
-       * Loud rather than empty: a silent [] here reads as "that channel has
-       * nothing to say", when the truth is this key cannot see it.
-       */
       if (!project) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -78,10 +68,6 @@ export const cliRouter = createTRPCRouter({
         channel: { id: project.id, slug: project.slug, name: project.name },
         messages: messages.map((message) => ({
           id: message.id,
-          /**
-           * `||`, not `??`: `users.name` defaults to the empty string rather
-           * than null, so a nullish fallback yields a blank author.
-           */
           author:
             message.agentDisplay ||
             message.authorName ||
@@ -113,11 +99,6 @@ export const cliRouter = createTRPCRouter({
       }),
     ),
 
-  /**
-   * File a task. A channel is optional on purpose: an agent should only name
-   * one when the person it is working for named one. Otherwise the task waits
-   * in the backlog, where a human decides whose it is.
-   */
   createTask: cliProcedure
     .input(
       z.object({

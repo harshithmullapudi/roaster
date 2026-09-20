@@ -47,12 +47,6 @@ export const memberProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   });
 });
 
-/**
- * The `roster` CLI, run by an agent on a teammate's machine. It carries an API
- * key instead of a session cookie but lands in the same ctx shape as
- * `memberProcedure`, so every service below it applies the same visibility
- * rules — an agent can only reach what the member who created the key can.
- */
 export const cliProcedure = t.procedure.use(async ({ ctx, next }) => {
   const header = ctx.headers.get("authorization") ?? "";
   const token = header.toLowerCase().startsWith("bearer ")

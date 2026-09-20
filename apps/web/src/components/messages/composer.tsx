@@ -32,11 +32,6 @@ export function Composer({ placeholder, onSend }: ComposerProps) {
 
   const editorRef = useRef<Editor | null>(null);
 
-  /**
-   * Held in a ref, not state: the extension list is built once when the editor
-   * mounts, so the suggestion closure must read the latest list rather than
-   * the empty array it was created with.
-   */
   const mentionsRef = useRef<MentionItem[]>([]);
   const getMentions = useMemo(() => () => mentionsRef.current, []);
 
@@ -48,7 +43,6 @@ export function Composer({ placeholder, onSend }: ComposerProps) {
         if (live) mentionsRef.current = items;
       })
       .catch(() => {
-        // Autocomplete is a convenience; typing the handle by hand still works.
       });
     return () => {
       live = false;
@@ -73,11 +67,6 @@ export function Composer({ placeholder, onSend }: ComposerProps) {
       attributes: {
         class: "tiptap max-w-full focus:outline-none",
       },
-      /**
-       * ProseMirror's `someProp` consults `editorProps` before plugin props, so
-       * this handler sees Enter before the mention suggestion plugin does.
-       * Sending here unconditionally is what swallowed the popup's Enter.
-       */
       handleKeyDown(view, event) {
         const send = submitsOnEnter(event, {
           suggestionOpen: isMentionSuggestionOpen(view.state),

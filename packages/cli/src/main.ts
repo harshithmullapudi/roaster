@@ -104,7 +104,6 @@ async function readMessages(parsed: ReturnType<typeof parseArgs>): Promise<void>
 async function createTask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
   const config = requireConfig();
 
-  // positionals: ["tasks", "create", ...title]
   const title = parsed.positionals.slice(2).join(" ").trim();
   if (!title) throw new RosterError("Give the task a title.");
 
@@ -129,7 +128,6 @@ async function setTaskStatus(
 ): Promise<void> {
   const config = requireConfig();
 
-  // positionals: ["tasks", "status", <task-id>, <status>]
   const taskId = parsed.positionals[2];
   const status = parsed.positionals[3];
 

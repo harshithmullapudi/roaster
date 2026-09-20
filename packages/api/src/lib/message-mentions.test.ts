@@ -56,8 +56,6 @@ describe("mentionedHandles", () => {
   });
 
   it("trusts a chip whose handle is no longer known", () => {
-    // The typist picked it from the list; a since-renamed agent is still a
-    // deliberate summons, not a typo.
     expect(agents(doc(chip("ghost-channel")))).toEqual(["ghost-channel"]);
   });
 
@@ -125,8 +123,6 @@ describe("mentionedHandles", () => {
   });
 
   it("does not count a person as an agent, so a paused channel stays asleep", () => {
-    // The whole point of the split: "@harshith" is a note to a human and must
-    // not wake the channel's agent.
     expect(handles(doc(chip("harshith", "member")), "")).toEqual({
       agents: [],
       members: ["harshith"],
@@ -157,8 +153,6 @@ describe("mentionedHandles", () => {
   });
 
   it("gives an exact tie to the agent", () => {
-    // Nothing stops a person's handle from also being an agent handle; the
-    // agent reading held before people could be mentioned, so it holds now.
     expect(
       mentionedHandles({
         body: null,

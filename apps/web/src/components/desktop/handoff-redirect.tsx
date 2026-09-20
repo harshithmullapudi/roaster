@@ -4,7 +4,6 @@ import { Button } from "@roster/ui";
 import { useEffect } from "react";
 
 export interface HandoffRedirectProps {
-  /** `roster://auth?token=…` — the app is registered for the scheme. */
   deepLink: string;
 }
 

@@ -8,11 +8,6 @@ import { PendingInvitations } from "~/components/members/pending-invitations";
 import { SettingsPage } from "~/components/settings/settings-page";
 import { loadShell } from "~/lib/shell";
 
-/**
- * Where the browser thinks it is, which is what a copied link has to say.
- * Read from the request rather than `NEXT_PUBLIC_APP_URL` so a workspace
- * reached on a second domain still hands out links that work.
- */
 async function requestOrigin(): Promise<string> {
   const headerList = await headers();
   const host = headerList.get("host");

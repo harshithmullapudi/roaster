@@ -29,15 +29,6 @@ export const channelsRouter = createTRPCRouter({
     }),
   ),
 
-  /**
-   * Everyone the caller may address, for the composer's `@` autocomplete:
-   * agents drawn from the same visibility rules as the sidebar — so mentioning
-   * can never reach a channel the member could not already open — and the
-   * organization's people.
-   *
-   * One list, not two. `@` is a single namespace and the composer ranks it as
-   * one dropdown; `kind` is what tells a person from an agent downstream.
-   */
   mentionable: memberProcedure.query(async ({ ctx }) => {
     const scope = {
       organizationId: ctx.organizationId,
@@ -63,8 +54,6 @@ export const channelsRouter = createTRPCRouter({
       ...people.map((person) => ({
         id: person.id,
         kind: "member" as const,
-        // A person has no channel to be private to, so the fields a channel
-        // fills with its slug and visibility carry the handle and "public".
         slug: person.handle,
         name: person.name,
         visibility: "public",

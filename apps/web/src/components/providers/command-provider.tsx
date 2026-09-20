@@ -59,8 +59,6 @@ export function CommandProvider({
 
   useShortcuts([
     {
-      // Chrome hands ⌘K to the omnibox and Arc to its own bar unless the page
-      // claims it first.
       key: "$mod+k",
       preventDefault: true,
       handler: () => setCommandBarOpen((current) => !current),

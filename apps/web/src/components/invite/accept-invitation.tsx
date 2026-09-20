@@ -9,11 +9,6 @@ import { errorMessage } from "~/utils/trpc";
 
 export interface AcceptInvitationProps {
   invitationId: string;
-  /**
-   * Empty for anyone who signed up to take this invitation. Asking here is the
-   * only chance we get — the rest of onboarding never collects a name from
-   * someone who joined an existing workspace.
-   */
   initialUserName: string;
 }
 
@@ -44,8 +39,6 @@ export function AcceptInvitation({
         }
       }
 
-      // Accepting also points the session at the workspace just joined, so
-      // onboarding picks up from there.
       const { error: acceptError } =
         await authClient.organization.acceptInvitation({ invitationId });
 

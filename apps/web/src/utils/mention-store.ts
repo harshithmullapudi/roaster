@@ -1,15 +1,6 @@
 import type { MentionItem } from "./mentions";
 import { trpc } from "./trpc";
 
-/**
- * One shared list of everyone addressable — agents and people — for the whole
- * app.
- *
- * Every message body is its own editor instance, so each would otherwise
- * fetch this itself. The list changes only when channels or the roster do, so
- * it is loaded once and pushed to subscribers.
- */
-
 let items: MentionItem[] = [];
 let inflight: Promise<MentionItem[]> | null = null;
 const subscribers = new Set<() => void>();
@@ -43,11 +34,6 @@ export function loadMentions(): Promise<MentionItem[]> {
   return inflight;
 }
 
-/**
- * Longest handles first, so "@fern-core-web" never matches "@fern-core" and
- * the agent "@harshith-roster" never matches the person "@harshith". An exact
- * tie goes to the agent — see `findMentions`, which ranks the same way.
- */
 export function handlesByLength(): MentionItem[] {
   return [...items].sort(
     (a, b) =>

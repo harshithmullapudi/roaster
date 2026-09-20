@@ -75,10 +75,6 @@ export const MentionList = forwardRef<
           onMouseEnter={() => setSelected(index)}
           onClick={() => choose(index)}
         >
-          {/*
-            One list, so the glyph is what says which kind you are picking: a
-            person, or the sidebar's channel glyph — a lock when private.
-          */}
           {item.kind === "member" ? (
             <User className="text-muted-foreground size-3.5 shrink-0" />
           ) : item.visibility === "private" ? (

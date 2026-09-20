@@ -74,7 +74,6 @@ export function AppShell({
           {rail ? <RailLayout main={column} rail={rail} /> : column}
         </main>
 
-        {/* One popover serves every mention on the page. */}
         <MentionPopover />
       </div>
     </CommandProvider>

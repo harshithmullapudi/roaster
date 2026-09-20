@@ -3,11 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import { richTextExtensions } from "./tiptap-extensions";
 
-/**
- * A body the API parsed out of an agent's markdown. Every node here has to
- * exist in the reader's schema, or ProseMirror drops the message rather than
- * the node it cannot place.
- */
 const MARKDOWN_BODY = {
   type: "doc",
   content: [
@@ -85,11 +80,6 @@ describe("richTextExtensions", () => {
     expect(doc.textContent).toContain("Recommendation");
   });
 
-  /**
-   * The reader renders stored bodies, so an attribute the composer writes and
-   * this schema does not declare is dropped on the way back in — the person
-   * would be read as an agent from then on.
-   */
   it("keeps a member mention's kind through the reader's schema", () => {
     const schema = getSchema(richTextExtensions);
     const body = mentionBody({ id: "m1", label: "harshith", kind: "member" });

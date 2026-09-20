@@ -10,7 +10,6 @@ import { errorMessage, trpc } from "~/utils/trpc";
 
 export interface InviteLinkCardProps {
   link: InviteLink | null;
-  /** Where this workspace is served from, so the copied link is the real one. */
   origin: string;
 }
 
@@ -57,10 +56,6 @@ export function InviteLinkCard({ link, origin }: InviteLinkCardProps) {
           : "Share one link instead of inviting people by name. Anyone who has it can join as a member."}
       </p>
 
-      {/*
-        An expired link is not shown at all. Leaving a dead URL on screen,
-        styled like a live one, only invites someone to send it.
-      */}
       {url && !link?.expired ? (
         <div className="mt-3 flex items-center gap-2">
           <code className="bg-grayAlpha-100 flex-1 truncate rounded px-2 py-1 font-mono text-xs">
@@ -81,10 +76,6 @@ export function InviteLinkCard({ link, origin }: InviteLinkCardProps) {
       ) : null}
 
       <div className="mt-3 flex items-center gap-2">
-        {/*
-          `gap`, not a margin on the icon: the shared Button sets no spacing
-          between its children, so every icon+label button has to say so.
-        */}
         <Button
           size="sm"
           variant="secondary"
@@ -95,7 +86,6 @@ export function InviteLinkCard({ link, origin }: InviteLinkCardProps) {
           {link ? <RefreshCw size={13} /> : <Plus size={13} />}
           {link ? "Refresh" : "Create invite link"}
         </Button>
-        {/* Nothing to turn off once it has expired — it is already dead. */}
         {link && !link.expired ? (
           <Button
             size="sm"

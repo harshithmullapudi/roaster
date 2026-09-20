@@ -103,12 +103,6 @@ export const messages = rosterSchema.table(
     }),
     kind: text("kind").default("user").notNull(),
 
-    /**
-     * Which channel's agent spoke, for `kind: "agent"` rows. Agent messages
-     * carry no `author_member_id`, so without this every agent looks like
-     * every other one — and a delegated reply landing in another channel's
-     * thread would be indistinguishable from that channel's own agent.
-     */
     agentChannelId: uuid("agent_channel_id").references(() => projects.id, {
       onDelete: "set null",
     }),
@@ -156,11 +150,6 @@ export const threads = rosterSchema.table(
 
     turnCount: integer("turn_count").default(0).notNull(),
 
-    /**
-     * Bumped by every message posted into the thread. A thread list wants to
-     * be ordered by what happened last, and the session rows only know when
-     * the thread was opened — so recency has to be stored, not derived.
-     */
     lastActivityAt: timestamp("last_activity_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -241,15 +230,6 @@ export const THREAD_SUBSCRIPTION_REASONS = [
 export type ThreadSubscriptionReason =
   (typeof THREAD_SUBSCRIPTION_REASONS)[number];
 
-/**
- * Who hears about a thread, and how far each of them has read it.
- *
- * Muting and unfollowing are deliberately different: muting sets `muted_at`
- * and keeps the row, so the thread stays in your list but stops notifying,
- * while unfollowing deletes the row outright. A kept row also remembers
- * `last_read_at`, which is what an unread count is measured against — a
- * tombstone could not answer that.
- */
 export const threadSubscriptions = rosterSchema.table(
   "thread_subscriptions",
   {
@@ -261,7 +241,6 @@ export const threadSubscriptions = rosterSchema.table(
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
 
-    /** Why the subscription exists — how it was acquired, not its strength. */
     reason: text("reason").$type<ThreadSubscriptionReason>().notNull(),
 
     lastReadAt: timestamp("last_read_at", { withTimezone: true })
@@ -283,14 +262,6 @@ export const threadSubscriptions = rosterSchema.table(
 export type SelectThreadSubscription = typeof threadSubscriptions.$inferSelect;
 export type InsertThreadSubscription = typeof threadSubscriptions.$inferInsert;
 
-/**
- * A piece of work, which may not belong to anyone yet.
- *
- * `project_id` is null while a task sits in the backlog — filing work is
- * cheap, deciding whose it is comes later. Giving it a channel is what starts
- * the work: a message is posted there, the thread that message opens is
- * recorded in `thread_id`, and that channel's agent picks it up.
- */
 export const tasks = rosterSchema.table(
   "tasks",
   {
@@ -298,11 +269,9 @@ export const tasks = rosterSchema.table(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** Null while unassigned. A deleted channel returns its tasks to the backlog. */
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
-    /** Where the work is being done — null until the task is assigned. */
     threadId: uuid("thread_id").references(() => threads.id, {
       onDelete: "set null",
     }),
@@ -337,14 +306,6 @@ export const tasks = rosterSchema.table(
 export type SelectTask = typeof tasks.$inferSelect;
 export type InsertTask = typeof tasks.$inferInsert;
 
-/**
- * The workspace's shareable join link — one per team, or none.
- *
- * Unlike an invitation, this is addressed to nobody: whoever holds it can
- * join. That is the point, and also why it carries an expiry and can be
- * refreshed — a link that leaks stops working, and a new one costs a click.
- * Refreshing rewrites `token` in place rather than leaving the old one alive.
- */
 export const orgInviteLinks = rosterSchema.table(
   "org_invite_links",
   {
@@ -353,10 +314,8 @@ export const orgInviteLinks = rosterSchema.table(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
 
-    /** Random, not a uuid — this is a bearer credential in a URL. */
     token: text("token").notNull(),
 
-    /** What joining grants. Held to "member" for now. */
     role: text("role").default("member").notNull(),
 
     createdByMemberId: uuid("created_by_member_id").references(
@@ -377,13 +336,6 @@ export const orgInviteLinks = rosterSchema.table(
 export type SelectOrgInviteLink = typeof orgInviteLinks.$inferSelect;
 export type InsertOrgInviteLink = typeof orgInviteLinks.$inferInsert;
 
-/**
- * Credentials for the `roster` CLI, which agents run on a teammate's machine.
- *
- * Only the hash is stored — a key is shown once, at creation. Reads made with
- * a key carry the authority of the member who created it, so an agent can
- * never see a channel its operator could not open by hand.
- */
 export const apiKeys = rosterSchema.table(
   "api_keys",
   {
@@ -396,7 +348,6 @@ export const apiKeys = rosterSchema.table(
       .references(() => members.id, { onDelete: "cascade" }),
 
     name: text("name").notNull(),
-    /** Leading characters, kept so a key is recognisable in settings. */
     prefix: text("prefix").notNull(),
     hash: text("hash").notNull(),
 
@@ -413,11 +364,6 @@ export const apiKeys = rosterSchema.table(
 export type SelectApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
 
-/**
- * One agent handing work to another. The asking thread parks in `waiting`
- * until this row is answered, then wakes with the reply — so a delegation is
- * also the record of why a parked thread should ever resume.
- */
 export const delegations = rosterSchema.table(
   "delegations",
   {
@@ -426,19 +372,15 @@ export const delegations = rosterSchema.table(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
 
-    /** The thread that asked, and is now parked. */
     parentThreadId: uuid("parent_thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
-    /** The asking thread's channel — what the answering agent may read. */
     originChannelId: uuid("origin_channel_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    /** The channel whose agent was asked. */
     targetChannelId: uuid("target_channel_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    /** Null until the answering session has been created. */
     childThreadId: uuid("child_thread_id").references(() => threads.id, {
       onDelete: "set null",
     }),
@@ -446,14 +388,12 @@ export const delegations = rosterSchema.table(
     task: text("task").notNull(),
     status: text("status").default("open").notNull(),
 
-    /** Guards against fern-core → ash-spark → fern-core running forever. */
     depth: bigint("depth", { mode: "number" }).default(1).notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     answeredAt: timestamp("answered_at", { withTimezone: true }),
   },
   (table) => [
-    /** A thread may only wait on one answer at a time. */
     uniqueIndex("delegations_one_open_per_parent_idx")
       .on(table.parentThreadId)
       .where(sql`status = 'open'`),
@@ -475,15 +415,6 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-/**
- * One thing that happened, addressed to one member.
- *
- * Rows are fanned out per recipient rather than per event, so reading or
- * dismissing one person's notification can never touch anyone else's. Emitting
- * is retried when a turn's bookkeeping fails partway, which is what the
- * partial unique index on `message_id` exists for — a second attempt at the
- * same message collides instead of notifying twice.
- */
 export const notifications = rosterSchema.table(
   "notifications",
   {
@@ -491,7 +422,6 @@ export const notifications = rosterSchema.table(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** The recipient. */
     memberId: uuid("member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
@@ -499,20 +429,13 @@ export const notifications = rosterSchema.table(
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
 
-    /**
-     * No foreign key, and nullable: a turn that fails before producing reply
-     * text has no message to point at, and the notification is then the only
-     * record that anything happened at all.
-     */
     messageId: uuid("message_id"),
 
     type: text("type").$type<NotificationType>().notNull(),
 
-    /** Who caused it. Null when an agent did — agent messages have no author. */
     actorMemberId: uuid("actor_member_id").references(() => members.id, {
       onDelete: "set null",
     }),
-    /** Which channel's agent spoke, mirroring `messages.agent_channel_id`. */
     actorChannelId: uuid("actor_channel_id").references(() => projects.id, {
       onDelete: "set null",
     }),
@@ -525,11 +448,9 @@ export const notifications = rosterSchema.table(
       table.memberId,
       table.createdAt.desc(),
     ),
-    /** The unread badge is polled constantly and reads nothing else. */
     index("notifications_member_unread_idx")
       .on(table.memberId)
       .where(sql`read_at is null`),
-    /** Idempotency guard; partial because failure notifications carry no message. */
     uniqueIndex("notifications_member_message_idx")
       .on(table.memberId, table.messageId)
       .where(sql`message_id is not null`),

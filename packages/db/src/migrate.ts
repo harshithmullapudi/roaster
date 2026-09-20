@@ -7,12 +7,6 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 import { db } from "./client";
 
-/**
- * Where the generated SQL lives, as seen from wherever the process was
- * started. Next's standalone server chdirs into its own directory, so the repo
- * root can be two levels up rather than the working directory — and the app is
- * run from the root in development. Both are tried rather than guessed at.
- */
 function candidates(): string[] {
   const override = process.env.ROSTER_MIGRATIONS_DIR;
   const relative = path.join("packages", "db", "drizzle");
@@ -52,12 +46,6 @@ function taskColumn(name: string) {
        and column_name = ${name}`;
 }
 
-/**
- * How to tell, from the database alone, that a migration's work is already
- * there. Only ever consulted for a database with no journal at all, so each
- * check describes what `drizzle-kit push` would have left behind in the days
- * before migrations existed.
- */
 const ALREADY_APPLIED: Record<string, () => Promise<boolean>> = {
   "0000_baseline": () => rowExists(TASKS_TABLE),
   "0001_drop_task_descriptions": async () =>
@@ -65,20 +53,6 @@ const ALREADY_APPLIED: Record<string, () => Promise<boolean>> = {
   "0002_task_threads": () => rowExists(taskColumn("thread_id")),
 };
 
-/**
- * Adopt a database built before there were migrations.
- *
- * Roster's schema used to be applied with `drizzle-kit push`, so the first
- * deploys left databases holding the tables with no record of how they got
- * them. Migrating one heads straight into `CREATE SCHEMA "auth"` on a schema
- * that already exists, and since the server migrates before it serves, that is
- * a crash loop rather than a bad afternoon.
- *
- * So: when the journal is empty, write the rows for the migrations whose work
- * is already done and let the rest run normally. It writes nothing but
- * drizzle's own table, and cannot engage twice — one row in the journal and
- * this never looks again.
- */
 async function adopt(folder: string): Promise<string[]> {
   await db.execute(sql`create schema if not exists drizzle`);
   await db.execute(sql`
@@ -99,11 +73,6 @@ async function adopt(folder: string): Promise<string[]> {
   const stamped: string[] = [];
   for (const entry of journal.entries) {
     const check = ALREADY_APPLIED[entry.tag];
-    /**
-     * Stop at the first migration whose work is not already there — including
-     * one too new to have a check. Everything from here on really does need
-     * to run.
-     */
     if (!check || !(await check())) break;
 
     const contents = readFileSync(
@@ -122,17 +91,6 @@ async function adopt(folder: string): Promise<string[]> {
   return stamped;
 }
 
-/**
- * Bring the database up to the schema this build expects.
- *
- * Drizzle records what it has applied and runs the rest inside one
- * transaction, so this is safe to call on every boot and a no-op once the
- * database is current.
- *
- * It deliberately does not swallow failures. A server that answers requests
- * against a schema it was not built for corrupts data quietly; one that
- * refuses to start says so in the deploy log and is restarted.
- */
 export async function migrateToLatest(): Promise<void> {
   const folder = migrationsFolder();
   if (!folder) {

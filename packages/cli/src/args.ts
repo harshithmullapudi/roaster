@@ -1,9 +1,3 @@
-/**
- * A small flag parser. Agents type these commands, so the rules are the ones
- * an agent will guess: `--flag value` and `--flag=value` both work, and
- * everything that is not a flag is a positional in order.
- */
-
 export interface ParsedArgs {
   positionals: string[];
   flags: Record<string, string | true>;

@@ -15,13 +15,6 @@ interface Hovered {
 
 const CLOSE_DELAY_MS = 120;
 
-/**
- * A single popover for every mention on the page.
- *
- * Mounted once and driven by event delegation rather than per-pill React
- * state: mention pills are ProseMirror decorations, not components, so there
- * is nothing to hang a hover handler on.
- */
 export function MentionPopover() {
   const [hovered, setHovered] = useState<Hovered | null>(null);
 
@@ -48,8 +41,6 @@ export function MentionPopover() {
         target.textContent?.trim().replace(/^@/, "").toLowerCase();
       if (!handle) return;
 
-      // Nothing stops a person's handle from also naming an agent, so the
-      // pill's own `data-kind` decides which of the two this one is.
       const kind = target.dataset.kind === "member" ? "member" : "agent";
       const candidates = knownMentions().filter(
         (one) => one.handle === handle,
@@ -105,7 +96,6 @@ export function MentionPopover() {
       <p className="text-foreground text-sm font-medium">
         {item.kind === "member" ? item.name : item.display}
       </p>
-      {/* Globe/Lock is how visibility reads elsewhere — channel-menu, settings. */}
       <p className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
         {item.kind === "member" ? (
           <User className="size-3.5 shrink-0" />

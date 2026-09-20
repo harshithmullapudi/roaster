@@ -82,12 +82,6 @@ export const auth = betterAuth({
         });
       },
     }),
-    /**
-     * Carries a session from the browser that opened a magic link into the
-     * desktop app's webview. Server-initiated only — nothing in a page can ask
-     * for a token — and stored hashed, so the verifications table never holds
-     * anything replayable.
-     */
     oneTimeToken({
       disableClientRequest: true,
       storeToken: "hashed",

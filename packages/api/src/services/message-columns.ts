@@ -4,14 +4,6 @@ import { alias } from "drizzle-orm/pg-core";
 
 import { agentDisplay, agentHandle } from "../lib/agent-identity";
 
-/**
- * How a message is read, shared by the channel view and the thread view.
- *
- * This lives apart from `services/messages` so both readers can use it without
- * a cycle: `messages` imports `sessions`, `sessions` re-exports `queries`, and
- * `queries` needs these columns too.
- */
-
 export interface ChannelMessage {
   id: string;
   projectId: string;
@@ -27,17 +19,11 @@ export interface ChannelMessage {
   authorMemberId: string | null;
   authorName: string | null;
   authorEmail: string | null;
-  /** Set on agent messages: which channel's agent spoke. */
   agentChannelId: string | null;
   agentDisplay: string | null;
   agentHandle: string | null;
 }
 
-/**
- * A delegated reply lands in another channel's thread, so the agent that wrote
- * a message is not always the agent of the channel you are reading. Resolve it
- * from the message's own `agentChannelId`, never from the surrounding page.
- */
 export const agentChannel = alias(projects, "agent_channel");
 export const agentOwner = alias(members, "agent_owner");
 

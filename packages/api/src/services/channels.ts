@@ -14,7 +14,6 @@ export interface Channel {
   repoOwner: string | null;
   repoName: string | null;
   repoPath: string | null;
-  /** The channel's agent, named after whoever added the channel. */
   agentName: string;
   agentHandle: string;
   agentDisplay: string;
@@ -90,14 +89,6 @@ function toAgent(
   };
 }
 
-/**
- * Every channel the caller may mention, flattened — the autocomplete draws
- * from this and so does `roster ask`, so an agent can never address a channel
- * its operator could not have addressed by hand.
- *
- * Agents only. People are mentionable too, but they are not channels and
- * `roster ask` must not reach them — see `listMentionableMembers`.
- */
 export async function listMentionableChannels(
   scope: ChannelScope,
 ): Promise<Channel[]> {
@@ -107,28 +98,12 @@ export async function listMentionableChannels(
   );
 }
 
-/**
- * A person, addressed by the handle they already have.
- *
- * `members.agent_name` is the handle: it is lowercased and unique per
- * organization at the index, so "@harshith" needs no new column and no
- * generation step. Their agent in a channel is "@harshith-roster" — longer,
- * so the composer's longest-first rule tells the two apart on its own.
- */
 export interface MentionableMember {
   id: string;
   handle: string;
   name: string;
 }
 
-/**
- * Everyone the caller may mention. The whole organization: unlike a channel,
- * a person is not private to anyone, and the autocomplete already only ever
- * runs for a member of that organization.
- *
- * The caller is excluded — mentioning yourself is a no-op that only crowds
- * the list.
- */
 export async function listMentionableMembers(
   scope: ChannelScope,
 ): Promise<MentionableMember[]> {
@@ -158,8 +133,6 @@ export async function listMentionableMembers(
         {
           id: row.id,
           handle,
-          // `users.name` defaults to "", so the email is the only name some
-          // invited-but-unfinished accounts have.
           name: name.length > 0 ? name : row.email,
         },
       ];
@@ -167,7 +140,6 @@ export async function listMentionableMembers(
     .sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
-/** The person behind "@harshith", if that handle names one at all. */
 export async function findMemberByHandle(args: {
   organizationId: string;
   handle: string;
@@ -202,11 +174,6 @@ export async function findMemberByHandle(args: {
   };
 }
 
-/**
- * Resolve "@fern-spark-wilderness" to a channel. Handles are compared whole
- * against rendered candidates because both halves may contain hyphens — see
- * `matchAgentHandle`.
- */
 export async function resolveAgentHandle(
   scope: ChannelScope,
   handle: string,
@@ -218,7 +185,6 @@ export async function resolveAgentHandle(
   return channels.find((channel) => channel.agentHandle === wanted) ?? null;
 }
 
-/** The identity a channel's own agent speaks under. */
 export async function channelAgentIdentity(projectId: string) {
   const [row] = await db
     .select({ slug: projects.slug, agentName: members.agentName })

@@ -8,19 +8,10 @@ function trimmed(value: string | undefined): string | null {
   return value && value.length > 0 ? value.replace(/\/+$/, "") : null;
 }
 
-/** Where this server publishes. Private and unroutable from a browser. */
 function apiUrl(): string | null {
   return trimmed(process.env.CENTRIFUGO_URL);
 }
 
-/**
- * Where the browser opens its socket.
- *
- * Deployed, these are two different addresses: the server publishes over the
- * private network, while the browser needs a public one. They are the same
- * host in development, so this falls back to `CENTRIFUGO_URL` and nothing has
- * to be set to run locally.
- */
 function publicUrl(): string | null {
   return trimmed(process.env.CENTRIFUGO_PUBLIC_URL) ?? apiUrl();
 }

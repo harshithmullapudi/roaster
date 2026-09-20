@@ -1,0 +1,123 @@
+import type { InboxThread } from "@roster/api";
+import { describe, expect, it } from "vitest";
+
+import {
+  groupInboxThreads,
+  inboxBucket,
+  isUnread,
+  subscriptionLabel,
+} from "./inbox-threads";
+
+const NOW = new Date("2026-09-20T15:00:00");
+
+function thread(over: Partial<InboxThread> = {}): InboxThread {
+  return {
+    id: "t1",
+    projectId: "p1",
+    rootMessageId: "m1",
+    status: "completed",
+    lastProgress: null,
+    error: null,
+    startedAt: new Date("2026-09-20T09:00:00"),
+    endedAt: null,
+    rootText: "Ship the threads route",
+    authorName: "Ada",
+    authorEmail: "ada@example.com",
+    replyCount: 2,
+    lastReplyAt: null,
+    replierNames: ["Ada"],
+    waitingOn: null,
+    channelSlug: "web",
+    channelName: "web",
+    lastActivityAt: new Date("2026-09-20T09:00:00"),
+    unread: false,
+    muted: false,
+    reason: "author",
+    ...over,
+  };
+}
+
+describe("inboxBucket", () => {
+  it("buckets activity from the same calendar day as today", () => {
+    expect(inboxBucket(new Date("2026-09-20T00:05:00"), NOW)).toBe("today");
+    expect(inboxBucket(new Date("2026-09-20T14:59:00"), NOW)).toBe("today");
+  });
+
+  it("treats a future timestamp as today", () => {
+    expect(inboxBucket(new Date("2026-09-21T02:00:00"), NOW)).toBe("today");
+  });
+
+  it("buckets the previous calendar day as yesterday", () => {
+    expect(inboxBucket(new Date("2026-09-19T23:59:00"), NOW)).toBe("yesterday");
+    expect(inboxBucket(new Date("2026-09-19T00:01:00"), NOW)).toBe("yesterday");
+  });
+
+  it("buckets the rest of the last week together", () => {
+    expect(inboxBucket(new Date("2026-09-18T12:00:00"), NOW)).toBe("week");
+    expect(inboxBucket(new Date("2026-09-14T12:00:00"), NOW)).toBe("week");
+  });
+
+  it("buckets anything a week or older as earlier", () => {
+    expect(inboxBucket(new Date("2026-09-13T23:00:00"), NOW)).toBe("earlier");
+    expect(inboxBucket(new Date("2025-01-01T00:00:00"), NOW)).toBe("earlier");
+  });
+});
+
+describe("groupInboxThreads", () => {
+  it("returns groups in recency order and skips empty buckets", () => {
+    const groups = groupInboxThreads(
+      [
+        thread({ id: "a", lastActivityAt: new Date("2026-09-20T10:00:00") }),
+        thread({ id: "b", lastActivityAt: new Date("2026-09-17T10:00:00") }),
+        thread({ id: "c", lastActivityAt: new Date("2026-08-01T10:00:00") }),
+      ],
+      NOW,
+    );
+
+    expect(groups.map((group) => group.bucket)).toEqual([
+      "today",
+      "week",
+      "earlier",
+    ]);
+    expect(groups.map((group) => group.label)).toEqual([
+      "Today",
+      "Earlier this week",
+      "Older",
+    ]);
+  });
+
+  it("keeps the incoming order of threads inside a group", () => {
+    const groups = groupInboxThreads(
+      [
+        thread({ id: "a", lastActivityAt: new Date("2026-09-20T12:00:00") }),
+        thread({ id: "b", lastActivityAt: new Date("2026-09-20T08:00:00") }),
+      ],
+      NOW,
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.threads.map((row) => row.id)).toEqual(["a", "b"]);
+  });
+
+  it("returns nothing for an empty inbox", () => {
+    expect(groupInboxThreads([], NOW)).toEqual([]);
+  });
+});
+
+describe("isUnread", () => {
+  it("is true only when the thread is unread and not muted", () => {
+    expect(isUnread({ unread: true, muted: false })).toBe(true);
+    expect(isUnread({ unread: true, muted: true })).toBe(false);
+    expect(isUnread({ unread: false, muted: false })).toBe(false);
+    expect(isUnread({ unread: false, muted: true })).toBe(false);
+  });
+});
+
+describe("subscriptionLabel", () => {
+  it("names why the thread landed in the inbox", () => {
+    expect(subscriptionLabel("author")).toBe("You started this");
+    expect(subscriptionLabel("replied")).toBe("You replied");
+    expect(subscriptionLabel("mentioned")).toBe("You were mentioned");
+    expect(subscriptionLabel("manual")).toBe("Following");
+  });
+});

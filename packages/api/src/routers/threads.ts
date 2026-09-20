@@ -5,6 +5,7 @@ import { requireOrgProject } from "../services/channels";
 import {
   cancelThread,
   listChannelThreads,
+  listInboxThreads,
   listLiveThreads,
   retryThread,
   threadDetail,
@@ -30,6 +31,14 @@ export const threadsRouter = createTRPCRouter({
 
   live: memberProcedure.query(({ ctx }) =>
     listLiveThreads({
+      organizationId: ctx.organizationId,
+      memberId: ctx.member.id,
+      role: ctx.member.role,
+    }),
+  ),
+
+  inbox: memberProcedure.query(({ ctx }) =>
+    listInboxThreads({
       organizationId: ctx.organizationId,
       memberId: ctx.member.id,
       role: ctx.member.role,

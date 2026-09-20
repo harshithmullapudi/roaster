@@ -5,9 +5,16 @@ export interface PageHeaderProps {
   actions?: ReactNode;
   tabs?: ReactNode;
   nav?: ReactNode;
+  inbox?: ReactNode;
 }
 
-export function PageHeader({ title, actions, tabs, nav }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  actions,
+  tabs,
+  nav,
+  inbox,
+}: PageHeaderProps) {
   return (
     <header className="pt-safe relative flex shrink-0 flex-col border-b border-gray-300 transition-[width,height] ease-linear">
       <div className="h-(--header-height) flex items-center gap-2">
@@ -16,7 +23,10 @@ export function PageHeader({ title, actions, tabs, nav }: PageHeaderProps) {
             {nav}
             <h1 className="min-w-0 truncate text-base">{title}</h1>
           </div>
-          <div className="flex shrink-0 items-center gap-1">{actions}</div>
+          <div className="flex shrink-0 items-center gap-1">
+            {actions}
+            {inbox}
+          </div>
         </div>
       </div>
       {tabs ? (

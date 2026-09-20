@@ -5,10 +5,22 @@ import {
   messages,
   projects,
   threadSessions,
+  type ThreadSubscriptionReason,
+  threadSubscriptions,
   threads,
   users,
 } from "@roster/db";
-import { and, asc, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { agentDisplay, agentHandle } from "../../lib/agent-identity";
 import { readableError } from "../../utils/session-error";
@@ -225,6 +237,68 @@ export async function listChannelThreads(
     ...row,
     ...toSummary(row),
     waitingOn: waiting.get(row.id) ?? null,
+  }));
+}
+
+export interface InboxThread extends ThreadSummary {
+  channelSlug: string;
+  channelName: string;
+  lastActivityAt: Date;
+  unread: boolean;
+  muted: boolean;
+  reason: ThreadSubscriptionReason;
+}
+
+export async function listInboxThreads(
+  scope: ChannelScope,
+): Promise<InboxThread[]> {
+  const rows = await db
+    .select({
+      ...summaryColumns,
+      channelSlug: projects.slug,
+      channelName: projects.name,
+      lastActivityAt: threads.lastActivityAt,
+      unread: sql<boolean>`${threads.lastActivityAt} > ${threadSubscriptions.lastReadAt}`,
+      muted: isNotNull(threadSubscriptions.mutedAt),
+      reason: threadSubscriptions.reason,
+    })
+    .from(threads)
+    .innerJoin(
+      threadSubscriptions,
+      and(
+        eq(threadSubscriptions.threadId, threads.id),
+        eq(threadSubscriptions.memberId, scope.memberId),
+      ),
+    )
+    .innerJoin(projects, eq(threads.projectId, projects.id))
+    .leftJoin(messages, eq(threads.rootMessageId, messages.id))
+    .leftJoin(members, eq(messages.authorMemberId, members.id))
+    .leftJoin(users, eq(members.userId, users.id))
+    .where(
+      and(
+        eq(threads.organizationId, scope.organizationId),
+        visibleToMember(scope.memberId, scope.role),
+      ),
+    )
+    .orderBy(desc(threads.lastActivityAt))
+    .limit(200);
+
+  const waiting = await waitingOnByParent(rows.map((row) => row.id));
+
+  return rows.map((row) => ({
+    id: row.id,
+    projectId: row.projectId,
+    rootMessageId: row.rootMessageId,
+    authorName: row.authorName,
+    authorEmail: row.authorEmail,
+    ...toSummary(row),
+    waitingOn: waiting.get(row.id) ?? null,
+    channelSlug: row.channelSlug,
+    channelName: row.channelName,
+    lastActivityAt: asDate(row.lastActivityAt) ?? new Date(),
+    unread: Boolean(row.unread),
+    muted: Boolean(row.muted),
+    reason: row.reason,
   }));
 }
 

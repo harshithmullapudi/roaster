@@ -1,4 +1,4 @@
-import { CircleCheck, Users } from "lucide-react";
+import { CircleCheck, MessagesSquare, Users } from "lucide-react";
 
 import type { Shell } from "~/lib/shell";
 import type { SidebarSection } from "~/types";
@@ -30,6 +30,12 @@ export function AppSidebar({
 
       <nav className="overscroll-contain flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         <div className="flex w-full min-w-0 flex-col gap-0.5">
+          <SidebarLink
+            href={`/${organization.slug}/threads`}
+            active={section === "threads"}
+            icon={<MessagesSquare size={14} />}
+            label="Threads"
+          />
           <SidebarLink
             href={`/${organization.slug}/tasks`}
             active={section === "tasks"}

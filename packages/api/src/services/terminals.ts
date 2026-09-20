@@ -70,6 +70,7 @@ async function ownedWorktree(args: {
   organizationId: string;
   projectId: string;
   workspaceId: string;
+  memberId: string;
 }) {
   const [row] = await db
     .select({
@@ -91,6 +92,7 @@ async function ownedWorktree(args: {
   const connection = await hostConnection({
     organizationId: args.organizationId,
     projectId: args.projectId,
+    runAsMemberId: args.memberId,
   });
 
   return {
@@ -104,6 +106,7 @@ interface WorktreeRef {
   organizationId: string;
   projectId: string;
   workspaceId: string;
+  memberId: string;
 }
 
 class UnknownWorktree extends Error {
@@ -137,8 +140,13 @@ export async function listWorktreeSessions(
 export async function listChannelAgents(args: {
   organizationId: string;
   projectId: string;
+  memberId: string;
 }): Promise<HostAgent[]> {
-  const connection = await hostConnection(args);
+  const connection = await hostConnection({
+    organizationId: args.organizationId,
+    projectId: args.projectId,
+    runAsMemberId: args.memberId,
+  });
   return listHostAgents({
     jwt: connection.jwt,
     routingKey: connection.hostKey,
@@ -247,6 +255,7 @@ export async function authorizeTerminalStream(args: {
     return await terminalStreamUrl({
       organizationId: access.organization.id,
       projectId: project.id,
+      memberId: access.member.id,
       workspaceId: args.workspaceId,
       terminalId: args.terminalId,
       seq: args.seq,

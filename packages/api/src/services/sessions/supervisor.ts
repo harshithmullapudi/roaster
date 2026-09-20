@@ -47,7 +47,7 @@ import { allocateSeq, channelAgentIdentity } from "../channels";
 import { channelName, publish, threadChannelName } from "../centrifugo";
 import { toggleReaction } from "../reactions";
 import { taskForThread } from "../tasks";
-import { hostConnection, jwtForHostKey } from "./connection";
+import { hostConnection, jwtForMember, NO_MEMBER } from "./connection";
 import { threadPublishState } from "./queries";
 
 const POLL_INTERVAL_MS = 2000;
@@ -87,6 +87,8 @@ export { threadChannelName };
 const COMPLETE_EMOJI = "✅";
 
 interface HostLink {
+  hostKey: string;
+  memberId: string;
   socket: WebSocket | null;
   attempts: number;
   retryTimer: ReturnType<typeof setTimeout> | null;
@@ -97,6 +99,7 @@ interface Watch {
   sessionId: string;
   threadId: string;
   hostKey: string;
+  memberId: string;
   workspaceId: string;
   terminalId: string;
   pollTimer: ReturnType<typeof setInterval> | null;
@@ -111,6 +114,11 @@ interface Watch {
 }
 
 const hosts = new Map<string, HostLink>();
+
+function linkKey(hostKey: string, memberId: string): string {
+  return `${memberId}@${hostKey}`;
+}
+
 const watches = new Map<string, Watch>();
 const byTerminal = new Map<string, string>();
 const finishing = new Set<string>();
@@ -291,40 +299,43 @@ export async function markWaiting(args: {
   if (row) await publishThread(row.threadId);
 }
 
-function ensureHostLink(hostKey: string): void {
-  const existing = hosts.get(hostKey);
+function ensureHostLink(hostKey: string, memberId: string): void {
+  const key = linkKey(hostKey, memberId);
+  const existing = hosts.get(key);
   if (existing && (existing.socket || existing.retryTimer)) return;
 
   const link: HostLink = existing ?? {
+    hostKey,
+    memberId,
     socket: null,
     attempts: 0,
     retryTimer: null,
     stopped: false,
   };
   link.stopped = false;
-  hosts.set(hostKey, link);
+  hosts.set(key, link);
 
   void (async () => {
-    const jwt = await jwtForHostKey(hostKey);
-    if (!jwt) {
-      await failHostSessions(hostKey, "Nobody on this team has Superset connected.");
+    const auth = await jwtForMember({ memberId, hostKey });
+    if (auth.jwt === null) {
+      await failHostSessions(key, auth.problem);
       return;
     }
 
     let socket: WebSocket;
     try {
       socket = new WebSocket(eventsUrl(hostKey), {
-        headers: { Authorization: `Bearer ${jwt}` },
+        headers: { Authorization: `Bearer ${auth.jwt}` },
       } as unknown as string[]);
     } catch {
-      scheduleHostRetry(hostKey);
+      scheduleHostRetry(key);
       return;
     }
 
     link.socket = socket;
 
     socket.onopen = () => {
-      const current = hosts.get(hostKey);
+      const current = hosts.get(key);
       if (current) current.attempts = 0;
     };
 
@@ -336,68 +347,70 @@ function ensureHostLink(hostKey: string): void {
         return;
       }
       if (!isAgentLifecycle(parsed)) return;
-      handleLifecycle(parsed.terminalId, parsed.eventType);
+      handleLifecycle(key, parsed.terminalId, parsed.eventType);
     };
 
     socket.onerror = () => {};
 
     socket.onclose = () => {
-      const current = hosts.get(hostKey);
+      const current = hosts.get(key);
       if (!current || current.stopped) return;
       current.socket = null;
-      if (hasWatchesOn(hostKey)) scheduleHostRetry(hostKey);
-      else hosts.delete(hostKey);
+      if (hasWatchesOn(key)) scheduleHostRetry(key);
+      else hosts.delete(key);
     };
   })();
 }
 
-function hasWatchesOn(hostKey: string): boolean {
+function hasWatchesOn(key: string): boolean {
   for (const watch of watches.values()) {
-    if (watch.hostKey === hostKey) return true;
+    if (linkKey(watch.hostKey, watch.memberId) === key) return true;
   }
   return false;
 }
 
-function scheduleHostRetry(hostKey: string): void {
-  const link = hosts.get(hostKey);
+function scheduleHostRetry(key: string): void {
+  const link = hosts.get(key);
   if (!link || link.stopped) return;
 
   if (link.attempts >= MAX_ATTEMPTS) {
     void failHostSessions(
-      hostKey,
+      key,
       "That machine is offline — Roster stopped waiting for it.",
     );
-    hosts.delete(hostKey);
+    hosts.delete(key);
     return;
   }
 
   const delay = Math.min(BASE_BACKOFF_MS * 2 ** link.attempts, MAX_BACKOFF_MS);
   link.attempts += 1;
   link.retryTimer = setTimeout(() => {
-    const current = hosts.get(hostKey);
+    const current = hosts.get(key);
     if (current) current.retryTimer = null;
-    if (hasWatchesOn(hostKey)) ensureHostLink(hostKey);
+    if (hasWatchesOn(key)) ensureHostLink(link.hostKey, link.memberId);
   }, delay);
 }
 
-async function failHostSessions(
-  hostKey: string,
-  reason: string,
-): Promise<void> {
+async function failHostSessions(key: string, reason: string): Promise<void> {
   const affected = [...watches.values()].filter(
-    (watch) => watch.hostKey === hostKey,
+    (watch) => linkKey(watch.hostKey, watch.memberId) === key,
   );
   for (const watch of affected) {
     await finish({ sessionId: watch.sessionId, status: "failed", error: reason });
   }
 }
 
-function handleLifecycle(terminalId: string, eventType: string): void {
+function handleLifecycle(
+  key: string,
+  terminalId: string,
+  eventType: string,
+): void {
   const sessionId = byTerminal.get(terminalId);
   if (!sessionId) return;
 
   const watch = watches.get(sessionId);
   if (!watch) return;
+  if (linkKey(watch.hostKey, watch.memberId) !== key) return;
 
   if (eventType === "Failed") {
     void finish({
@@ -565,6 +578,7 @@ function startWatch(args: {
   sessionId: string;
   threadId: string;
   hostKey: string;
+  memberId: string;
   workspaceId: string;
   terminalId: string;
 }): void {
@@ -574,6 +588,7 @@ function startWatch(args: {
     sessionId: args.sessionId,
     threadId: args.threadId,
     hostKey: args.hostKey,
+    memberId: args.memberId,
     workspaceId: args.workspaceId,
     terminalId: args.terminalId,
     pollTimer: null,
@@ -593,7 +608,7 @@ function startWatch(args: {
     void pollOnce(args.sessionId);
   }, POLL_INTERVAL_MS);
 
-  ensureHostLink(args.hostKey);
+  ensureHostLink(args.hostKey, args.memberId);
   void pollOnce(args.sessionId);
 }
 
@@ -604,15 +619,16 @@ function stopWatch(sessionId: string): void {
   byTerminal.delete(watch.terminalId);
   watches.delete(sessionId);
 
-  if (!hasWatchesOn(watch.hostKey)) {
-    const link = hosts.get(watch.hostKey);
+  const key = linkKey(watch.hostKey, watch.memberId);
+  if (!hasWatchesOn(key)) {
+    const link = hosts.get(key);
     if (link) {
       link.stopped = true;
       if (link.retryTimer) clearTimeout(link.retryTimer);
       try {
         link.socket?.close();
       } catch {}
-      hosts.delete(watch.hostKey);
+      hosts.delete(key);
     }
   }
 }
@@ -953,6 +969,7 @@ async function startSessionRow(args: {
       sessionId: session.id,
       threadId: session.threadId,
       hostKey: connection.hostKey,
+      memberId: connection.memberId,
       workspaceId: workspace.id,
       terminalId: run.sessionId,
     });
@@ -1107,6 +1124,7 @@ async function interrupt(args: {
         sessionId: session.id,
         threadId: session.threadId,
         hostKey: connection.hostKey,
+        memberId: connection.memberId,
         workspaceId: session.supersetWorkspaceId,
         terminalId: session.supersetTerminalId,
       });
@@ -1180,6 +1198,7 @@ async function resume(args: {
       sessionId: session.id,
       threadId: session.threadId,
       hostKey: connection.hostKey,
+      memberId: connection.memberId,
       workspaceId: session.supersetWorkspaceId,
       terminalId,
     });
@@ -1293,6 +1312,7 @@ async function reattach(session: SessionView): Promise<void> {
       sessionId: session.id,
       threadId: session.threadId,
       hostKey: connection.hostKey,
+      memberId: connection.memberId,
       workspaceId,
       terminalId,
     });
@@ -1477,18 +1497,26 @@ export function ensureStarted(): Promise<void> {
     started = true;
     for (const row of rows) {
       if (
-        row.supersetTerminalId &&
-        row.supersetWorkspaceId &&
-        row.supersetHostKey
+        !row.supersetTerminalId ||
+        !row.supersetWorkspaceId ||
+        !row.supersetHostKey
       ) {
-        startWatch({
-          sessionId: row.id,
-          threadId: row.threadId,
-          hostKey: row.supersetHostKey,
-          workspaceId: row.supersetWorkspaceId,
-          terminalId: row.supersetTerminalId,
-        });
+        continue;
       }
+
+      if (!row.runAsMemberId) {
+        await finish({ sessionId: row.id, status: "failed", error: NO_MEMBER });
+        continue;
+      }
+
+      startWatch({
+        sessionId: row.id,
+        threadId: row.threadId,
+        hostKey: row.supersetHostKey,
+        memberId: row.runAsMemberId,
+        workspaceId: row.supersetWorkspaceId,
+        terminalId: row.supersetTerminalId,
+      });
     }
   })().catch(() => {
     started = true;

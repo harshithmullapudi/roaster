@@ -54,6 +54,7 @@ export const terminalsRouter = createTRPCRouter({
       return listWorktreeSessions({
         organizationId: ctx.organizationId,
         projectId: project.id,
+        memberId: ctx.member.id,
         workspaceId: input.workspaceId,
       }).catch(rethrow);
     }),
@@ -70,6 +71,7 @@ export const terminalsRouter = createTRPCRouter({
     return listChannelAgents({
       organizationId: ctx.organizationId,
       projectId: project.id,
+      memberId: ctx.member.id,
     });
   }),
 
@@ -87,6 +89,7 @@ export const terminalsRouter = createTRPCRouter({
       return spawnAgent({
         organizationId: ctx.organizationId,
         projectId: project.id,
+        memberId: ctx.member.id,
         workspaceId: input.workspaceId,
         presetId: input.presetId,
       }).catch(rethrow);
@@ -106,6 +109,7 @@ export const terminalsRouter = createTRPCRouter({
       return spawnShell({
         organizationId: ctx.organizationId,
         projectId: project.id,
+        memberId: ctx.member.id,
         workspaceId: input.workspaceId,
       }).catch(rethrow);
     }),
@@ -129,6 +133,7 @@ export const terminalsRouter = createTRPCRouter({
       await writeToSession({
         organizationId: ctx.organizationId,
         projectId: project.id,
+        memberId: ctx.member.id,
         workspaceId: input.workspaceId,
         terminalId: input.terminalId,
         data: input.data,
@@ -156,6 +161,7 @@ export const terminalsRouter = createTRPCRouter({
       await sendToSession({
         organizationId: ctx.organizationId,
         projectId: project.id,
+        memberId: ctx.member.id,
         workspaceId: input.workspaceId,
         terminalId: input.terminalId,
         text: input.text,
@@ -178,6 +184,7 @@ export const terminalsRouter = createTRPCRouter({
       await closeWorktreeSession({
         organizationId: ctx.organizationId,
         projectId: project.id,
+        memberId: ctx.member.id,
         workspaceId: input.workspaceId,
         terminalId: input.terminalId,
       }).catch(rethrow);

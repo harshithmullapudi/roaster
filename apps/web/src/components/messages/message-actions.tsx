@@ -15,11 +15,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@roster/ui";
-import { CircleCheck, MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import {
   ThreadCompleteDialogs,
+  ThreadCompleteMenuItem,
   useThreadCompletion,
 } from "~/components/threads/thread-completion";
 import type { ThreadItem } from "~/utils/thread-rows";
@@ -59,7 +60,13 @@ export function MessageActions({
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          if (!open && completion.pending) return;
+          setMenuOpen(open);
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
@@ -72,24 +79,10 @@ export function MessageActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
           {thread ? (
-            completion.completed ? (
-              <DropdownMenuItem disabled className="gap-2">
-                <CircleCheck size={14} />
-                Completed
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem
-                className="gap-2"
-                onSelect={(event) => {
-                  event.preventDefault();
-                  setMenuOpen(false);
-                  completion.start();
-                }}
-              >
-                <CircleCheck size={14} />
-                Mark as complete
-              </DropdownMenuItem>
-            )
+            <ThreadCompleteMenuItem
+              completion={completion}
+              closeMenu={() => setMenuOpen(false)}
+            />
           ) : null}
           {onDelete ? (
             <DropdownMenuItem

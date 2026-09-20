@@ -5,14 +5,14 @@ import {
   cn,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@roster/ui";
-import { CircleCheck, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import {
   ThreadCompleteDialogs,
+  ThreadCompleteMenuItem,
   useThreadCompletion,
 } from "./thread-completion";
 
@@ -41,7 +41,13 @@ export function ThreadMenu({
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          if (!open && completion.pending) return;
+          setMenuOpen(open);
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
@@ -53,24 +59,10 @@ export function ThreadMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
-          {completion.completed ? (
-            <DropdownMenuItem disabled className="gap-2">
-              <CircleCheck size={14} />
-              Completed
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem
-              className="gap-2"
-              onSelect={(event) => {
-                event.preventDefault();
-                setMenuOpen(false);
-                completion.start();
-              }}
-            >
-              <CircleCheck size={14} />
-              Mark as complete
-            </DropdownMenuItem>
-          )}
+          <ThreadCompleteMenuItem
+            completion={completion}
+            closeMenu={() => setMenuOpen(false)}
+          />
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -84,6 +84,18 @@ already selects the Dockerfile builder. Then:
    back to plain tRPC. Wire it up by running Centrifugo as a second service
    and setting `CENTRIFUGO_URL` to its private URL.
 
+   That service needs the same three namespaces as
+   `docker/centrifugo/config.json`, which only configures the container
+   `docker-compose.dev.yaml` starts. Publishing to a namespace Centrifugo
+   does not know about is rejected, so a missing `user` costs live
+   notifications — the unread dot then lags by a poll instead of arriving
+   at once. On the official image the whole set can be passed as one
+   variable:
+
+   ```
+   CENTRIFUGO_CHANNEL_NAMESPACES=[{"name":"channel","presence":true,"history_size":300,"history_ttl":"30m","force_recovery":true},{"name":"thread","presence":false,"history_size":300,"history_ttl":"30m","force_recovery":true},{"name":"user","presence":false,"history_size":100,"history_ttl":"30m","force_recovery":true}]
+   ```
+
 `PORT` is read from the environment, which is how Railway routes to the
 container.
 

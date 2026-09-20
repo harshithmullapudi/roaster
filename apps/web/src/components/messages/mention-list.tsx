@@ -2,7 +2,7 @@
 
 import { cn } from "@roster/ui";
 import type { SuggestionProps } from "@tiptap/suggestion";
-import { Lock } from "lucide-react";
+import { Lock, User } from "lucide-react";
 import {
   forwardRef,
   useEffect,
@@ -57,7 +57,7 @@ export const MentionList = forwardRef<
   if (items.length === 0) {
     return (
       <div className="bg-background-3 border-border text-muted-foreground w-70 rounded-lg border p-2 text-xs shadow-md">
-        No agents match that.
+        Nobody matches that.
       </div>
     );
   }
@@ -75,15 +75,16 @@ export const MentionList = forwardRef<
           onMouseEnter={() => setSelected(index)}
           onClick={() => choose(index)}
         >
-          {/* Matches the sidebar: the channel glyph, or a lock when private. */}
-          {item.visibility === "private" ? (
+          {item.kind === "member" ? (
+            <User className="text-muted-foreground size-3.5 shrink-0" />
+          ) : item.visibility === "private" ? (
             <Lock className="text-muted-foreground size-3.5 shrink-0" />
           ) : (
             <HashMark className="text-muted-foreground" />
           )}
           <span className="text-foreground font-medium">{item.handle}</span>
           <span className="text-muted-foreground ml-auto truncate text-xs">
-            {item.display}
+            {item.kind === "member" ? item.name : item.display}
           </span>
         </button>
       ))}

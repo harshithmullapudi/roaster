@@ -6,12 +6,6 @@ import {
 
 import { getSession } from "~/lib/session";
 
-/**
- * Where a file becomes an attachment. This is a REST route rather than a tRPC
- * procedure because the tRPC client batches over JSON — bytes would have to be
- * base64'd through it, a third larger and held in memory twice.
- */
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -21,7 +15,6 @@ export async function POST(request: Request): Promise<Response> {
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_ATTACHMENT_BYTES * 1.1) {
-    // Refuse on the header rather than reading a body we would throw away.
     return refusal(ATTACHMENT_REFUSALS["too-large"], 413);
   }
 

@@ -6,17 +6,11 @@ import {
 
 export { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE };
 
-/** What the file picker offers. The server still decides from the bytes. */
 export const ACCEPT_ATTRIBUTE = Object.keys(ATTACHMENT_TYPES).join(",");
 
 export function isSupportedFile(file: File): boolean {
   if (file.type in ATTACHMENT_TYPES) return true;
 
-  /**
-   * A file dragged from some desktops arrives with an empty type. Falling
-   * back to the extension keeps those droppable; a wrong guess costs one
-   * refused upload, since the server reads the bytes either way.
-   */
   if (file.type === "") {
     const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
     return Object.values(ATTACHMENT_TYPES).includes(
@@ -27,11 +21,6 @@ export function isSupportedFile(file: File): boolean {
   return false;
 }
 
-/**
- * The files in a paste or a drop. `items` is read as well as `files` because
- * a screenshot pasted from the clipboard is an item of kind "file" and, in
- * some browsers, is not listed in `files` at all.
- */
 export function filesFromTransfer(data: DataTransfer | null): File[] {
   if (!data) return [];
 
@@ -49,11 +38,6 @@ export function filesFromTransfer(data: DataTransfer | null): File[] {
   return Array.from(found.values());
 }
 
-/**
- * Whether a drag is carrying files. A drag of selected text also fires the
- * drag events, and hanging a drop overlay on that would cover the composer
- * every time someone moved a word around.
- */
 export function transferHasFiles(data: DataTransfer | null): boolean {
   if (!data) return false;
   return Array.from(data.types ?? []).includes("Files");
@@ -76,15 +60,6 @@ export interface Box {
   height: number;
 }
 
-/**
- * The space a thumbnail takes. Sized from the stored dimensions so the row
- * reserves its height before the image loads — otherwise every image that
- * arrives shoves the conversation the reader is looking at down the page.
- *
- * Small on purpose. A message is read as a line of conversation, and a
- * preview that fills the pane buries the lines around it; anyone who wants to
- * look properly clicks, which is a click away rather than a scroll away.
- */
 export function thumbnailBox(
   size: { width: number | null; height: number | null },
   limit: Box = { width: 200, height: 150 },
@@ -106,11 +81,6 @@ export const LOCAL_REFUSALS: Record<LocalRefusal, string> = {
   "too-many": `Up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
 };
 
-/**
- * Splits a batch into what can be uploaded and why the rest cannot. Checked
- * here as well as on the server so an oversized file is refused before it is
- * sent over the wire, not after.
- */
 export function triageFiles(
   files: File[],
   alreadyAttached: number,

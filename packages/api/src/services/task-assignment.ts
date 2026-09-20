@@ -5,20 +5,10 @@ import { and, eq } from "drizzle-orm";
 import { textToTiptap } from "../utils/tiptap";
 
 import { allocateSeq, requireOrgProject, type ChannelScope } from "./channels";
-import { messageById, publishMessage } from "./messages";
+import { emitMessageById } from "./message-events";
 import { createThread, ensureStarted, startSession } from "./sessions";
 import { linkTaskThread, reachableTask, type Task } from "./tasks";
 
-/**
- * Give a task to a channel, which is what starts the work.
- *
- * The task is posted as a message there, the thread that message opens is
- * recorded on the task, and that channel's agent is briefed with it. Kept off
- * `sendMessage` on purpose: that path dedupes, consults the channel's watch
- * setting before deciding to answer at all, and may fold the message into a
- * recent thread. An assignment must start its own thread whose id we can keep,
- * whether or not the channel was listening.
- */
 export async function assignTask(
   args: ChannelScope & { taskId: string; projectId: string },
 ): Promise<Task> {
@@ -32,10 +22,6 @@ export async function assignTask(
     });
   }
 
-  /**
-   * Loud, not silent: an agent is already working this task in a thread, and
-   * quietly opening a second one would have two of them on the same work.
-   */
   if (task.threadId) {
     throw new TRPCError({
       code: "CONFLICT",
@@ -96,10 +82,6 @@ export async function assignTask(
   return linked;
 }
 
-/**
- * The task, said in the channel. `client_id` is the task's own id, so a retry
- * that lands twice posts once — the same guard the composer gets.
- */
 async function postTask(args: {
   organizationId: string;
   projectId: string;
@@ -141,7 +123,7 @@ async function postTask(args: {
     return existing.id;
   }
 
-  await publishMessage(await messageById(inserted.id));
+  await emitMessageById(inserted.id);
 
   return inserted.id;
 }

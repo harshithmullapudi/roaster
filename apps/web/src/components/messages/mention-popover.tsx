@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Lock } from "lucide-react";
+import { Globe, Lock, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { knownMentions, subscribeMentions } from "~/utils/mention-store";
@@ -15,13 +15,6 @@ interface Hovered {
 
 const CLOSE_DELAY_MS = 120;
 
-/**
- * A single popover for every mention on the page.
- *
- * Mounted once and driven by event delegation rather than per-pill React
- * state: mention pills are ProseMirror decorations, not components, so there
- * is nothing to hang a hover handler on.
- */
 export function MentionPopover() {
   const [hovered, setHovered] = useState<Hovered | null>(null);
 
@@ -48,7 +41,12 @@ export function MentionPopover() {
         target.textContent?.trim().replace(/^@/, "").toLowerCase();
       if (!handle) return;
 
-      const item = knownMentions().find((one) => one.handle === handle);
+      const kind = target.dataset.kind === "member" ? "member" : "agent";
+      const candidates = knownMentions().filter(
+        (one) => one.handle === handle,
+      );
+      const item =
+        candidates.find((one) => one.kind === kind) ?? candidates[0];
       if (!item) return;
 
       cancelClose();
@@ -95,19 +93,26 @@ export function MentionPopover() {
         transform: hovered.below ? undefined : "translateY(-100%)",
       }}
     >
-      <p className="text-foreground text-sm font-medium">{item.display}</p>
-      {/* Globe/Lock is how visibility reads elsewhere — channel-menu, settings. */}
+      <p className="text-foreground text-sm font-medium">
+        {item.kind === "member" ? item.name : item.display}
+      </p>
       <p className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
-        {item.visibility === "private" ? (
+        {item.kind === "member" ? (
+          <User className="size-3.5 shrink-0" />
+        ) : item.visibility === "private" ? (
           <Lock className="size-3.5 shrink-0" />
         ) : (
           <Globe className="size-3.5 shrink-0" />
         )}
-        {item.slug}
-        {item.visibility === "private" ? " · private" : null}
+        {item.kind === "member" ? `@${item.handle}` : item.slug}
+        {item.kind !== "member" && item.visibility === "private"
+          ? " · private"
+          : null}
       </p>
       <p className="text-muted-foreground mt-2 text-xs">
-        Agent for {item.name}. Mention to hand work over.
+        {item.kind === "member"
+          ? "A teammate. Mention to bring them into the thread — it does not start an agent."
+          : `Agent for ${item.name}. Mention to hand work over.`}
       </p>
     </div>
   );

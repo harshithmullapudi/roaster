@@ -15,10 +15,6 @@ export function configPath(): string {
   );
 }
 
-/**
- * Environment first, so a machine can run the CLI without a login step if it
- * prefers to inject credentials another way.
- */
 export function loadConfig(): Config | null {
   const fromEnv = process.env.ROSTER_TOKEN;
   if (fromEnv && fromEnv.trim().length > 0) {
@@ -41,7 +37,6 @@ export function loadConfig(): Config | null {
   }
 }
 
-/** Written 0600 — it is a credential, on a machine agents run code on. */
 export function saveConfig(config: Config): string {
   const path = configPath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });

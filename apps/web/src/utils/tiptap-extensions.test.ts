@@ -3,11 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import { richTextExtensions } from "./tiptap-extensions";
 
-/**
- * A body the API parsed out of an agent's markdown. Every node here has to
- * exist in the reader's schema, or ProseMirror drops the message rather than
- * the node it cannot place.
- */
 const MARKDOWN_BODY = {
   type: "doc",
   content: [
@@ -70,6 +65,11 @@ const MARKDOWN_BODY = {
   ],
 };
 
+const mentionBody = (attrs: Record<string, unknown>) => ({
+  type: "doc",
+  content: [{ type: "paragraph", content: [{ type: "mention", attrs }] }],
+});
+
 describe("richTextExtensions", () => {
   it("parses every node a markdown body can carry", () => {
     const schema = getSchema(richTextExtensions);
@@ -78,5 +78,25 @@ describe("richTextExtensions", () => {
     doc.check();
     expect(doc.childCount).toBe(MARKDOWN_BODY.content.length);
     expect(doc.textContent).toContain("Recommendation");
+  });
+
+  it("keeps a member mention's kind through the reader's schema", () => {
+    const schema = getSchema(richTextExtensions);
+    const body = mentionBody({ id: "m1", label: "harshith", kind: "member" });
+    const doc = schema.nodeFromJSON(body);
+
+    doc.check();
+    expect(doc.firstChild?.firstChild?.attrs).toMatchObject({
+      id: "m1",
+      label: "harshith",
+      kind: "member",
+    });
+  });
+
+  it("reads a mention written before kind existed as an agent", () => {
+    const schema = getSchema(richTextExtensions);
+    const doc = schema.nodeFromJSON(mentionBody({ id: "c1", label: "fern-core" }));
+
+    expect(doc.firstChild?.firstChild?.attrs.kind).toBe("agent");
   });
 });

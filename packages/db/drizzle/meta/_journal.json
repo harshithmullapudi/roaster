@@ -43,6 +43,20 @@
       "when": 1789894405159,
       "tag": "0005_message_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789894406159,
+      "tag": "0006_thread_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789909910343,
+      "tag": "0007_thread_org_index",
+      "breakpoints": true
     }
   ]
 }

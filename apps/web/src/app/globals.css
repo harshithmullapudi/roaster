@@ -557,6 +557,23 @@
   background-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
+/*
+ * A person, not a channel's agent. Same pill so both read as "addressed", a
+ * different hue so "@harshith" and "@harshith-roster" are never mistaken for
+ * each other at a glance. Hue is all there is to work with: the pill is an
+ * inline decoration with nowhere to hang an icon. `--success` because it is
+ * the one accent far enough from the primary blue that holds its contrast in
+ * both themes — warning's yellow does not on a light background.
+ */
+.mention[data-kind="member"] {
+  background-color: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+
+.mention[data-kind="member"]:hover {
+  background-color: color-mix(in srgb, var(--color-success) 24%, transparent);
+}
+
 .editor-container .heading-node:first-child {
   margin-top: 0 !important;
 }

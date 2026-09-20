@@ -11,7 +11,6 @@ export interface ThreadStatusProps {
 const TONE: Record<string, string> = {
   starting: "bg-muted-foreground",
   running: "bg-primary",
-  // Parked on another agent, not dead — pulses like a live thread.
   waiting: "bg-primary/60",
   completed: "bg-muted-foreground",
   failed: "bg-destructive",

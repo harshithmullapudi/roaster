@@ -14,10 +14,6 @@ import { assignTask } from "../services/task-assignment";
 import { createTask, setTaskStatus } from "../services/tasks";
 import { cliProcedure, createTRPCRouter } from "../trpc";
 
-/**
- * `||`, not `??`: `users.name` defaults to the empty string rather than null,
- * so a nullish fallback yields a blank author.
- */
 function toCliMessage(message: ChannelMessage) {
   return {
     id: message.id,
@@ -32,12 +28,6 @@ function toCliMessage(message: ChannelMessage) {
   };
 }
 
-/**
- * What the `roster` CLI can do, as an agent running on someone's machine.
- *
- * Every procedure here is scoped by the member who created the API key, so an
- * agent reaches exactly what its operator could reach by hand — no more.
- */
 export const cliRouter = createTRPCRouter({
   whoami: cliProcedure.query(async ({ ctx }) => ({
     memberId: ctx.member.id,
@@ -77,10 +67,6 @@ export const cliRouter = createTRPCRouter({
         projectId: input.channelId,
       });
 
-      /**
-       * Loud rather than empty: a silent [] here reads as "that channel has
-       * nothing to say", when the truth is this key cannot see it.
-       */
       if (!project) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -114,11 +100,6 @@ export const cliRouter = createTRPCRouter({
       };
     }),
 
-  /**
-   * One thread, root message and every reply under it. Delegation messages stay
-   * in — a thread another agent was asked to run opens with one, so filtering
-   * them the way the channel view does would hide the question being answered.
-   */
   readThread: cliProcedure
     .input(
       z.object({
@@ -165,7 +146,6 @@ export const cliRouter = createTRPCRouter({
           status: detail.thread.status,
           replyCount: detail.thread.replyCount,
         },
-        /** The tail: a long thread should not flood the agent that reads it. */
         messages: detail.messages.slice(-input.limit).map(toCliMessage),
       };
     }),
@@ -189,11 +169,6 @@ export const cliRouter = createTRPCRouter({
       }),
     ),
 
-  /**
-   * File a task. A channel is optional on purpose: an agent should only name
-   * one when the person it is working for named one. Otherwise the task waits
-   * in the backlog, where a human decides whose it is.
-   */
   createTask: cliProcedure
     .input(
       z.object({

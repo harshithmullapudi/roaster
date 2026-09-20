@@ -11,7 +11,6 @@ export interface PendingAttachment {
   name: string;
   size: number;
   mimeType: string;
-  /** An object URL, so an image previews before the upload finishes. */
   previewUrl: string | null;
   progress: number;
   status: "uploading" | "ready" | "failed";
@@ -19,16 +18,6 @@ export interface PendingAttachment {
   attachment?: MessageAttachment;
 }
 
-/**
- * The composer's attachment tray. Files upload the moment they are chosen,
- * pasted, or dropped — the message that will carry them may not be written
- * yet, and the wait for a large image should overlap with typing rather than
- * follow it.
- *
- * The list is mirrored in a ref because uploads report back out of order and
- * two pastes can land before React re-renders: every update is computed from
- * the ref rather than from a stale closure.
- */
 export function useAttachments(projectId: string) {
   const [items, setItems] = useState<PendingAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +71,6 @@ export function useAttachments(projectId: string) {
             aborts.current.delete(localId);
           })
           .catch((cause: Error) => {
-            // A removed file aborts its own upload; it is already gone.
             if (!aborts.current.has(localId)) return;
             aborts.current.delete(localId);
             patch(localId, { status: "failed", error: cause.message });
@@ -140,7 +128,6 @@ export function useAttachments(projectId: string) {
     addFiles,
     remove,
     clear,
-    /** Ids to send with the message, in the order they were attached. */
     attachmentIds: ready.map((item) => item.attachment.id),
     attachments: ready.map((item) => item.attachment),
     uploading: items.some((item) => item.status === "uploading"),

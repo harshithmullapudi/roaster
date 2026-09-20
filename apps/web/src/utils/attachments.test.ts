@@ -13,7 +13,6 @@ function file(name: string, type: string, size = 10): File {
   return new File([new Uint8Array(size)], name, { type });
 }
 
-/** Enough of a DataTransfer for the reading these helpers do. */
 function transfer(args: {
   files?: File[];
   items?: File[];
@@ -68,7 +67,6 @@ describe("filesFromTransfer", () => {
 describe("transferHasFiles", () => {
   it("is true only for a drag carrying files", () => {
     expect(transferHasFiles(transfer({ types: ["Files"] }))).toBe(true);
-    // Dragging selected text must not raise the drop overlay.
     expect(transferHasFiles(transfer({ types: ["text/plain"] }))).toBe(false);
   });
 });

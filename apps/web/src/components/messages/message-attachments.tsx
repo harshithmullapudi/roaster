@@ -12,11 +12,6 @@ export interface MessageAttachmentsProps {
   attachments: MessageAttachment[];
 }
 
-/**
- * Files under a message. They sit beside the body rather than inside it: the
- * body is a stored Tiptap document, and a file is not part of what was
- * written — it is what was sent along with it.
- */
 export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
   const [previewing, setPreviewing] = useState<MessageAttachment | null>(null);
 
@@ -67,12 +62,6 @@ function ImageThumbnail({
       className="border-border hover:border-primary block cursor-zoom-in overflow-hidden rounded-lg border transition-colors"
       style={{ maxWidth: "100%" }}
     >
-      {/*
-        A plain `img`, not `next/image`: these are private files read through
-        an authenticated route, so the optimizer has nothing to fetch and the
-        dimensions come from the row instead.
-      */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={attachment.url}
         alt={attachment.filename}

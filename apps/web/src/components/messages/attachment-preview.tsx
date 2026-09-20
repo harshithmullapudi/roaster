@@ -11,11 +11,6 @@ export interface AttachmentPreviewProps {
   onClose: () => void;
 }
 
-/**
- * The full view of one attachment — an image at its own size, a PDF in the
- * browser's viewer. Both read the same authenticated route the thumbnail
- * does, so nothing here is public.
- */
 export function AttachmentPreview({
   attachment,
   onClose,

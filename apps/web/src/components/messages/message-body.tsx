@@ -28,11 +28,6 @@ export function MessageBody({ body, text }: MessageBodyProps) {
     editor.commands.setContent((body ?? text) as never, { emitUpdate: false });
   }, [editor, body, text]);
 
-  /**
-   * Mentions are decorated from a list fetched once for the whole app. A body
-   * rendered before it lands has no pills, so nudge the view when it arrives —
-   * an empty transaction flagged for the decoration plugin to recompute.
-   */
   useEffect(() => {
     if (!editor) return;
     return subscribeMentions(() => {

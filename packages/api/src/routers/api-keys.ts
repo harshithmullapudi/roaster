@@ -7,7 +7,6 @@ import { createTRPCRouter, memberProcedure } from "../trpc";
 export const apiKeysRouter = createTRPCRouter({
   list: memberProcedure.query(({ ctx }) => listApiKeys(ctx.member.id)),
 
-  /** The full key is in this response and nowhere else, ever again. */
   create: memberProcedure
     .input(z.object({ name: z.string().trim().min(1).max(60) }))
     .mutation(({ ctx, input }) =>

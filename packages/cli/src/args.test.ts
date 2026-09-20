@@ -23,11 +23,6 @@ describe("parseArgs", () => {
     expect(parsed.flags).toEqual({ help: true, limit: "5" });
   });
 
-  /**
-   * An agent writes `roster ask fern-core fix the flaky test --thread x`
-   * without quoting far more often than not, so the task has to survive as
-   * loose positionals.
-   */
   it("keeps an unquoted multi-word task as positionals", () => {
     const parsed = parseArgs([
       "ask",

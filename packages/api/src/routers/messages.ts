@@ -54,7 +54,6 @@ export const messagesRouter = createTRPCRouter({
           .max(MAX_ATTACHMENTS_PER_MESSAGE)
           .optional(),
       })
-        /** A message may be only files — but it may not be nothing at all. */
         .refine(
           (input) =>
             input.text.trim().length > 0 ||

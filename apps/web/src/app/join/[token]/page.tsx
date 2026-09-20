@@ -11,12 +11,6 @@ const REFUSALS = {
   expired: "That link has expired. Ask for a new one.",
 } as const;
 
-/**
- * The shareable way in. Whoever follows it gets an ordinary invitation written
- * for their own email, and is handed straight to the page that accepts one —
- * so joining by link and joining by email are the same flow after this point,
- * name prompt and all.
- */
 export default async function JoinPage({
   params,
 }: {

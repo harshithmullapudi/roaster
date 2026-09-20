@@ -22,17 +22,6 @@ import {
 import { keyHolderMember, verifyApiKey } from "./api-keys";
 import { requireOrgProject } from "./channels";
 
-/**
- * Attachments live on the server's own disk, under one root, one directory per
- * organization. Nothing is served from that directory statically — every read
- * goes through `readAttachment`, which checks the reader is in the
- * organization the file belongs to.
- *
- * The container filesystem is ephemeral, so a deployment wanting uploads to
- * survive a redeploy mounts a volume at `UPLOADS_DIR`. Everything object
- * storage would change is behind this one module.
- */
-
 export type { MessageAttachment } from "../lib/attachments";
 export {
   absoluteAttachmentUrl,
@@ -76,7 +65,6 @@ async function memberOfProject(args: { userId: string; projectId: string }) {
   });
   if (!member) return null;
 
-  /** A private channel is not readable — or attachable — by every member. */
   const visible = await requireOrgProject({
     organizationId: project.organizationId,
     memberId: member.id,
@@ -103,7 +91,6 @@ export async function uploadAttachment(args: {
   const refusal = attachmentRefusal(args.bytes);
   if (refusal) return { refusal };
 
-  /** Sniffed, never the type the browser declared. */
   const mimeType = sniffMimeType(args.bytes) as string;
   const id = randomUUID();
   const storageKey = storageKeyFor({
@@ -144,7 +131,6 @@ export async function uploadAttachment(args: {
     if (!row) throw new Error("Attachment could not be stored.");
     return { attachment: toMessageAttachment(row) };
   } catch (cause) {
-    // Without this the bytes would outlive the row that knows about them.
     await unlink(target).catch(() => {});
     throw cause;
   }
@@ -157,10 +143,6 @@ export interface ReadableAttachment {
   bytes: Buffer;
 }
 
-/**
- * Reading by member, once the reader is known. Both the browser and the agent
- * end up here, so a file is checked the same way whichever asked for it.
- */
 async function readForMember(args: {
   attachmentId: string;
   member: { id: string; role: string };
@@ -191,7 +173,6 @@ async function readForMember(args: {
       bytes,
     };
   } catch {
-    // The row outlived its bytes — a redeploy without a mounted volume.
     return null;
   }
 }
@@ -222,11 +203,6 @@ export async function readAttachment(args: {
   });
 }
 
-/**
- * Reading with a `roster` API key, which is how an agent gets at a file its
- * channel was sent. The key resolves to the member who created it, so an agent
- * reaches exactly what its operator could — the same rule the CLI runs under.
- */
 export async function readAttachmentWithKey(args: {
   token: string;
   attachmentId: string;
@@ -244,11 +220,6 @@ export async function readAttachmentWithKey(args: {
   });
 }
 
-/**
- * Hands the uploads to the message that was just sent. Scoped to rows the
- * sender uploaded into this channel and has not already attached, so an id
- * guessed from elsewhere binds nothing.
- */
 export async function bindAttachments(args: {
   attachmentIds: string[];
   messageId: string;

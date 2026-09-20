@@ -1,5 +1,5 @@
-import { channelStars, db, members, projects } from "@roster/db";
-import { and, asc, eq, isNotNull, or, sql } from "drizzle-orm";
+import { channelStars, db, members, projects, users } from "@roster/db";
+import { and, asc, eq, isNotNull, ne, or, sql } from "drizzle-orm";
 
 import { can } from "../lib/access";
 import { agentDisplay, agentHandle } from "../lib/agent-identity";
@@ -14,7 +14,6 @@ export interface Channel {
   repoOwner: string | null;
   repoName: string | null;
   repoPath: string | null;
-  /** The channel's agent, named after whoever added the channel. */
   agentName: string;
   agentHandle: string;
   agentDisplay: string;
@@ -90,11 +89,6 @@ function toAgent(
   };
 }
 
-/**
- * Every channel the caller may mention, flattened — the autocomplete draws
- * from this and so does `roster ask`, so an agent can never address a channel
- * its operator could not have addressed by hand.
- */
 export async function listMentionableChannels(
   scope: ChannelScope,
 ): Promise<Channel[]> {
@@ -104,11 +98,82 @@ export async function listMentionableChannels(
   );
 }
 
-/**
- * Resolve "@fern-spark-wilderness" to a channel. Handles are compared whole
- * against rendered candidates because both halves may contain hyphens — see
- * `matchAgentHandle`.
- */
+export interface MentionableMember {
+  id: string;
+  handle: string;
+  name: string;
+}
+
+export async function listMentionableMembers(
+  scope: ChannelScope,
+): Promise<MentionableMember[]> {
+  const rows = await db
+    .select({
+      id: members.id,
+      agentName: members.agentName,
+      name: users.name,
+      email: users.email,
+    })
+    .from(members)
+    .innerJoin(users, eq(members.userId, users.id))
+    .where(
+      and(
+        eq(members.organizationId, scope.organizationId),
+        isNotNull(members.agentName),
+        ne(members.id, scope.memberId),
+      ),
+    );
+
+  return rows
+    .flatMap((row) => {
+      const handle = (row.agentName ?? "").trim().toLowerCase();
+      if (handle.length === 0) return [];
+      const name = row.name.trim();
+      return [
+        {
+          id: row.id,
+          handle,
+          name: name.length > 0 ? name : row.email,
+        },
+      ];
+    })
+    .sort((a, b) => a.handle.localeCompare(b.handle));
+}
+
+export async function findMemberByHandle(args: {
+  organizationId: string;
+  handle: string;
+}): Promise<MentionableMember | null> {
+  const wanted = args.handle.trim().toLowerCase().replace(/^@/, "");
+  if (wanted.length === 0) return null;
+
+  const [row] = await db
+    .select({
+      id: members.id,
+      agentName: members.agentName,
+      name: users.name,
+      email: users.email,
+    })
+    .from(members)
+    .innerJoin(users, eq(members.userId, users.id))
+    .where(
+      and(
+        eq(members.organizationId, args.organizationId),
+        eq(sql`lower(${members.agentName})`, wanted),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  const name = row.name.trim();
+  return {
+    id: row.id,
+    handle: (row.agentName ?? "").toLowerCase(),
+    name: name.length > 0 ? name : row.email,
+  };
+}
+
 export async function resolveAgentHandle(
   scope: ChannelScope,
   handle: string,
@@ -120,7 +185,6 @@ export async function resolveAgentHandle(
   return channels.find((channel) => channel.agentHandle === wanted) ?? null;
 }
 
-/** The identity a channel's own agent speaks under. */
 export async function channelAgentIdentity(projectId: string) {
   const [row] = await db
     .select({ slug: projects.slug, agentName: members.agentName })

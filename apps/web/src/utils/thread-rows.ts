@@ -26,12 +26,6 @@ export function isWaiting(status: string): boolean {
   return status === "waiting";
 }
 
-/**
- * Still someone's turn. A parked thread is not running itself, but another
- * agent is running on its behalf — so it keeps its status card, its cancel
- * button and its ticking clock. A completed thread is settled whatever its
- * last session said.
- */
 export function isActive(status: string, completedAt?: Date | null): boolean {
   if (completedAt) return false;
   return isLive(status) || isWaiting(status);
@@ -63,10 +57,6 @@ export function statusLabel(status: string, completedAt?: Date | null): string {
   }
 }
 
-/**
- * One line for a parked thread: who is working on it, and what they last
- * said. Falls back to their status so it never reads as an idle agent.
- */
 export function waitingOnLabel(waiting: WaitingOn | null): string | null {
   if (!waiting) return null;
 

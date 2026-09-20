@@ -17,11 +17,6 @@ import {
 
 export type { MentionItem };
 
-/**
- * Anchors the popup to the caret. Tiptap hands us a viewport rect, so the
- * element is fixed-positioned rather than parented to the editor — no
- * floating-ui or tippy dependency for what is one rect and two numbers.
- */
 function place(element: HTMLElement, rect: DOMRect | null): void {
   if (!rect) return;
 
@@ -38,12 +33,6 @@ function place(element: HTMLElement, rect: DOMRect | null): void {
   element.style.zIndex = "50";
 }
 
-/**
- * Named on purpose. Tiptap's Mention extension defaults to an anonymous
- * `new PluginKey()`, which nothing outside the plugin can look up — and the
- * composer has to look it up, because its own `editorProps.handleKeyDown` runs
- * before any plugin's and must stand down while the popup is open.
- */
 export const mentionPluginKey = new PluginKey<{ active: boolean }>(
   "mentionSuggestion",
 );

@@ -16,7 +16,6 @@ export interface InviteRow {
 export interface PendingInvitationsProps {
   invitations: InviteRow[];
   canManage: boolean;
-  /** Where this workspace is served from, so a copied link is the real one. */
   origin: string;
 }
 
@@ -56,7 +55,6 @@ export function PendingInvitations({
             <Badge variant="secondary" className="shrink-0">
               {invitation.role ?? "member"}
             </Badge>
-            {/* The way to finish an invitation when the email never lands. */}
             <Button
               size="sm"
               variant="ghost"

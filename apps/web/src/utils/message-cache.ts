@@ -202,11 +202,6 @@ export function parsePublishedMessage(data: unknown): MessageItem | null {
   };
 }
 
-/**
- * Realtime carries a message as plain JSON, and every field it is read back
- * from is named explicitly — a file list left out here would arrive over tRPC
- * and vanish over the socket.
- */
 function parseAttachments(value: unknown): MessageAttachment[] {
   if (!Array.isArray(value)) return [];
 

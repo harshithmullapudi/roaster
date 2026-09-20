@@ -48,8 +48,6 @@ describe("sniffMimeType", () => {
   });
 
   it("does not take the client's word for it", () => {
-    // An HTML file uploaded as image/png. Trusting the declared type would
-    // store it and serve it back inline.
     expect(sniffMimeType(bytes(...ascii("<html><script>")))).toBeNull();
     expect(sniffMimeType(bytes(...ascii("<svg xmlns=")))).toBeNull();
   });
@@ -95,9 +93,7 @@ describe("imageSize", () => {
     const jpeg = padded(
       [
         0xff, 0xd8,
-        // APP0, length 4, two bytes of payload — skipped to reach the frame.
         0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
-        // SOF0: length, precision, height 0x0064, width 0x00c8.
         0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x64, 0x00, 0xc8,
       ],
       32,
@@ -176,9 +172,7 @@ describe("what the agent is told", () => {
     expect(brief).toContain("have a look");
     expect(brief).toContain("Screenshot.png (image/png)");
     expect(brief).toContain("spec.pdf (application/pdf)");
-    // Absolute: the agent is not running in the browser's origin.
     expect(brief).toContain("http://localhost:3000/api/files/aaa");
-    // The command that works, rather than a credential to pass by hand.
     expect(brief).toContain("roster files download <url>");
     expect(brief).not.toContain("ROSTER_TOKEN");
   });

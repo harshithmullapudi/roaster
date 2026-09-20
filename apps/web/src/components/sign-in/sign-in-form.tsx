@@ -12,17 +12,9 @@ type State =
 
 export interface SignInFormProps {
   callbackURL?: string;
-  /** Prefilled when we already know who the link was meant for. */
   initialEmail?: string;
 }
 
-/**
- * A magic link opens in the default browser, which is a different cookie jar
- * from the desktop app's webview. Inside the app the link has to land on the
- * handoff page instead, where the browser mints a one-time token the app can
- * redeem for a session of its own. The marker is set by the shell before any
- * page script runs.
- */
 function desktopCallback(callbackURL: string) {
   if (typeof window === "undefined") return callbackURL;
   if (!(window as { __ROSTER_DESKTOP__?: boolean }).__ROSTER_DESKTOP__) {

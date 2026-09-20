@@ -38,8 +38,13 @@ import {
   withAttachments,
 } from "./message-columns";
 import { bindAttachments, textWithAttachments } from "./attachments";
-import { allocateSeq, listMentionableChannels } from "./channels";
-import { channelName, publish } from "./centrifugo";
+import {
+  allocateSeq,
+  listMentionableChannels,
+  listMentionableMembers,
+} from "./channels";
+import { channelName, publish, threadChannelName } from "./centrifugo";
+import { emitMessage, messageById } from "./message-events";
 import {
   cancelThread,
   createThread,
@@ -48,7 +53,6 @@ import {
   reapThread,
   startSession,
   steer,
-  threadChannelName,
   threadTarget,
 } from "./sessions";
 
@@ -136,40 +140,7 @@ async function findByClientId(args: {
   return row ? withAttachment(toChannelMessage(row)) : null;
 }
 
-export async function messageById(id: string): Promise<ChannelMessage> {
-  const [row] = await db
-    .select(messageColumns)
-    .from(messages)
-    .leftJoin(members, eq(messages.authorMemberId, members.id))
-    .leftJoin(users, eq(members.userId, users.id))
-    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
-    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
-    .where(eq(messages.id, id))
-    .limit(1);
-
-  if (!row) throw new Error("Message not found.");
-  return withAttachment(toChannelMessage(row));
-}
-
-export async function publishMessage(
-  message: ChannelMessage,
-): Promise<void> {
-  const payload = {
-    type: "message" as const,
-    message: {
-      ...message,
-      createdAt: message.createdAt.toISOString(),
-      editedAt: message.editedAt ? message.editedAt.toISOString() : null,
-    },
-  };
-
-  const targets = [publish(channelName(message.projectId), payload)];
-  if (message.threadId && message.parentMessageId) {
-    targets.push(publish(threadChannelName(message.threadId), payload));
-  }
-
-  await Promise.all(targets);
-}
+export { messageById, publishMessage } from "./message-events";
 
 export interface MessageDeletion {
   messageId: string;
@@ -311,12 +282,6 @@ export async function sendMessage(args: {
     throw new Error("That thread is not part of this channel.");
   }
 
-  /**
-   * Watch governs ambient chatter — whether the agent reacts to messages it
-   * was not addressed in. Being named is not ambient, so a mention outranks a
-   * pause and wakes the channel's own agent, which then delegates onward to
-   * any other agent the message named.
-   */
   const addressed = (await channelIsWatching(args.projectId))
     ? true
     : await mentionsAnyAgent(args);
@@ -370,7 +335,7 @@ export async function sendMessage(args: {
 
   if (!row) throw new Error("Message could not be stored.");
 
-  await publishMessage(row);
+  await emitMessage(row);
 
   if (row.kind !== "user") return row;
 
@@ -383,11 +348,6 @@ export async function sendMessage(args: {
   return row;
 }
 
-/**
- * What the agent is told. The agent reads text, not the message row, so files
- * sent with a message have to be named in it — otherwise "have a look at this"
- * arrives with nothing to look at.
- */
 export function agentText(message: ChannelMessage): string {
   return textWithAttachments(message.text, message.attachments);
 }
@@ -400,14 +360,6 @@ async function channelIsWatching(projectId: string): Promise<boolean> {
   return row?.watchEnabled ?? false;
 }
 
-/**
- * Whether the message names an agent. Only consulted for a paused channel — a
- * watching one already answers everything — so the channel list this costs is
- * read once per message sent into silence, not on the common path.
- *
- * Scoped to the author's visible channels so a handle they could not have
- * picked from the autocomplete cannot be typed out to the same effect.
- */
 async function mentionsAnyAgent(args: {
   organizationId: string;
   authorMemberId: string;
@@ -415,19 +367,25 @@ async function mentionsAnyAgent(args: {
   body: unknown;
   text: string;
 }): Promise<boolean> {
-  const channels = await listMentionableChannels({
+  const scope = {
     organizationId: args.organizationId,
     memberId: args.authorMemberId,
     role: args.role,
-  });
+  };
+
+  const [channels, people] = await Promise.all([
+    listMentionableChannels(scope),
+    listMentionableMembers(scope),
+  ]);
 
   const mentioned = mentionedHandles({
     body: args.body,
     text: args.text,
-    known: channels.map((channel) => channel.agentHandle),
+    agents: channels.map((channel) => channel.agentHandle),
+    members: people.map((person) => person.handle),
   });
 
-  return mentioned.length > 0;
+  return mentioned.agents.length > 0;
 }
 
 async function contextFor(message: ChannelMessage): Promise<string[]> {

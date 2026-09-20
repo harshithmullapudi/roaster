@@ -19,4 +19,4 @@ export interface UserSummary {
   email: string;
 }
 
-export type SidebarSection = "channels" | "members" | "tasks";
+export type SidebarSection = "channels" | "members" | "tasks" | "threads";

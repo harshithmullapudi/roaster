@@ -7,6 +7,7 @@ import {
   getChannelBySlug,
   listChannels,
   listMentionableChannels,
+  listMentionableMembers,
   requireOrgProject,
   setChannelWatch,
   toggleChannelStar,
@@ -28,26 +29,38 @@ export const channelsRouter = createTRPCRouter({
     }),
   ),
 
-  /**
-   * Every agent the caller may address, for the composer's `@` autocomplete.
-   * Drawn from the same visibility rules as the sidebar, so mentioning can
-   * never reach a channel the member could not already open.
-   */
   mentionable: memberProcedure.query(async ({ ctx }) => {
-    const channels = await listMentionableChannels({
+    const scope = {
       organizationId: ctx.organizationId,
       memberId: ctx.member.id,
       role: ctx.member.role,
-    });
+    };
 
-    return channels.map((channel) => ({
-      id: channel.id,
-      slug: channel.slug,
-      name: channel.name,
-      visibility: channel.visibility,
-      handle: channel.agentHandle,
-      display: channel.agentDisplay,
-    }));
+    const [channels, people] = await Promise.all([
+      listMentionableChannels(scope),
+      listMentionableMembers(scope),
+    ]);
+
+    return [
+      ...channels.map((channel) => ({
+        id: channel.id,
+        kind: "agent" as const,
+        slug: channel.slug,
+        name: channel.name,
+        visibility: channel.visibility,
+        handle: channel.agentHandle,
+        display: channel.agentDisplay,
+      })),
+      ...people.map((person) => ({
+        id: person.id,
+        kind: "member" as const,
+        slug: person.handle,
+        name: person.name,
+        visibility: "public",
+        handle: person.handle,
+        display: person.name,
+      })),
+    ];
   }),
 
   get: memberProcedure

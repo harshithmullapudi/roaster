@@ -122,11 +122,6 @@ export function TaskList({ tasks, channels, orgSlug }: TaskListProps) {
     [router],
   );
 
-  /**
-   * Handing a task to a channel starts that channel's agent on it, so this is
-   * not a field edit — the row is locked while it happens and the page is
-   * refetched, which is what brings back the thread it opened.
-   */
   const assign = useCallback(
     async (taskId: string, projectId: string) => {
       setAssigning(taskId);

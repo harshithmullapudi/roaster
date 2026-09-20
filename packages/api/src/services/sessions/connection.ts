@@ -8,6 +8,17 @@ import {
 import { mintJwt, routingKey, tryDecryptApiKey } from "@roster/superset";
 import { and, eq } from "drizzle-orm";
 
+import { createJwtCache } from "../../lib/jwt-cache";
+
+const jwts = createJwtCache(async (apiKey) => {
+  const { jwt, claims } = await mintJwt(apiKey);
+  return { jwt, exp: claims.exp };
+});
+
+export function forgetSupersetCredentials(): void {
+  jwts.clear();
+}
+
 export interface HostConnection {
   jwt: string;
   project: SelectProject;
@@ -70,9 +81,8 @@ export async function hostConnection(args: {
   const key = memberKey(member, project.supersetOrgId);
   if (key.apiKey === null) throw new Error(key.problem);
 
-  const { jwt } = await mintJwt(key.apiKey);
   return {
-    jwt,
+    jwt: await jwts.get(key.apiKey),
     project,
     hostKey: routingKey(project.supersetOrgId, project.supersetHostId),
     memberId: member!.id,
@@ -93,6 +103,5 @@ export async function jwtForMember(args: {
   const key = memberKey(member, supersetOrgId);
   if (key.apiKey === null) return { jwt: null, problem: key.problem };
 
-  const { jwt } = await mintJwt(key.apiKey);
-  return { jwt };
+  return { jwt: await jwts.get(key.apiKey) };
 }

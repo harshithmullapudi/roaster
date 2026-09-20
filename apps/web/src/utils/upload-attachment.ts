@@ -5,11 +5,6 @@ export interface Upload {
   abort: () => void;
 }
 
-/**
- * Sends one file to `/api/upload`. `XMLHttpRequest` rather than `fetch`
- * because it reports how much of the body has gone out — a 10 MB upload with
- * no progress looks like a hung composer.
- */
 export function uploadAttachment(args: {
   file: File;
   projectId: string;

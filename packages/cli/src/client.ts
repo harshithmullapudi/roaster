@@ -1,11 +1,5 @@
 import type { Config } from "./config.js";
 
-/**
- * A hand-rolled tRPC caller. The CLI ships to a user's machine and is invoked
- * by an agent per command, so startup time is the feature — importing the tRPC
- * client and superjson to build two URLs is not worth the milliseconds.
- */
-
 export class RosterError extends Error {}
 
 function serialize(input: unknown): string {
@@ -67,12 +61,6 @@ async function call(
 
   const raw = await response.text();
 
-  /**
-   * The server distinguishes "no key" from "revoked key" from "your
-   * membership is gone", so let it speak — a blanket "not logged in" would
-   * send someone re-running `roster login` with a key that will never work.
-   * The fallback is only for a 401 that never reached tRPC, such as a proxy's.
-   */
   if (response.status === 401 && !raw.trimStart().startsWith("{")) {
     throw new RosterError(
       "This machine is not logged in to Roster. Run `roster login`.",

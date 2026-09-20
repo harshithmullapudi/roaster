@@ -1,11 +1,10 @@
 import type { MentionNodeAttrs } from "@tiptap/extension-mention";
 
-/**
- * One entry in the composer's `@` autocomplete: a channel, addressed through
- * the agent that lives in it.
- */
+export type MentionKind = "agent" | "member";
+
 export interface MentionItem {
   id: string;
+  kind: MentionKind;
   slug: string;
   name: string;
   visibility: string;
@@ -13,30 +12,27 @@ export interface MentionItem {
   display: string;
 }
 
-/**
- * The whole of what Tiptap's mention node stores. Anything else handed to the
- * suggestion's `command` is dropped by the schema, and Tiptap's own type is
- * what the extension's generics expect — declaring a narrower one here makes
- * `Mention.configure` reject the suggestion.
- */
-export type MentionAttrs = MentionNodeAttrs;
+export type MentionAttrs = MentionNodeAttrs & { kind: MentionKind };
 
-/**
- * Both halves of the mention node — its HTML and its plain text — render
- * `label ?? id`, and `id` is the channel's UUID. So a node inserted without a
- * label reads "@522cf3d5-47bc-…" on screen, and `renderText` ships that same
- * UUID to the agent as its prompt instead of a handle it can resolve.
- */
 export function mentionAttrs(item: MentionItem): MentionAttrs {
-  return { id: item.id, label: item.handle };
+  return { id: item.id, label: item.handle, kind: item.kind };
 }
 
 const MAX_SUGGESTIONS = 8;
 
-/**
- * Matches the handle, the channel slug and the channel's display name, so
- * "@core" finds fern-core whether the typist thinks in agents or in channels.
- */
+const NO_MATCH = 99;
+
+function rank(item: MentionItem, needle: string): number {
+  const name = item.name.toLowerCase();
+
+  if (item.handle === needle) return 0;
+  if (item.handle.startsWith(needle)) return 1;
+  if (item.slug.startsWith(needle) || name.startsWith(needle)) return 2;
+  if (item.handle.includes(needle)) return 3;
+  if (item.slug.includes(needle) || name.includes(needle)) return 4;
+  return NO_MATCH;
+}
+
 export function filterMentions(
   items: MentionItem[],
   query: string,
@@ -45,11 +41,9 @@ export function filterMentions(
   if (needle.length === 0) return items.slice(0, MAX_SUGGESTIONS);
 
   return items
-    .filter(
-      (item) =>
-        item.handle.includes(needle) ||
-        item.slug.includes(needle) ||
-        item.name.toLowerCase().includes(needle),
-    )
-    .slice(0, MAX_SUGGESTIONS);
+    .map((item) => ({ item, score: rank(item, needle) }))
+    .filter((entry) => entry.score !== NO_MATCH)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, MAX_SUGGESTIONS)
+    .map((entry) => entry.item);
 }

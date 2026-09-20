@@ -60,20 +60,12 @@ describe("rosterEnvelope", () => {
     expect(rosterEnvelope(base)).not.toContain("task-id:");
   });
 
-  /**
-   * Passing a channel when nobody asked for one starts an agent on work it was
-   * never given — the backlog is the default for a reason.
-   */
   it("tells the agent when to leave a new task unassigned", () => {
     expect(rosterEnvelope(base)).toContain(
       "Pass --channel-id only when someone named the channel",
     );
   });
 
-  /**
-   * The whole reason the CLI authenticates from disk: this text is echoed into
-   * the terminal, and the transcript is scraped into channel messages.
-   */
   it("carries no credential", () => {
     const envelope = rosterEnvelope({
       ...base,

@@ -28,15 +28,6 @@ export function textToTiptap(text: string): TiptapDoc {
   return { type: "doc", content: content.length > 0 ? content : [{ type: "paragraph" }] };
 }
 
-/**
- * An agent writes markdown, so the body stored beside its text has to be the
- * parsed document rather than the source split on newlines — otherwise every
- * `##`, `**` and backtick reaches the reader as punctuation.
- *
- * Only nodes the message schema knows are emitted: headings clamp to three
- * levels and a table becomes a code block, since neither deeper headings nor
- * table nodes exist in `richTextExtensions`.
- */
 export function markdownToTiptap(markdown: string): TiptapDoc {
   const tokens = Lexer.lex(markdown.replace(/\r\n/g, "\n"), {
     gfm: true,
@@ -120,10 +111,6 @@ function blockNodes(token: Token): TiptapNode[] {
     case "hr":
       return [{ type: "horizontalRule" }];
 
-    /**
-     * No table node is registered, so the source is kept verbatim in a code
-     * block: monospace is the one thing that holds the columns together.
-     */
     case "table":
       return [
         {
@@ -225,7 +212,6 @@ function paragraph(content: TiptapNode[]): TiptapNode {
   return { type: "paragraph", ...withContent(content) };
 }
 
-/** ProseMirror rejects an empty `content` array, so leave the key off instead. */
 function withContent(content: TiptapNode[]): { content?: TiptapNode[] } {
   return content.length > 0 ? { content } : {};
 }
@@ -243,7 +229,6 @@ const ENTITIES: Record<string, string> = {
   "&#39;": "'",
 };
 
-/** The tokenizer escapes for HTML output; a tiptap text node wants the source. */
 function decodeEntities(text: string): string {
   return text.replace(/&(?:amp|lt|gt|quot|#39);/g, (match) => ENTITIES[match] ?? match);
 }

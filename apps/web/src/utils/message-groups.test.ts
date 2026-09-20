@@ -34,8 +34,6 @@ describe("speakerName", () => {
   });
 
   it("gives the same string wherever the avatar is drawn", () => {
-    // The avatar colour is a hash of this string, so the message row and the
-    // thread reply stack must agree or one person gets two colours.
     expect(speakerName(user)).toBe(speakerName({ ...user }));
   });
 

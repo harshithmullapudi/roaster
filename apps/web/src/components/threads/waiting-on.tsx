@@ -10,13 +10,6 @@ export interface WaitingOnCardProps {
   waiting: WaitingOn;
 }
 
-/**
- * What the agent this thread asked is doing right now.
- *
- * A parked thread has nothing of its own to say, and a bare "Waiting" reads as
- * a session that died. The answering agent's live status and last line make it
- * plain that work is still moving — one channel over.
- */
 export function WaitingOnCard({ waiting }: WaitingOnCardProps) {
   const params = useParams<{ slug: string }>();
   const href =

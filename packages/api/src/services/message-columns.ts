@@ -6,14 +6,6 @@ import { agentDisplay, agentHandle } from "../lib/agent-identity";
 import { attachmentsForMessages, type MessageAttachment } from "./attachments";
 import { type ReactionRef, toReactionRefs } from "./reactions";
 
-/**
- * How a message is read, shared by the channel view and the thread view.
- *
- * This lives apart from `services/messages` so both readers can use it without
- * a cycle: `messages` imports `sessions`, `sessions` re-exports `queries`, and
- * `queries` needs these columns too.
- */
-
 export interface ChannelMessage {
   id: string;
   projectId: string;
@@ -29,20 +21,13 @@ export interface ChannelMessage {
   authorMemberId: string | null;
   authorName: string | null;
   authorEmail: string | null;
-  /** Set on agent messages: which channel's agent spoke. */
   agentChannelId: string | null;
   agentDisplay: string | null;
   agentHandle: string | null;
-  /** Files sent with the message. Empty for everything that carries none. */
   attachments: MessageAttachment[];
   reactions: ReactionRef[];
 }
 
-/**
- * A delegated reply lands in another channel's thread, so the agent that wrote
- * a message is not always the agent of the channel you are reading. Resolve it
- * from the message's own `agentChannelId`, never from the surrounding page.
- */
 export const agentChannel = alias(projects, "agent_channel");
 export const agentOwner = alias(members, "agent_owner");
 
@@ -113,11 +98,6 @@ export function toChannelMessage(row: MessageRow): ChannelMessage {
   };
 }
 
-/**
- * Fills in the attachments for messages already read. One query for the whole
- * page rather than one per row — and every reader has to call it, or a message
- * comes back looking like it was sent without its files.
- */
 export async function withAttachments(
   list: ChannelMessage[],
 ): Promise<ChannelMessage[]> {

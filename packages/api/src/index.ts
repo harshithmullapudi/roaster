@@ -65,9 +65,11 @@ export {
 export {
   ensureStarted,
   listChannelThreads,
+  listInboxThreads,
   listLiveThreads,
   threadDetail,
   THREAD_STATUSES,
+  type InboxThread,
   type LiveThread,
   type ThreadDetail,
   type ThreadStatus,
@@ -75,6 +77,16 @@ export {
   type WaitingOn,
 } from "./services/sessions";
 export { listTasks, type Task } from "./services/tasks";
+export {
+  type NotificationItem,
+  type NotificationPage,
+  type ThreadSubscriptionState,
+} from "./services/notifications";
+export {
+  previewOf,
+  type NotificationEvent,
+  type PlannedNotification,
+} from "./lib/notification-type";
 export {
   claimInviteLink,
   inviteLink,

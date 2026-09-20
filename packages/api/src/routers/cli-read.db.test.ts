@@ -1,23 +1,8 @@
-/**
- * What `roster read messages` returns, against Postgres.
- *
- * The formatting is pure and tested in the CLI package; what needs a database
- * is everything underneath it — that a reply count counts replies and not the
- * root, that a thread read carries the handover message the channel view
- * hides, and that a key cannot read a thread in a channel it cannot see.
- * Without `DATABASE_URL` it skips.
- *
- *   pnpm dev:db
- *   DATABASE_URL=postgresql://roster:roster@localhost:5442/roster \
- *     pnpm --filter @roster/api test
- */
 import { beforeAll, describe, expect, it } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("reading a channel and a thread from the CLI", () => {
-  // Imported inside, not at the top: `@roster/db` reads DATABASE_URL when it
-  // loads, so a skipped run must not reach it.
   let caller: {
     readMessages: (input: {
       channelId: string;
@@ -117,11 +102,6 @@ describe.skipIf(!hasDatabase)("reading a channel and a thread from the CLI", () 
     });
 
     await db.insert(members).values([
-      /**
-       * A plain member, not an owner: `visibleToMember` waves through anyone
-       * who can update channels, so a private channel only stays private from
-       * a key like this one.
-       */
       {
         id: ids.member,
         organizationId: ids.org,
@@ -310,11 +290,6 @@ describe.skipIf(!hasDatabase)("reading a channel and a thread from the CLI", () 
     expect(page.thread.replyCount).toBe(2);
   });
 
-  /**
-   * The reason the thread view does not filter delegations the way the channel
-   * view does: this thread opens with one, and without it the reply answers a
-   * question nobody can see.
-   */
   it("opens a delegated thread with the request that started it", async () => {
     const page = await caller.readThread({ threadId: ids.askedThread });
 

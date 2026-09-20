@@ -12,11 +12,6 @@ export interface AttachmentTrayProps {
   onRemove: (localId: string) => void;
 }
 
-/**
- * The strip of files waiting under the composer. Each one is already on its
- * way to the server, so the tile shows how far it has got and stays removable
- * throughout — cancelling a 9 MB upload is the whole point of showing it.
- */
 export function AttachmentTray({ items, error, onRemove }: AttachmentTrayProps) {
   if (items.length === 0 && !error) return null;
 

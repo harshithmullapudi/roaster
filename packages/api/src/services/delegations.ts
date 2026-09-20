@@ -10,30 +10,29 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { DELEGATION_KIND } from "../lib/message-kind";
-import { allocateSeq, channelAgentIdentity, resolveAgentHandle } from "./channels";
+import {
+  allocateSeq,
+  channelAgentIdentity,
+  findMemberByHandle,
+  listMentionableChannels,
+  resolveAgentHandle,
+} from "./channels";
 import type { ChannelScope } from "./channels";
-import { channelName, publish } from "./centrifugo";
+import { emitMessageById } from "./message-events";
+import { notifyDelegationReceived } from "./notifications";
 import {
   createThread,
   ensureStarted,
   markWaiting,
   startSession,
   steer,
-  threadChannelName,
 } from "./sessions";
 import { markdownToTiptap, textToTiptap } from "../utils/tiptap";
 
-/**
- * How deep one request may be passed along. fern-core asking ash-web asking
- * fern-docs is already unusual; past this it is a loop burning real compute on
- * someone's laptop.
- */
 export const MAX_DEPTH = 3;
 
 export interface DelegationRequest extends ChannelScope {
-  /** The thread doing the asking — it parks until this is answered. */
   parentThreadId: string;
-  /** Whose agent to ask, as typed: "fern-core" or "@fern-core". */
   handle: string;
   task: string;
 }
@@ -46,12 +45,28 @@ export interface DelegationResult {
   depth: number;
 }
 
-/**
- * Hand a task to another channel's agent.
- *
- * The parent thread is parked before the child starts, so a child that answers
- * immediately still finds a thread in `waiting` to wake.
- */
+async function rejectPersonHandle(args: ChannelScope & { handle: string }) {
+  const person = await findMemberByHandle({
+    organizationId: args.organizationId,
+    handle: args.handle,
+  });
+  if (!person) return;
+
+  const channels = await listMentionableChannels(args);
+  const theirs = channels.find(
+    (channel) => channel.agentName.toLowerCase() === person.handle,
+  );
+
+  const instead = theirs
+    ? `Their agent is \`${theirs.agentHandle}\` — ask that instead.`
+    : "They have no agent of their own yet; run `roster channels` to see who you can ask.";
+
+  throw new TRPCError({
+    code: "BAD_REQUEST",
+    message: `"@${person.handle}" is ${person.name}, a person — not a channel. \`roster ask\` only reaches agents. ${instead}`,
+  });
+}
+
 export async function delegate(
   args: DelegationRequest,
 ): Promise<DelegationResult> {
@@ -83,6 +98,7 @@ export async function delegate(
 
   const target = await resolveAgentHandle(args, args.handle);
   if (!target) {
+    await rejectPersonHandle(args);
     throw new TRPCError({
       code: "NOT_FOUND",
       message: `No agent called "${args.handle}". Run \`roster channels\` to see who you can ask.`,
@@ -163,7 +179,12 @@ export async function delegate(
     });
   }
 
-  // Park before starting: a fast child must find a thread to wake.
+  await notifyDelegationReceived({
+    childThreadId: childThread.id,
+    originChannelId: parent.projectId,
+    task,
+  });
+
   await markWaiting({ threadId: parent.id, waitingOn: target.agentHandle });
 
   await startSession({
@@ -213,7 +234,6 @@ async function postRequest(args: {
   return row.id;
 }
 
-/** How many hops of delegation already stand behind this thread. */
 async function ancestorDepth(threadId: string): Promise<number> {
   let depth = 0;
   let current: string | null = threadId;
@@ -231,7 +251,6 @@ async function ancestorDepth(threadId: string): Promise<number> {
   return depth;
 }
 
-/** Every channel already waiting further up this chain. */
 async function ancestorChannels(threadId: string): Promise<string[]> {
   const chain: string[] = [];
   let current: string | null = threadId;
@@ -254,11 +273,6 @@ async function ancestorChannels(threadId: string): Promise<string[]> {
   return chain;
 }
 
-/**
- * Called when a thread finishes. If it was answering a delegation, the reply
- * is written into the asking thread under the answering agent's name and that
- * thread is woken with it.
- */
 export async function settleDelegationFor(args: {
   childThreadId: string;
   reply: string;
@@ -332,38 +346,9 @@ async function writeReplyIntoParent(args: {
 
   if (!row) return;
 
-  const identity = await channelAgentIdentity(args.agentChannelId);
-
-  const payload = {
-    type: "message" as const,
-    message: {
-      id: row.id,
-      projectId: row.projectId,
-      seq: Number(row.seq),
-      kind: row.kind,
-      body: row.body,
-      text: row.text,
-      clientId: null,
-      parentMessageId: row.parentMessageId,
-      threadId: row.threadId,
-      createdAt: row.createdAt.toISOString(),
-      editedAt: null,
-      authorMemberId: null,
-      authorName: null,
-      authorEmail: null,
-      agentChannelId: row.agentChannelId,
-      agentDisplay: identity?.agentDisplay ?? null,
-      agentHandle: identity?.agentHandle ?? null,
-    },
-  };
-
-  await Promise.all([
-    publish(channelName(args.thread.projectId), payload),
-    publish(threadChannelName(args.thread.id), payload),
-  ]);
+  await emitMessageById(row.id, "agent_replied");
 }
 
-/** What a channel is allowed to read, for `roster read messages`. */
 export async function openDelegationOrigins(
   targetChannelId: string,
 ): Promise<string[]> {

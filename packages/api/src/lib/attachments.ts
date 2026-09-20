@@ -1,15 +1,6 @@
-/**
- * What may be attached to a message, decided from the bytes rather than from
- * anything the browser said about them. A client-declared content type is a
- * claim: `image/png` on a file that is really HTML would be stored, served
- * back with that type, and rendered — so the declared type is discarded and
- * the stored one comes from the signature below.
- */
-
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
-/** Mime type to the extension the file is stored under. */
 export const ATTACHMENT_TYPES: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -20,7 +11,6 @@ export const ATTACHMENT_TYPES: Record<string, string> = {
 
 export type AttachmentRefusal = "empty" | "too-large" | "unsupported-type";
 
-/** A file as everything outside the database sees it. */
 export interface MessageAttachment {
   id: string;
   filename: string;
@@ -28,7 +18,6 @@ export interface MessageAttachment {
   size: number;
   width: number | null;
   height: number | null;
-  /** Where the browser reads it, relative to the app. */
   url: string;
 }
 
@@ -41,17 +30,6 @@ export function absoluteAttachmentUrl(id: string): string {
   return `${base.replace(/\/$/, "")}${attachmentUrl(id)}`;
 }
 
-/**
- * How files are described to an agent. The agent reads text, not the message
- * row, so a message's files have to be named in the prompt — with the command
- * that fetches them, since reading one needs a credential.
- *
- * That command is `roster files download`, which authenticates from the config
- * `roster login` wrote. Nothing here names a credential: this text is echoed
- * into a terminal and scraped back into channel messages, and an agent told to
- * pass a token by hand would be told wrong on every machine that logged in
- * rather than exporting one.
- */
 export function attachmentBrief(files: MessageAttachment[]): string {
   if (files.length === 0) return "";
 
@@ -65,7 +43,6 @@ export function attachmentBrief(files: MessageAttachment[]): string {
   ].join("\n");
 }
 
-/** The message text an agent is given: what was written, then what came with it. */
 export function textWithAttachments(
   text: string,
   files: MessageAttachment[],
@@ -97,21 +74,11 @@ export function storageKeyFor(args: {
   return `${args.organizationId}/${args.attachmentId}.${extensionFor(args.mimeType)}`;
 }
 
-/**
- * A stored key is only ever read back from the database, but it still names a
- * path on disk — so a row that somehow holds `../` must not escape the uploads
- * root when it is joined to it.
- */
 export function isSafeStorageKey(key: string): boolean {
   if (key.length === 0 || key.startsWith("/")) return false;
   return key.split("/").every((part) => part !== "" && part !== "." && part !== "..");
 }
 
-/**
- * A filename is shown and offered as a download name, never used as a path.
- * Directory separators and control characters are stripped anyway: they make
- * a download name that a browser or an operating system reads oddly.
- */
 export function sanitizeFilename(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "";
   const cleaned = base
@@ -135,7 +102,6 @@ function ascii(bytes: Uint8Array, offset: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(offset, offset + length));
 }
 
-/** The mime type the bytes actually are, or null for anything unsupported. */
 export function sniffMimeType(bytes: Uint8Array): string | null {
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
     return "image/png";
@@ -167,11 +133,6 @@ export interface ImageSize {
   height: number;
 }
 
-/**
- * Pixel dimensions, read from the header. Stored so a thumbnail can reserve
- * its space before the image loads — a message list that reflows as images
- * arrive scrolls out from under whoever is reading it.
- */
 export function imageSize(bytes: Uint8Array): ImageSize | null {
   const type = sniffMimeType(bytes);
   if (type === "image/png") return pngSize(bytes);
@@ -197,7 +158,6 @@ function gifSize(bytes: Uint8Array): ImageSize | null {
   return { width: data.getUint16(6, true), height: data.getUint16(8, true) };
 }
 
-/** Walks the segment chain to the frame header, which carries the size. */
 function jpegSize(bytes: Uint8Array): ImageSize | null {
   const data = view(bytes);
   let offset = 2;
@@ -206,7 +166,6 @@ function jpegSize(bytes: Uint8Array): ImageSize | null {
     if (bytes[offset] !== 0xff) return null;
 
     const marker = bytes[offset + 1] ?? 0;
-    // Start-of-frame, minus the four markers in that range that are not one.
     const isFrame =
       marker >= 0xc0 &&
       marker <= 0xcf &&

@@ -26,10 +26,6 @@ export interface OnboardingState {
 }
 
 export function furthestStep(state: OnboardingState): OnboardingStep {
-  // Someone invited by a friend usually arrives through the emailed link and
-  // is a member before they ever reach onboarding. When they sign up at the
-  // front door instead, this is the only thing that tells them the team is
-  // waiting — without it they'd be walked into a workspace of their own.
   if (!state.hasMembership) {
     return state.hasInvitations ? "invitations" : "workspace";
   }
@@ -47,9 +43,6 @@ export function resolveStep(
 ): OnboardingStep {
   const furthest = furthestStep(state);
 
-  // Two forward moves are allowed, and only these two: turning down every
-  // invitation to start a workspace of your own, and naming the agent without
-  // picking projects first.
   if (requested === "workspace" && furthest === "invitations") {
     return "workspace";
   }

@@ -30,12 +30,6 @@ function Command({
   );
 }
 
-/**
- * The `<Command>` wrapper lives in here rather than being the caller's job:
- * `CommandInput` and friends read cmdk's context, and rendering one without a
- * provider throws "Cannot read properties of undefined (reading 'subscribe')"
- * at runtime — a mistake worth making impossible.
- */
 function CommandDialog({
   title = "Command Palette",
   description = "Search for a command to run...",

@@ -19,7 +19,6 @@ export function ApiKeyManager() {
   const [name, setName] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Shown once — the server never returns a full key again. */
   const [minted, setMinted] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 

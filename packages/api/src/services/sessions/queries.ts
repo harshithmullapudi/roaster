@@ -5,6 +5,8 @@ import {
   messages,
   projects,
   threadSessions,
+  type ThreadSubscriptionReason,
+  threadSubscriptions,
   threads,
   users,
 } from "@roster/db";
@@ -15,6 +17,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   isNull,
   sql,
   type SQL,
@@ -33,23 +36,12 @@ import {
   withAttachments,
 } from "../message-columns";
 
-/**
- * The agent a parked thread handed its work to, and how that agent is doing.
- *
- * A thread in `waiting` has nothing of its own to report — without this it
- * reads as a thread that went quiet, when in truth someone else is mid-run on
- * its behalf.
- */
 export interface WaitingOn {
-  /** Who was asked, as you would type it: "sol-superset". */
   handle: string;
-  /** How the answering agent is named on screen: "sol [superset]". */
   display: string;
   channelId: string;
   channelSlug: string;
-  /** Null only if the answering thread was since deleted. */
   threadId: string | null;
-  /** The answering thread's own lead status — "running" while it works. */
   status: string;
   lastProgress: string | null;
   task: string;
@@ -75,40 +67,133 @@ export interface ThreadSummary {
   completedByMemberId: string | null;
 }
 
-const REPLY_SCOPE = sql`rp.thread_id = ${threads.id} and rp.id <> ${threads.rootMessageId} and rp.deleted_at is null`;
-
-const replyCountSql = sql<number>`(select count(*)::int from roster.messages rp where ${REPLY_SCOPE})`;
-
-const lastReplyAtSql = sql<
-  Date | string | null
->`(select max(rp.created_at) from roster.messages rp where ${REPLY_SCOPE})`;
-
-/**
- * Mirrors `agentDisplay` for agent replies, which carry no author: a thread
- * that fern [core] answered should say so rather than "Agent". Kept in SQL so
- * the aggregate stays a single subquery.
- *
- * The email fallback must take the part before the `@`, exactly as the web
- * app's `speakerName` does: avatar colours are a hash of this string, so
- * emitting the full address here painted the same person two different
- * colours — one in the message row, another in the reply stack.
- */
-const replierNamesSql = sql<string[]>`(select coalesce(json_agg(distinct coalesce(
-  nullif(btrim(ru.name), ''),
-  nullif(split_part(ru.email, '@', 1), ''),
-  ru.email,
-  case when ap.slug is not null
-    then coalesce(nullif(btrim(lower(am.agent_name)), ''), 'agent') || ' [' || ap.slug || ']'
-  end,
-  'Agent'
-)), '[]'::json) from roster.messages rp
-  left join auth.members rm on rm.id = rp.author_member_id
-  left join auth.users ru on ru.id = rm.user_id
-  left join roster.projects ap on ap.id = rp.agent_channel_id
-  left join auth.members am on am.id = ap.added_by_member_id
-  where ${REPLY_SCOPE})`;
-
 const THREAD_ID = sql.raw(`"roster"."threads"."id"`);
+
+function uuidList(ids: string[]) {
+  return sql.join(
+    ids.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+}
+
+interface ReplyStats {
+  replyCount: number;
+  lastReplyAt: Date | null;
+  replierNames: string[];
+}
+
+const NO_REPLIES: ReplyStats = {
+  replyCount: 0,
+  lastReplyAt: null,
+  replierNames: [],
+};
+
+async function replyStatsByThread(
+  threadIds: string[],
+): Promise<Map<string, ReplyStats>> {
+  const found = new Map<string, ReplyStats>();
+  if (threadIds.length === 0) return found;
+
+  const result = await db.execute(sql`
+    select
+      s.thread_id,
+      count(*)::int as reply_count,
+      max(s.created_at) as last_reply_at,
+      coalesce(json_agg(distinct s.display order by s.display), '[]'::json) as replier_names
+    from (
+      select
+        rp.thread_id,
+        rp.created_at,
+        coalesce(
+          nullif(btrim(ru.name), ''),
+          nullif(split_part(ru.email, '@', 1), ''),
+          ru.email,
+          case when ap.slug is not null
+            then coalesce(nullif(btrim(lower(am.agent_name)), ''), 'agent') || ' [' || ap.slug || ']'
+          end,
+          'Agent'
+        ) as display
+      from roster.messages rp
+      join roster.threads t on t.id = rp.thread_id
+      left join auth.members rm on rm.id = rp.author_member_id
+      left join auth.users ru on ru.id = rm.user_id
+      left join roster.projects ap on ap.id = rp.agent_channel_id
+      left join auth.members am on am.id = ap.added_by_member_id
+      where rp.thread_id in (${uuidList(threadIds)})
+        and rp.id <> t.root_message_id
+        and rp.deleted_at is null
+    ) s
+    group by s.thread_id`);
+
+  for (const row of result.rows as Array<{
+    thread_id: string;
+    reply_count: number;
+    last_reply_at: Date | string | null;
+    replier_names: string[] | null;
+  }>) {
+    found.set(row.thread_id, {
+      replyCount: Number(row.reply_count ?? 0),
+      lastReplyAt: asDate(row.last_reply_at),
+      replierNames: row.replier_names ?? [],
+    });
+  }
+
+  return found;
+}
+
+interface LeadSession {
+  status: string | null;
+  lastProgress: string | null;
+  error: string | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
+}
+
+const NO_SESSION: LeadSession = {
+  status: null,
+  lastProgress: null,
+  error: null,
+  startedAt: null,
+  endedAt: null,
+};
+
+async function leadSessionByThread(
+  threadIds: string[],
+): Promise<Map<string, LeadSession>> {
+  const found = new Map<string, LeadSession>();
+  if (threadIds.length === 0) return found;
+
+  const result = await db.execute(sql`
+    select distinct on (ts.thread_id)
+      ts.thread_id,
+      ts.status,
+      ts.last_progress,
+      ts.error,
+      ts.ended_at,
+      min(ts.started_at) over (partition by ts.thread_id) as started_at
+    from roster.thread_sessions ts
+    where ts.thread_id in (${uuidList(threadIds)})
+    order by ts.thread_id, ${LEAD_ORDER}`);
+
+  for (const row of result.rows as Array<{
+    thread_id: string;
+    status: string | null;
+    last_progress: string | null;
+    error: string | null;
+    started_at: Date | string | null;
+    ended_at: Date | string | null;
+  }>) {
+    found.set(row.thread_id, {
+      status: row.status,
+      lastProgress: row.last_progress,
+      error: row.error,
+      startedAt: asDate(row.started_at),
+      endedAt: asDate(row.ended_at),
+    });
+  }
+
+  return found;
+}
 
 const LEAD_ORDER = sql`case ts.status when 'running' then 0 when 'starting' then 1 when 'waiting' then 2 else 3 end, case when ts.role = 'main' then 0 else 1 end, ts.started_at desc`;
 
@@ -117,27 +202,11 @@ function leadSession<T>(column: string): SQL<T> {
 }
 
 const statusSql = leadSession<string>("status");
-const lastProgressSql = leadSession<string | null>("last_progress");
-const errorSql = leadSession<string | null>("error");
-const endedAtSql = leadSession<Date | string | null>("ended_at");
 
 const startedAtSql = sql<
   Date | string | null
 >`(select min(ts.started_at) from roster.thread_sessions ts where ts.thread_id = ${THREAD_ID})`;
 
-const sessionState = {
-  status: statusSql.as("lead_status"),
-  lastProgress: lastProgressSql.as("lead_progress"),
-  error: errorSql.as("lead_error"),
-  startedAt: startedAtSql.as("lead_started_at"),
-  endedAt: endedAtSql.as("lead_ended_at"),
-};
-
-/**
- * The same lead-session pick as above, but for the thread a delegation points
- * at — read as a correlated subquery so one round trip answers for every
- * parked thread in a channel rather than one per row.
- */
 function childLead<T>(column: string): SQL<T> {
   return sql<T>`(select ts.${sql.raw(column)} from roster.thread_sessions ts where ts.thread_id = ${delegations.childThreadId} order by ${LEAD_ORDER} limit 1)`;
 }
@@ -193,13 +262,9 @@ const summaryColumns = {
   rootMessageId: threads.rootMessageId,
   completedAt: threads.completedAt,
   completedByMemberId: threads.completedByMemberId,
-  ...sessionState,
   rootText: messages.text,
   authorName: users.name,
   authorEmail: users.email,
-  replyCount: replyCountSql,
-  lastReplyAt: lastReplyAtSql,
-  replierNames: replierNamesSql,
 };
 
 function asDate(value: Date | string | null): Date | null {
@@ -209,41 +274,54 @@ function asDate(value: Date | string | null): Date | null {
 }
 
 interface SummaryRow {
-  status: string | null;
-  lastProgress: string | null;
-  error: string | null;
-  startedAt: Date | string | null;
-  endedAt: Date | string | null;
+  id: string;
+  projectId: string;
+  rootMessageId: string;
+  completedAt: Date | null;
+  completedByMemberId: string | null;
   rootText: string | null;
-  replyCount: number;
-  lastReplyAt: Date | string | null;
-  replierNames: string[] | null;
+  authorName: string | null;
+  authorEmail: string | null;
 }
 
-function toSummary(
-  row: SummaryRow,
-): Pick<
-  ThreadSummary,
-  | "status"
-  | "lastProgress"
-  | "error"
-  | "startedAt"
-  | "endedAt"
-  | "rootText"
-  | "replyCount"
-  | "lastReplyAt"
-  | "replierNames"
-> {
+interface ThreadExtras {
+  replies: Map<string, ReplyStats>;
+  leads: Map<string, LeadSession>;
+  waiting: Map<string, WaitingOn>;
+}
+
+async function threadExtras(threadIds: string[]): Promise<ThreadExtras> {
+  const [replies, leads, waiting] = await Promise.all([
+    replyStatsByThread(threadIds),
+    leadSessionByThread(threadIds),
+    waitingOnByParent(threadIds),
+  ]);
+
+  return { replies, leads, waiting };
+}
+
+function toSummary(row: SummaryRow, extras: ThreadExtras): ThreadSummary {
+  const replies = extras.replies.get(row.id) ?? NO_REPLIES;
+  const lead = extras.leads.get(row.id) ?? NO_SESSION;
+
   return {
-    status: row.status ?? "starting",
-    lastProgress: row.lastProgress,
-    error: readableError(row.error),
-    startedAt: asDate(row.startedAt) ?? new Date(),
-    endedAt: asDate(row.endedAt),
+    id: row.id,
+    projectId: row.projectId,
+    rootMessageId: row.rootMessageId,
+    completedAt: asDate(row.completedAt),
+    completedByMemberId: row.completedByMemberId,
+    authorName: row.authorName,
+    authorEmail: row.authorEmail,
+    status: lead.status ?? "starting",
+    lastProgress: lead.lastProgress,
+    error: readableError(lead.error),
+    startedAt: lead.startedAt ?? new Date(),
+    endedAt: lead.endedAt,
     rootText: row.rootText ?? "",
-    replyCount: Number(row.replyCount ?? 0),
-    lastReplyAt: asDate(row.lastReplyAt),
-    replierNames: row.replierNames ?? [],
+    replyCount: replies.replyCount,
+    lastReplyAt: replies.lastReplyAt,
+    replierNames: replies.replierNames,
+    waitingOn: extras.waiting.get(row.id) ?? null,
   };
 }
 
@@ -260,12 +338,64 @@ export async function listChannelThreads(
     .orderBy(desc(startedAtSql))
     .limit(100);
 
-  const waiting = await waitingOnByParent(rows.map((row) => row.id));
+  const extras = await threadExtras(rows.map((row) => row.id));
+
+  return rows.map((row) => toSummary(row, extras));
+}
+
+export interface InboxThread extends ThreadSummary {
+  channelSlug: string;
+  channelName: string;
+  lastActivityAt: Date;
+  unread: boolean;
+  muted: boolean;
+  reason: ThreadSubscriptionReason;
+}
+
+export async function listInboxThreads(
+  scope: ChannelScope,
+): Promise<InboxThread[]> {
+  const rows = await db
+    .select({
+      ...summaryColumns,
+      channelSlug: projects.slug,
+      channelName: projects.name,
+      lastActivityAt: threads.lastActivityAt,
+      unread: sql<boolean>`${threads.lastActivityAt} > ${threadSubscriptions.lastReadAt}`,
+      muted: isNotNull(threadSubscriptions.mutedAt),
+      reason: threadSubscriptions.reason,
+    })
+    .from(threads)
+    .innerJoin(
+      threadSubscriptions,
+      and(
+        eq(threadSubscriptions.threadId, threads.id),
+        eq(threadSubscriptions.memberId, scope.memberId),
+      ),
+    )
+    .innerJoin(projects, eq(threads.projectId, projects.id))
+    .leftJoin(messages, eq(threads.rootMessageId, messages.id))
+    .leftJoin(members, eq(messages.authorMemberId, members.id))
+    .leftJoin(users, eq(members.userId, users.id))
+    .where(
+      and(
+        eq(threads.organizationId, scope.organizationId),
+        visibleToMember(scope.memberId, scope.role),
+      ),
+    )
+    .orderBy(desc(threads.lastActivityAt))
+    .limit(200);
+
+  const extras = await threadExtras(rows.map((row) => row.id));
 
   return rows.map((row) => ({
-    ...row,
-    ...toSummary(row),
-    waitingOn: waiting.get(row.id) ?? null,
+    ...toSummary(row, extras),
+    channelSlug: row.channelSlug,
+    channelName: row.channelName,
+    lastActivityAt: asDate(row.lastActivityAt) ?? new Date(),
+    unread: Boolean(row.unread),
+    muted: Boolean(row.muted),
+    reason: row.reason,
   }));
 }
 
@@ -294,9 +424,6 @@ export async function listLiveThreads(
     .select({
       id: threads.id,
       projectId: threads.projectId,
-      status: statusSql.as("lead_status"),
-      lastProgress: lastProgressSql.as("lead_progress"),
-      startedAt: startedAtSql.as("lead_started_at"),
       rootText: messages.text,
     })
     .from(threads)
@@ -313,14 +440,32 @@ export async function listLiveThreads(
     .orderBy(desc(startedAtSql))
     .limit(200);
 
-  return rows.map((row) => ({
-    id: row.id,
-    projectId: row.projectId,
-    status: row.status ?? "starting",
-    rootText: row.rootText ?? "",
-    lastProgress: row.lastProgress,
-    startedAt: asDate(row.startedAt) ?? new Date(),
-  }));
+  const leads = await leadSessionByThread(rows.map((row) => row.id));
+
+  return rows.map((row) => {
+    const lead = leads.get(row.id) ?? NO_SESSION;
+
+    return {
+      id: row.id,
+      projectId: row.projectId,
+      status: lead.status ?? "starting",
+      rootText: row.rootText ?? "",
+      lastProgress: lead.lastProgress,
+      startedAt: lead.startedAt ?? new Date(),
+    };
+  });
+}
+
+export async function threadLeadStatus(
+  threadId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ status: statusSql.as("lead_status") })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+
+  return row?.status ?? null;
 }
 
 export async function threadProjectId(
@@ -385,7 +530,6 @@ export async function threadPublishState(
       rootMessageId: threads.rootMessageId,
       completedAt: threads.completedAt,
       completedByMemberId: threads.completedByMemberId,
-      ...sessionState,
     })
     .from(threads)
     .where(eq(threads.id, threadId))
@@ -393,17 +537,21 @@ export async function threadPublishState(
 
   if (!row) return null;
 
-  const waiting = await waitingOnByParent([row.id]);
+  const [leads, waiting] = await Promise.all([
+    leadSessionByThread([row.id]),
+    waitingOnByParent([row.id]),
+  ]);
+  const lead = leads.get(row.id) ?? NO_SESSION;
 
   return {
     id: row.id,
     projectId: row.projectId,
     rootMessageId: row.rootMessageId,
-    status: row.status ?? "starting",
-    lastProgress: row.lastProgress,
-    error: readableError(row.error),
-    startedAt: asDate(row.startedAt) ?? new Date(),
-    endedAt: asDate(row.endedAt),
+    status: lead.status ?? "starting",
+    lastProgress: lead.lastProgress,
+    error: readableError(lead.error),
+    startedAt: lead.startedAt ?? new Date(),
+    endedAt: lead.endedAt,
     waitingOn: waiting.get(row.id) ?? null,
     completedAt: asDate(row.completedAt),
     completedByMemberId: row.completedByMemberId,
@@ -469,9 +617,7 @@ export async function threadSummary(args: {
 
   if (!row) return null;
 
-  const waiting = await waitingOnByParent([row.id]);
-
-  return { ...row, ...toSummary(row), waitingOn: waiting.get(row.id) ?? null };
+  return toSummary(row, await threadExtras([row.id]));
 }
 
 export async function threadDetail(args: {
@@ -488,12 +634,6 @@ export async function threadDetail(args: {
     .leftJoin(users, eq(members.userId, users.id))
     .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
     .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
-    /**
-     * Deleted rows stay out, as they do in the channel view. A delete is
-     * published as an event the clients apply to their cache, so anything
-     * returned here comes back on the next read — and `replyCount` has never
-     * counted them, so leaving them in makes a thread disagree with itself.
-     */
     .where(and(eq(messages.threadId, args.threadId), isNull(messages.deletedAt)))
     .orderBy(asc(messages.seq));
 

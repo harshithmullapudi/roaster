@@ -1,22 +1,8 @@
-/**
- * That a message's files reach the agent — read from the prompt itself, at the
- * boundary where it would have gone to Superset.
- *
- * Every other test in this package is pure. This one needs Postgres, because
- * what is being checked is the whole path: an upload becomes a row, send binds
- * it to a message, and the session is started or steered with text built from
- * what came back out of the database. Without `DATABASE_URL` it skips.
- *
- *   pnpm dev:db
- *   DATABASE_URL=postgresql://roster:roster@localhost:5442/roster \
- *     pnpm --filter @roster/api test
- */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const prompts: string[] = [];
 const steers: string[] = [];
 
-/** Superset, stood in for: the prompt stops here and is read. */
 vi.mock("@roster/superset", () => ({
   createWorkspace: vi.fn(async () => ({ id: "workspace-1" })),
   runAgent: vi.fn(async (args: { prompt: string }) => {
@@ -38,7 +24,6 @@ vi.mock("@roster/superset", () => ({
   decodeJwtClaims: vi.fn(() => ({})),
 }));
 
-/** No host is connected in a test, and none is needed to read a prompt. */
 vi.mock("./sessions/connection", () => ({
   hostConnection: vi.fn(async () => ({
     jwt: "jwt",
@@ -69,8 +54,6 @@ function png(): Uint8Array {
 }
 
 describe.skipIf(!hasDatabase)("what an agent session is told about files", () => {
-  // Imported here rather than at the top: `@roster/db` reads DATABASE_URL when
-  // it loads, so a skipped run must not reach it.
   let api: {
     sendMessage: typeof import("./messages").sendMessage;
     threadIdForMessage: typeof import("./messages").threadIdForMessage;
@@ -173,14 +156,9 @@ describe.skipIf(!hasDatabase)("what an agent session is told about files", () =>
       expect(prompt).toContain("have a look at this");
       expect(prompt).toContain("Screenshot.png (image/png)");
       expect(prompt).toContain(`/api/files/${ids.attachment}`);
-      // The command that fetches it, and no credential in the text.
       expect(prompt).toContain("roster files download <url>");
       expect(prompt).not.toContain("ROSTER_TOKEN");
 
-      /**
-       * A reply into the thread steers the session that is already running —
-       * a second path to the agent, and one that used to carry only words.
-       */
       const threadId = await api.threadIdForMessage(sent.id);
       expect(threadId).toBeTruthy();
 

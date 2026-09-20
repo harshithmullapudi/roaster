@@ -26,7 +26,6 @@ export interface ComposerSendPayload {
   body: unknown;
   text: string;
   attachmentIds: string[];
-  /** The uploaded rows, so the pending message shows its files right away. */
   attachments: MessageAttachment[];
 }
 
@@ -53,19 +52,9 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
 
   const attachments = useAttachments(projectId);
 
-  /**
-   * The handlers below are installed on the editor once, when it mounts, so
-   * they read the attachment state through a ref rather than the closure they
-   * were created in.
-   */
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
 
-  /**
-   * Held in a ref, not state: the extension list is built once when the editor
-   * mounts, so the suggestion closure must read the latest agents rather than
-   * the empty array it was created with.
-   */
   const mentionsRef = useRef<MentionItem[]>([]);
   const getMentions = useMemo(() => () => mentionsRef.current, []);
 
@@ -77,7 +66,6 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
         if (live) mentionsRef.current = items;
       })
       .catch(() => {
-        // Autocomplete is a convenience; typing the handle by hand still works.
       });
     return () => {
       live = false;
@@ -88,9 +76,7 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
     const text = instance.getText().trim();
     const tray = attachmentsRef.current;
 
-    /** Files alone are a message; an empty composer is not. */
     if (text.length === 0 && tray.attachmentIds.length === 0) return false;
-    // Sending now would drop whatever is still on its way up.
     if (tray.uploading) return false;
 
     sendRef.current({
@@ -115,11 +101,6 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
       attributes: {
         class: "tiptap max-w-full focus:outline-none",
       },
-      /**
-       * ProseMirror's `someProp` consults `editorProps` before plugin props, so
-       * this handler sees Enter before the mention suggestion plugin does.
-       * Sending here unconditionally is what swallowed the popup's Enter.
-       */
       handleKeyDown(view, event) {
         const send = submitsOnEnter(event, {
           suggestionOpen: isMentionSuggestionOpen(view.state),
@@ -130,11 +111,6 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
         submit(editorRef.current);
         return true;
       },
-      /**
-       * A screenshot on the clipboard becomes an attachment, the way it does
-       * in Slack. Copied text and rich text are untouched: only a paste that
-       * actually carries files is claimed here.
-       */
       handlePaste(_view, event) {
         const files = filesFromTransfer(event.clipboardData);
         if (files.length === 0) return false;
@@ -181,11 +157,6 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
       onDrop={(event) => {
         setDraggingOver(false);
         if (!transferHasFiles(event.dataTransfer)) return;
-        /**
-         * A drop onto the text area is claimed by the editor's own handler
-         * first, which marks the event handled. Without this check the same
-         * files would be attached twice — once there, once here.
-         */
         if (event.defaultPrevented) return;
         event.preventDefault();
         attachments.addFiles(filesFromTransfer(event.dataTransfer));
@@ -210,7 +181,6 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
         className="hidden"
         onChange={(event) => {
           attachments.addFiles(Array.from(event.target.files ?? []));
-          // Same file twice in a row still fires a change event.
           event.target.value = "";
         }}
       />

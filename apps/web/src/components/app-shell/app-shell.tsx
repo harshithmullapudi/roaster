@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 
 import { MentionPopover } from "~/components/messages/mention-popover";
-import { NotificationBell } from "~/components/notifications/notification-bell";
 import { UserRealtime } from "~/components/notifications/user-realtime";
 import { CommandProvider } from "~/components/providers/command-provider";
 import { AppSidebar } from "~/components/sidebar/app-sidebar";
@@ -50,7 +49,6 @@ export function AppShell({
         actions={actions}
         tabs={tabs}
         nav={<SidebarSheet>{sidebar}</SidebarSheet>}
-        inbox={<NotificationBell orgSlug={shell.organization.slug} />}
       />
       {flush ? (
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>

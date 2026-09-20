@@ -2,9 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import {
-  listNotifications,
   markAllNotificationsRead,
-  markNotificationRead,
   markThreadRead,
   setThreadSubscription,
   unfollowThread,
@@ -37,31 +35,9 @@ async function reachableThread(
 }
 
 export const notificationsRouter = createTRPCRouter({
-  list: memberProcedure
-    .input(
-      z
-        .object({
-          limit: z.number().int().min(1).max(50).optional(),
-          cursor: z.string().optional(),
-        })
-        .optional(),
-    )
-    .query(({ ctx, input }) => listNotifications(scopeOf(ctx), input ?? {})),
-
   unreadCount: memberProcedure.query(({ ctx }) =>
     unreadNotificationCount(scopeOf(ctx)),
   ),
-
-  markRead: memberProcedure
-    .input(z.object({ notificationId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const item = await markNotificationRead(
-        scopeOf(ctx),
-        input.notificationId,
-      );
-      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
-      return item;
-    }),
 
   markAllRead: memberProcedure.mutation(async ({ ctx }) => ({
     read: await markAllNotificationsRead(scopeOf(ctx)),

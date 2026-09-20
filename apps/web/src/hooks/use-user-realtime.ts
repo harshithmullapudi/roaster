@@ -1,15 +1,12 @@
 "use client";
 
-import type { NotificationItem } from "@roster/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { Centrifuge } from "centrifuge";
 import { useEffect } from "react";
 
 import {
   applyUnreadDelta,
-  notificationsKey,
-  parsePublishedNotification,
-  prependNotification,
+  publishedNotificationId,
   unreadCountKey,
 } from "~/utils/notification-cache";
 import { trpc } from "~/utils/trpc";
@@ -20,31 +17,16 @@ export function useUserRealtime(): void {
   useEffect(() => {
     let disposed = false;
     let centrifuge: Centrifuge | null = null;
+    const counted = new Set<string>();
 
-    async function backfill(reason: string) {
-      const cached = queryClient.getQueryData<NotificationItem[]>(
-        notificationsKey(),
-      );
-
+    async function refreshCount(reason: string) {
       try {
-        const [unread, page] = await Promise.all([
-          trpc.notifications.unreadCount.query(),
-          cached
-            ? trpc.notifications.list.query({ limit: 30 })
-            : Promise.resolve(null),
-        ]);
+        const unread = await trpc.notifications.unreadCount.query();
         if (disposed) return;
-
         queryClient.setQueryData<number>(unreadCountKey(), unread);
-        if (page) {
-          queryClient.setQueryData<NotificationItem[]>(
-            notificationsKey(),
-            page.items,
-          );
-        }
-        console.info(`[realtime] notification backfill (${reason})`);
+        console.info(`[realtime] unread count refreshed (${reason})`);
       } catch {
-        console.warn("[realtime] notification backfill failed");
+        console.warn("[realtime] unread count refresh failed");
       }
     }
 
@@ -91,20 +73,9 @@ export function useUserRealtime(): void {
       }
 
       subscription.on("publication", (ctx) => {
-        const notification = parsePublishedNotification(ctx.data);
-        if (!notification) return;
-
-        const cached = queryClient.getQueryData<NotificationItem[]>(
-          notificationsKey(),
-        );
-        if (cached?.some((one) => one.id === notification.id)) return;
-
-        if (cached) {
-          queryClient.setQueryData<NotificationItem[]>(
-            notificationsKey(),
-            prependNotification(cached, notification),
-          );
-        }
+        const id = publishedNotificationId(ctx.data);
+        if (!id || counted.has(id)) return;
+        counted.add(id);
 
         queryClient.setQueryData<number>(unreadCountKey(), (previous) =>
           applyUnreadDelta(previous, 1),
@@ -112,11 +83,10 @@ export function useUserRealtime(): void {
       });
 
       subscription.on("subscribed", (ctx) => {
-        if (ctx.recovered) {
-          console.info("[realtime] centrifugo recovery replayed history");
-          return;
-        }
-        void backfill(ctx.wasRecovering ? "recovery failed" : "first subscribe");
+        if (ctx.recovered) return;
+        void refreshCount(
+          ctx.wasRecovering ? "recovery failed" : "first subscribe",
+        );
       });
 
       subscription.on("error", (ctx) => {

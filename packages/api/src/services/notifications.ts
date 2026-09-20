@@ -10,7 +10,7 @@ import {
   threads,
   users,
 } from "@roster/db";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { agentDisplay } from "../lib/agent-identity";
@@ -32,7 +32,6 @@ import type { ChannelMessage } from "./message-columns";
 import { threadLeadStatus } from "./sessions/queries";
 
 const NOBODY = "00000000-0000-0000-0000-000000000000";
-const LIST_LIMIT = 30;
 
 interface ThreadContext {
   id: string;
@@ -493,26 +492,6 @@ function toItem(row: {
   };
 }
 
-export async function listNotifications(
-  scope: ChannelScope,
-  args: { limit?: number; cursor?: string } = {},
-): Promise<NotificationPage> {
-  const limit = Math.min(Math.max(args.limit ?? LIST_LIMIT, 1), 50);
-
-  const rows = await visibleNotifications()
-    .where(and(ownedBy(scope), cursorCondition(args.cursor)))
-    .orderBy(desc(notifications.createdAt), desc(notifications.id))
-    .limit(limit + 1);
-
-  const page = rows.slice(0, limit).map(toItem);
-  const last = page.at(-1);
-
-  return {
-    items: page,
-    nextCursor: rows.length > limit && last ? encodeCursor(last) : null,
-  };
-}
-
 export async function unreadNotificationCount(
   scope: ChannelScope,
 ): Promise<number> {
@@ -526,31 +505,14 @@ export async function unreadNotificationCount(
   return Number(row?.total ?? 0);
 }
 
-export async function markNotificationRead(
-  scope: ChannelScope,
-  notificationId: string,
-): Promise<NotificationItem | null> {
-  const [row] = await visibleNotifications()
-    .where(and(ownedBy(scope), eq(notifications.id, notificationId)))
-    .limit(1);
-
-  if (!row) return null;
-
-  const readAt = row.readAt ?? new Date();
-  await db
-    .update(notifications)
-    .set({ readAt })
-    .where(and(eq(notifications.id, row.id), isNull(notifications.readAt)));
-
-  return { ...toItem(row), readAt };
-}
-
 export async function markAllNotificationsRead(
   scope: ChannelScope,
 ): Promise<number> {
+  const readAt = new Date();
+
   const rows = await db
     .update(notifications)
-    .set({ readAt: new Date() })
+    .set({ readAt })
     .where(
       and(
         eq(notifications.memberId, scope.memberId),
@@ -559,6 +521,11 @@ export async function markAllNotificationsRead(
       ),
     )
     .returning({ id: notifications.id });
+
+  await db
+    .update(threadSubscriptions)
+    .set({ lastReadAt: readAt })
+    .where(eq(threadSubscriptions.memberId, scope.memberId));
 
   return rows.length;
 }

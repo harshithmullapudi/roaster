@@ -7,9 +7,16 @@ export interface SidebarLinkProps {
   active: boolean;
   icon: ReactNode;
   label: string;
+  trailing?: ReactNode;
 }
 
-export function SidebarLink({ href, active, icon, label }: SidebarLinkProps) {
+export function SidebarLink({
+  href,
+  active,
+  icon,
+  label,
+  trailing,
+}: SidebarLinkProps) {
   return (
     <Button
       variant="ghost"
@@ -26,6 +33,7 @@ export function SidebarLink({ href, active, icon, label }: SidebarLinkProps) {
           {icon}
         </span>
         <span className="min-w-0 truncate text-left">{label}</span>
+        {trailing ? <span className="ml-auto flex shrink-0">{trailing}</span> : null}
       </Link>
     </Button>
   );

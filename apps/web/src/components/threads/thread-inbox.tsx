@@ -4,7 +4,8 @@ import type { InboxThread } from "@roster/api";
 import { cn } from "@roster/ui";
 import { AtSign, BellOff, Hash, MessagesSquare } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 
 import {
   groupInboxThreads,
@@ -13,11 +14,35 @@ import {
 } from "~/utils/inbox-threads";
 import { threadTitle } from "~/utils/live-threads";
 import { relativeTime } from "~/utils/relative-time";
+import { unreadCountKey } from "~/utils/notification-cache";
 import { replyCountLabel } from "~/utils/thread-rows";
+import { trpc } from "~/utils/trpc";
 
 import { ReplyAvatars } from "./reply-avatars";
 import { ThreadStatus } from "./thread-status";
 import { WaitingOnCard } from "./waiting-on";
+
+function useClearUnreadOnOpen(): void {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let disposed = false;
+
+    void trpc.notifications.markAllRead
+      .mutate()
+      .then(() => {
+        if (disposed) return;
+        queryClient.setQueryData<number>(unreadCountKey(), 0);
+      })
+      .catch(() => {
+        queryClient.invalidateQueries({ queryKey: unreadCountKey() });
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [queryClient]);
+}
 
 export interface ThreadInboxProps {
   threads: InboxThread[];
@@ -129,12 +154,13 @@ function EmptyInbox() {
 
 export function ThreadInbox({ threads, orgSlug }: ThreadInboxProps) {
   const groups = useMemo(() => groupInboxThreads(threads), [threads]);
+  useClearUnreadOnOpen();
 
   if (groups.length === 0) return <EmptyInbox />;
 
   return (
     <div className="overscroll-contain min-h-0 flex-1 overflow-y-auto">
-      <div className="pb-safe-2 flex w-full max-w-3xl flex-col gap-4 p-1 sm:p-2">
+      <div className="pb-safe-2 flex w-full flex-col gap-4 p-1 sm:p-2">
         {groups.map((group) => (
           <section key={group.bucket} className="flex flex-col gap-0.5">
             <h2 className="text-muted-foreground px-2 pt-2 pb-1 text-xs font-medium sm:px-3">

@@ -4,6 +4,7 @@ import { cliRouter } from "./routers/cli";
 import { inviteLinksRouter } from "./routers/invite-links";
 import { messagesRouter } from "./routers/messages";
 import { onboardingRouter } from "./routers/onboarding";
+import { reactionsRouter } from "./routers/reactions";
 import { realtimeRouter } from "./routers/realtime";
 import { supersetRouter } from "./routers/superset";
 import { tasksRouter } from "./routers/tasks";
@@ -27,6 +28,7 @@ export const appRouter = createTRPCRouter({
   tasks: tasksRouter,
   terminals: terminalsRouter,
   threads: threadsRouter,
+  reactions: reactionsRouter,
   realtime: realtimeRouter,
 });
 

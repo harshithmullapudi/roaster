@@ -45,6 +45,7 @@ export {
   pausedMessageCount,
   type ChannelMessage,
 } from "./services/messages";
+export { type ReactionRef } from "./services/reactions";
 export {
   ensureStarted,
   listChannelThreads,

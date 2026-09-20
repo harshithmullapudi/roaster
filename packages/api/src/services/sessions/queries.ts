@@ -8,7 +8,17 @@ import {
   threads,
   users,
 } from "@roster/db";
-import { and, asc, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { agentDisplay, agentHandle } from "../../lib/agent-identity";
 import { readableError } from "../../utils/session-error";
@@ -60,6 +70,8 @@ export interface ThreadSummary {
   lastReplyAt: Date | null;
   replierNames: string[];
   waitingOn: WaitingOn | null;
+  completedAt: Date | null;
+  completedByMemberId: string | null;
 }
 
 const REPLY_SCOPE = sql`rp.thread_id = ${threads.id} and rp.id <> ${threads.rootMessageId} and rp.deleted_at is null`;
@@ -178,6 +190,8 @@ const summaryColumns = {
   id: threads.id,
   projectId: threads.projectId,
   rootMessageId: threads.rootMessageId,
+  completedAt: threads.completedAt,
+  completedByMemberId: threads.completedByMemberId,
   ...sessionState,
   rootText: messages.text,
   authorName: users.name,
@@ -291,6 +305,7 @@ export async function listLiveThreads(
       and(
         eq(threads.organizationId, scope.organizationId),
         visibleToMember(scope.memberId, scope.role),
+        isNull(threads.completedAt),
         HAS_LIVE_SESSION,
       ),
     )
@@ -323,6 +338,7 @@ export interface ThreadTarget {
   projectId: string;
   rootMessageId: string;
   status: string;
+  completedAt: Date | null;
 }
 
 export async function threadTarget(
@@ -335,6 +351,7 @@ export async function threadTarget(
       projectId: threads.projectId,
       rootMessageId: threads.rootMessageId,
       status: statusSql.as("lead_status"),
+      completedAt: threads.completedAt,
     })
     .from(threads)
     .where(eq(threads.id, threadId))
@@ -353,6 +370,8 @@ export interface ThreadPublishState {
   startedAt: Date;
   endedAt: Date | null;
   waitingOn: WaitingOn | null;
+  completedAt: Date | null;
+  completedByMemberId: string | null;
 }
 
 export async function threadPublishState(
@@ -363,6 +382,8 @@ export async function threadPublishState(
       id: threads.id,
       projectId: threads.projectId,
       rootMessageId: threads.rootMessageId,
+      completedAt: threads.completedAt,
+      completedByMemberId: threads.completedByMemberId,
       ...sessionState,
     })
     .from(threads)
@@ -383,6 +404,8 @@ export async function threadPublishState(
     startedAt: asDate(row.startedAt) ?? new Date(),
     endedAt: asDate(row.endedAt),
     waitingOn: waiting.get(row.id) ?? null,
+    completedAt: asDate(row.completedAt),
+    completedByMemberId: row.completedByMemberId,
   };
 }
 
@@ -398,6 +421,7 @@ export async function joinableThread(args: {
       projectId: threads.projectId,
       rootMessageId: threads.rootMessageId,
       status: threadSessions.status,
+      completedAt: threads.completedAt,
     })
     .from(threads)
     .innerJoin(messages, eq(threads.rootMessageId, messages.id))

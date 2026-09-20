@@ -10,6 +10,7 @@ import type { ThreadItem } from "~/utils/thread-rows";
 
 import { MessageActions } from "./message-actions";
 import { MessageBody } from "./message-body";
+import { MessageReactions } from "./message-reactions";
 
 export interface MessageRowProps {
   message: MessageItem;
@@ -76,6 +77,14 @@ export function MessageRow({
         <div className="min-w-0">
           <MessageBody body={message.body} text={message.text} />
         </div>
+        {memberId && !message.pending && !message.failed ? (
+          <MessageReactions
+            messageId={message.id}
+            projectId={message.projectId}
+            reactions={message.reactions}
+            memberId={memberId}
+          />
+        ) : null}
         {thread && threadHref ? (
           <ThreadAffordance thread={thread} href={threadHref} />
         ) : null}

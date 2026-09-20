@@ -1,5 +1,5 @@
 import { db, members, projects, type SelectProject } from "@roster/db";
-import { decryptApiKey, mintJwt, routingKey } from "@roster/superset";
+import { mintJwt, routingKey, tryDecryptApiKey } from "@roster/superset";
 import { and, eq } from "drizzle-orm";
 
 export interface HostConnection {
@@ -27,7 +27,14 @@ export async function hostConnection(args: {
     throw new Error("Nobody on this team has Superset connected.");
   }
 
-  const { jwt } = await mintJwt(decryptApiKey(member.supersetKeyEncrypted));
+  const apiKey = tryDecryptApiKey(member.supersetKeyEncrypted);
+  if (!apiKey) {
+    throw new Error(
+      "This team's stored Superset key can no longer be read. Reconnect Superset in settings.",
+    );
+  }
+
+  const { jwt } = await mintJwt(apiKey);
   return {
     jwt,
     project,
@@ -42,6 +49,8 @@ export async function jwtForHostKey(hostKey: string): Promise<string | null> {
     where: eq(members.supersetOrgId, supersetOrgId),
   });
   if (!member?.supersetKeyEncrypted) return null;
-  const { jwt } = await mintJwt(decryptApiKey(member.supersetKeyEncrypted));
+  const apiKey = tryDecryptApiKey(member.supersetKeyEncrypted);
+  if (!apiKey) return null;
+  const { jwt } = await mintJwt(apiKey);
   return jwt;
 }

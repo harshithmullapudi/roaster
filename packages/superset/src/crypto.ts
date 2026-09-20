@@ -40,22 +40,45 @@ export function encryptApiKey(apiKey: string): string {
   ].join(":");
 }
 
+export class UndecryptableKeyError extends Error {
+  constructor() {
+    super("That stored Superset key can no longer be read. Reconnect Superset.");
+    this.name = "UndecryptableKeyError";
+  }
+}
+
 export function decryptApiKey(stored: string): string {
   const parts = stored.split(":");
   if (parts.length !== 3) {
-    throw new Error("Stored Superset key is malformed.");
+    throw new UndecryptableKeyError();
   }
   const [ivB64, tagB64, dataB64] = parts as [string, string, string];
-  const decipher = createDecipheriv(
-    ALGORITHM,
-    secret(),
-    Buffer.from(ivB64, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(dataB64, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
+  try {
+    const decipher = createDecipheriv(
+      ALGORITHM,
+      secret(),
+      Buffer.from(ivB64, "base64"),
+    );
+    decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(dataB64, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch (cause) {
+    if (cause instanceof Error && /SUPERSET_KEY_SECRET/.test(cause.message)) {
+      throw cause;
+    }
+    throw new UndecryptableKeyError();
+  }
+}
+
+export function tryDecryptApiKey(stored: string): string | null {
+  try {
+    return decryptApiKey(stored);
+  } catch (cause) {
+    if (cause instanceof UndecryptableKeyError) return null;
+    throw cause;
+  }
 }
 
 export function sameApiKey(a: string, b: string): boolean {

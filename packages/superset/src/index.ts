@@ -3,6 +3,8 @@ export {
   encryptApiKey,
   redact,
   sameApiKey,
+  tryDecryptApiKey,
+  UndecryptableKeyError,
 } from "./crypto";
 export { decodeJwtClaims, type SupersetClaims } from "./jwt";
 export {

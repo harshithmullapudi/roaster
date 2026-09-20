@@ -43,8 +43,14 @@ export function absoluteAttachmentUrl(id: string): string {
 
 /**
  * How files are described to an agent. The agent reads text, not the message
- * row, so a message's files have to be named in the prompt — with the one
- * command that fetches them, since the route wants a credential.
+ * row, so a message's files have to be named in the prompt — with the command
+ * that fetches them, since reading one needs a credential.
+ *
+ * That command is `roster files download`, which authenticates from the config
+ * `roster login` wrote. Nothing here names a credential: this text is echoed
+ * into a terminal and scraped back into channel messages, and an agent told to
+ * pass a token by hand would be told wrong on every machine that logged in
+ * rather than exporting one.
  */
 export function attachmentBrief(files: MessageAttachment[]): string {
   if (files.length === 0) return "";
@@ -54,8 +60,7 @@ export function attachmentBrief(files: MessageAttachment[]): string {
   );
 
   return [
-    "Attachments — fetch one with:",
-    '  curl -fsSL -H "Authorization: Bearer $ROSTER_TOKEN" -o <filename> <url>',
+    "Attachments — download one with `roster files download <url>`:",
     ...lines,
   ].join("\n");
 }

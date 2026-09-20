@@ -172,8 +172,9 @@ describe.skipIf(!hasDatabase)("what an agent session is told about files", () =>
       expect(prompt).toContain("have a look at this");
       expect(prompt).toContain("Screenshot.png (image/png)");
       expect(prompt).toContain(`/api/files/${ids.attachment}`);
-      // The route wants a credential, so the agent is told which one.
-      expect(prompt).toContain("Authorization: Bearer $ROSTER_TOKEN");
+      // The command that fetches it, and no credential in the text.
+      expect(prompt).toContain("roster files download <url>");
+      expect(prompt).not.toContain("ROSTER_TOKEN");
 
       /**
        * A reply into the thread steers the session that is already running —

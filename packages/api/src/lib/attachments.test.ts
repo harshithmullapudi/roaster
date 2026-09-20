@@ -178,8 +178,9 @@ describe("what the agent is told", () => {
     expect(brief).toContain("spec.pdf (application/pdf)");
     // Absolute: the agent is not running in the browser's origin.
     expect(brief).toContain("http://localhost:3000/api/files/aaa");
-    // The route wants a credential, so the command that works is spelled out.
-    expect(brief).toContain("Authorization: Bearer $ROSTER_TOKEN");
+    // The command that works, rather than a credential to pass by hand.
+    expect(brief).toContain("roster files download <url>");
+    expect(brief).not.toContain("ROSTER_TOKEN");
   });
 
   it("still describes the files when the message was only files", () => {

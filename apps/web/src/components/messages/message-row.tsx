@@ -31,13 +31,16 @@ export function MessageRow({
 }: MessageRowProps) {
   const name = speakerName(message);
 
+  const live = !message.pending && !message.failed;
+
   const deletable =
     onDelete !== undefined &&
     memberId !== undefined &&
     message.kind === "user" &&
     message.authorMemberId === memberId &&
-    !message.pending &&
-    !message.failed;
+    live;
+
+  const completable = thread !== undefined && memberId !== undefined && live;
 
   return (
     <div
@@ -47,10 +50,13 @@ export function MessageRow({
         message.pending && "opacity-60",
       )}
     >
-      {deletable ? (
+      {deletable || completable ? (
         <MessageActions
           hasSession={Boolean(thread)}
-          onDelete={() => onDelete(message.id)}
+          thread={completable ? thread : undefined}
+          onDelete={
+            deletable && onDelete ? () => onDelete(message.id) : undefined
+          }
         />
       ) : null}
 

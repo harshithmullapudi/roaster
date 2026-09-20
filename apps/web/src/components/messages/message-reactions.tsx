@@ -71,7 +71,7 @@ export function MessageReactions({
               aria-pressed={group.mine}
               onClick={() => void toggle(group.emoji)}
               className={cn(
-                "gap-1 rounded-full px-1.5 text-xs",
+                "gap-1 px-1.5 text-xs",
                 group.mine &&
                   "bg-primary/10 text-primary hover:bg-primary/15 ring-primary/40 ring-1",
               )}

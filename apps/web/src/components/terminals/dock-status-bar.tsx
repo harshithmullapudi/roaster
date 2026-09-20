@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "@roster/ui";
 import { SquareTerminal } from "lucide-react";
 
+import { RunningCount } from "~/components/threads/running-count";
 import { isLive, threadsKey } from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
@@ -40,12 +41,7 @@ function ThreadCounts({
       className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-2.5 text-xs"
     >
       <span>{open} open</span>
-      {running > 0 ? (
-        <span className="flex items-center gap-1.5">
-          <span className="size-1.5 animate-pulse rounded-full bg-blue-500" />
-          {running} running
-        </span>
-      ) : null}
+      <RunningCount count={running} labeled />
     </button>
   );
 }

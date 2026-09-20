@@ -18,7 +18,7 @@ export function AppSidebar({
   section,
   activeChannelSlug,
 }: AppSidebarProps) {
-  const { organization, organizations, user, channels } = shell;
+  const { organization, organizations, user, channels, liveThreads } = shell;
 
   return (
     <aside className="bg-background flex h-full w-full shrink-0 flex-col gap-3 p-2 md:w-56">
@@ -49,6 +49,7 @@ export function AppSidebar({
           orgSlug={organization.slug}
           activeChannelSlug={activeChannelSlug}
           canManage={shell.can("channel:update")}
+          initialLiveThreads={liveThreads}
         />
       </nav>
     </aside>

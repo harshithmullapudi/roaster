@@ -54,7 +54,7 @@ export function MessageReactions({
           variant="ghost"
           size="xs"
           aria-label="Add reaction"
-          className="text-muted-foreground bg-background border-border absolute top-0 right-11 z-10 border opacity-0 shadow-sm transition-opacity focus-visible:opacity-100 group-hover/message:opacity-100 data-[state=open]:opacity-100 max-md:opacity-100 sm:right-14"
+          className="text-muted-foreground bg-background border-border absolute top-0 right-10 z-10 border opacity-0 shadow-sm transition-opacity focus-visible:opacity-100 group-hover/message:opacity-100 data-[state=open]:opacity-100 max-md:opacity-100 sm:right-12"
         >
           <SmilePlus size={14} />
         </Button>

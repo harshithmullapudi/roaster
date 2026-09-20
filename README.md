@@ -79,13 +79,12 @@ instead of emailed, so you can sign in without an email account wired up:
 
 Paste that link into the browser and you are signed in.
 
-Signing in lands you in `/onboarding`, which asks for a Superset API key and
-then for the projects to build channels on. Both are required — a workspace
-with no projects has no channels, so there is nothing for an agent to run on —
-but neither is a gate: the key is validated by minting a JWT with it there and
-then, and if no machine answers the project step says which machines are asleep
-and lets you pick projects later. The step is resolved server-side from what is
-missing, so refreshing or going back cannot desynchronise it.
+Signing in lands you in `/onboarding`: a Superset API key, then the projects to
+build channels on. Both are required — no projects, no channels, nothing for an
+agent to run on — but neither blocks. The key is validated by minting a JWT with
+it on the spot, and if no machine answers, the project step names the sleeping
+ones and lets you pick later. Which step you are on is resolved server-side from
+what is missing, so refreshing or going back cannot desynchronise it.
 
 Two design docs cover how the pieces below got their shape:
 [auth and the shell](docs/superpowers/specs/2026-09-17-roster-boilerplate-auth-design.md),
@@ -94,67 +93,46 @@ The logo is its own: [`docs/brand.md`](docs/brand.md).
 
 ## Deploying
 
-The root `Dockerfile` builds the web app into a self-contained image. The build
+The root `Dockerfile` builds the web app into a self-contained image. Build
 context is the repository root, not `apps/web` — the workspace packages are
-consumed as TypeScript source, so the app cannot be built without them.
+consumed as TypeScript source.
 
 ```bash
 docker build -t roster-web --build-arg NEXT_PUBLIC_APP_URL=https://roster.example.com .
 docker run -p 3000:3000 --env-file .env roster-web
 ```
 
-On [Railway](https://railway.com), point a service at this repo; `railway.json`
-already selects the Dockerfile builder. Then:
+On [Railway](https://railway.com), point a service at this repo — `railway.json`
+already selects the Dockerfile builder — then:
 
-1. **Add a Postgres database** to the project and set `DATABASE_URL` on the web
-   service to its connection string.
-2. **Set the rest of the variables** from `.env.example` —
-   `BETTER_AUTH_SECRET`, `SUPERSET_KEY_SECRET`, and, once the service has a
-   domain, `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` pointing at it.
-   Railway passes service variables to the build, which is what bakes
-   `NEXT_PUBLIC_APP_URL` into the browser bundle — **changing it needs a
-   rebuild, not just a restart.**
-3. **Nothing, for the schema.** The service migrates itself on boot, so a new
-   database is created by the first deploy. A database from before migrations
-   existed — when `db:push` was the way — is adopted on that same boot: it
-   holds the tables with no record of them, so the server writes the journal
-   rows for what is already there and runs only what is missing.
-4. **Mount a volume for attachments** at `/app/uploads`, which is where the
-   image points `UPLOADS_DIR`. Files posted in a channel are written there,
-   and a container filesystem does not survive a redeploy — without a volume
-   the rows outlive their files and every preview comes back 404.
+1. **Add a Postgres database**, and set `DATABASE_URL` to its connection string.
+2. **Set the rest** from `.env.example`: `BETTER_AUTH_SECRET`,
+   `SUPERSET_KEY_SECRET`, and, once the service has a domain,
+   `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL`. The first of those is baked into
+   the browser bundle at build time, so **changing it needs a rebuild, not a
+   restart.**
+3. **Nothing, for the schema.** The service migrates itself on boot, and a
+   database from before migrations existed is adopted on that same boot.
+4. **Mount a volume at `/app/uploads`** — where the image points `UPLOADS_DIR`.
+   Without one, a redeploy throws the files away and leaves the rows, so every
+   preview 404s. `docker-entrypoint.sh` re-owns the mount before dropping to
+   `nextjs`, so this needs no `RAILWAY_RUN_UID=0`.
 
-   Railway mounts a volume owned by root, and a `chown` in the image runs
-   under the mount point rather than on it, so an unprivileged server would
-   be unable to write to it. `docker-entrypoint.sh` re-owns the directory
-   after the mount and then drops to `nextjs`, which is why this needs no
-   `RAILWAY_RUN_UID=0`. What the volume does cost is worth knowing:
-   **replicas cannot be used with a volume**, so the service cannot scale
-   horizontally, and a redeploy takes a moment of downtime because only one
-   deployment can hold the mount. A service gets one volume, sized by plan —
-   0.5 GB on Free, 5 GB on Hobby, 50 GB on Pro.
-
-   Outgrowing that, or wanting more than one instance, means moving the
-   bytes to object storage: `packages/api/src/services/attachments.ts` is
-   the only module that touches the disk.
-5. Leave `CENTRIFUGO_*` empty and realtime turns itself off — messages fall
-   back to plain tRPC. Wire it up by running Centrifugo as a second service
-   and setting `CENTRIFUGO_URL` to its private URL.
-
-   That service needs the same three namespaces as
-   `docker/centrifugo/config.json`, which only configures the container
-   `docker-compose.dev.yaml` starts. Publishing to a namespace Centrifugo
-   does not know about is rejected, so a missing `user` costs live
-   notifications — the unread dot then lags by a poll instead of arriving
-   at once. On the official image the whole set can be passed as one
-   variable:
+   A volume costs something: **it rules out replicas**, a redeploy blips while
+   the mount changes hands, and a service gets exactly one — 0.5 GB on Free,
+   5 GB on Hobby, 50 GB on Pro. Outgrowing that means object storage;
+   `packages/api/src/services/attachments.ts` is the only module touching disk.
+5. **Centrifugo is optional.** Leave `CENTRIFUGO_*` empty and realtime turns
+   itself off, falling back to plain tRPC. To wire it up, run it as a second
+   service with `CENTRIFUGO_URL` set to its private URL and declare all three
+   namespaces — a publish to one Centrifugo does not know is rejected, and a
+   missing `user` makes the unread dot lag by a poll:
 
    ```
    CENTRIFUGO_CHANNEL_NAMESPACES=[{"name":"channel","presence":true,"history_size":300,"history_ttl":"30m","force_recovery":true},{"name":"thread","presence":false,"history_size":300,"history_ttl":"30m","force_recovery":true},{"name":"user","presence":false,"history_size":100,"history_ttl":"30m","force_recovery":true}]
    ```
 
-`PORT` is read from the environment, which is how Railway routes to the
-container.
+`PORT` comes from the environment, which is how Railway routes to the container.
 
 ## Layout
 
@@ -171,70 +149,63 @@ container.
 
 ## The Mac app
 
-`apps/tauri` bundles no frontend. It is a native window pointed at the
-deployment, so shipping the web app ships the desktop app — a release is only
-needed to change the shell itself.
+`apps/tauri` bundles no frontend — it is a native window on the deployment, so
+shipping the web app ships the desktop app. A release is only needed to change
+the shell itself.
 
 ```bash
 pnpm --filter @roster/tauri dev-tauri    # window on http://localhost:3000
 ```
 
-`pnpm test` runs the shell's Rust tests along with everything else, so it wants
-a Rust toolchain — the first run pays for a `cargo` build.
+`pnpm test` includes the shell's Rust tests, so it wants a Rust toolchain; the
+first run pays for a `cargo` build.
 
-An installed build can be pointed somewhere else without rebuilding, which
-matters because rebuilding means re-signing and re-notarizing every copy:
+An installed build can be pointed elsewhere without rebuilding — which matters,
+because a rebuild means re-signing and re-notarizing every copy:
 
 ```json
 // ~/.roster/desktop.json
 { "frontendUrl": "https://roster.example.com" }
 ```
 
-`ROSTER_APP_URL` overrides both. The file is deliberately not
-`~/.roster/config.json` — that one belongs to the CLI, which rewrites it whole
-on `roster login`.
+`ROSTER_APP_URL` overrides both. Deliberately not `~/.roster/config.json` —
+that one belongs to the CLI, which rewrites it whole on `roster login`.
 
 **Signing in is the one thing the shell cannot do by itself.** A magic link
-opens in the default browser, so the session cookie lands there and the app's
-webview stays signed out. Instead:
+opens in the default browser, so the cookie lands there and the webview stays
+signed out. The way around it:
 
-1. Inside the app, the sign-in form asks for a link back to `/desktop/handoff`
-   rather than `/`. It knows it is in the app because the shell sets
-   `window.__ROSTER_DESKTOP__` before any page script runs.
-2. The link is clicked in the browser, which verifies it and holds the session.
-3. `/desktop/handoff` mints a better-auth one-time token and hands it over as
+1. In the app, the sign-in form asks for a link to `/desktop/handoff` rather
+   than `/` — it knows where it is from `window.__ROSTER_DESKTOP__`, set before
+   any page script runs.
+2. The browser verifies the link and holds the session.
+3. `/desktop/handoff` mints a one-time token, handed over as
    `roster://auth?token=…`.
-4. The shell navigates its webview to `/api/desktop/session?token=…`, which
-   verifies the token. The `Set-Cookie` is on a response the webview itself
-   received, so the session lands in the right cookie jar.
+4. The shell loads `/api/desktop/session?token=…`, so the `Set-Cookie` arrives
+   on a response the webview itself made — the right cookie jar.
 
-The token is single-use, expires in three minutes, and is stored hashed. Both
-sides end up sharing one session row, so signing out of either signs out of
-both. A custom URL scheme is claimable by any app on the machine; closing that
-properly means universal links, which need an `apple-app-site-association` file
-on a stable custom domain.
+The token is single-use, three minutes, stored hashed. Both sides share one
+session row, so signing out of either signs out of both. A custom URL scheme is
+claimable by any app on the machine; closing that means universal links, which
+need an `apple-app-site-association` file on a stable custom domain.
 
 ### Releasing it
 
-This repository is private, so its release assets are not downloadable by the
-people you send the app to and the updater cannot read them either. The build
-runs here and publishes to the public
-[`roster-releases`](https://github.com/harshithmullapudi/roster-releases) repo —
-`.dmg` for people, `.app.tar.gz` plus `latest.json` for the updater, which
-installed copies check once at launch.
+This repository is private, so neither the people you send the app to nor the
+updater can read its release assets. The build runs here and publishes to the
+public [`roster-releases`](https://github.com/harshithmullapudi/roster-releases)
+repo — `.dmg` for people, `.app.tar.gz` plus `latest.json` for the updater,
+which installed copies check once at launch.
 
 ```bash
 # bump "version" in apps/tauri/src-tauri/tauri.conf.json, then
 git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
 ```
 
-The tag has to match that version or the workflow stops: `latest.json` is what
-the updater compares against, so a disagreement ships an update nobody is
-offered.
-
-`roster-releases` needs to be public and to have at least one commit — a README
-is enough. `gh release create` tags a commit, and it has nothing to tag in an
-empty repository.
+The tag has to match that version or the workflow stops — a disagreement ships
+an update nobody is offered. `roster-releases` has to be public and hold at
+least one commit; `gh release create` tags a commit, and an empty repository has
+none.
 
 Secrets on this repository, all but the last two shared with `core`:
 
@@ -263,15 +234,15 @@ roster ask <handle> "<task>" --thread THREAD_ID
 roster files download <url-or-id> [--out PATH]
 ```
 
-Two of those are worth expanding on. A channel read prints what was said out
-loud and marks every message with a thread hanging off it with that thread's
-id, so an agent can follow a conversation into work it was never part of.
-And `roster ask` returns immediately rather than blocking: the asking agent
-says what it asked for and ends its turn, and is resumed with the answer when
-the other one is done.
+Three of those behave in ways worth knowing:
 
-`roster tasks create` without `--channel-id` leaves the task in the backlog for
-a person to assign. With one, that channel's agent picks it up right away.
+- **A channel read** prints what was said out loud and tags every message that
+  has a thread hanging off it with that thread's id, so an agent can follow a
+  conversation into work it was never part of.
+- **`roster ask` does not block.** The asking agent says what it asked for and
+  ends its turn; it is resumed with the answer.
+- **`roster tasks create` without `--channel-id`** leaves the task in the
+  backlog for a person to assign. With one, that channel's agent starts on it.
 
 ## Publishing the CLI
 
@@ -310,14 +281,12 @@ pnpm dev:db:stop  # stop Postgres
 - **drizzle-kit needs `schemaFilter`.** better-auth's tables live in the `auth`
   schema; without `schemaFilter: ["public", "auth"]` in `drizzle.config.ts`,
   `push` reports "no changes" and applies nothing.
-- **`generateId: false`.** Every id column is `uuid`; better-auth's own id
+- **`generateId: false`.** Every id column is `uuid`; better-auth's own
   generator emits a 32-char nanoid Postgres rejects.
-- **`build` and `dev` use different dist directories.** `next dev` writes
-  `.next`, `next build` writes `.next-build` (via `NEXT_DIST_DIR`). Sharing one
-  directory means a build landing while the dev server is up replaces chunks it
-  has already mapped, and the dev server starts throwing
-  `__webpack_modules__[moduleId] is not a function` on routes that were working
-  a second earlier.
+- **`build` and `dev` use different dist directories** — `.next` and
+  `.next-build`, via `NEXT_DIST_DIR`. Share one and a build landing while the
+  dev server is up replaces chunks it has already mapped, and working routes
+  start throwing `__webpack_modules__[moduleId] is not a function`.
 - **`apps/web/src/app/globals.css` is copied byte-for-byte** from
   `core/apps/webapp/app/tailwind.css` and should not be edited — put Roster's
   CSS in `theme.css`, which imports it.

@@ -28,9 +28,10 @@ vi.mock("./sessions/connection", () => ({
   hostConnection: vi.fn(async () => ({
     jwt: "jwt",
     hostKey: "host-1",
+    memberId: "member-1",
     project: { supersetProjectId: "superset-project" },
   })),
-  jwtForHostKey: vi.fn(async () => "jwt"),
+  jwtForMember: vi.fn(async () => ({ jwt: "jwt" })),
 }));
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);

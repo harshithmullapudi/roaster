@@ -1,140 +1,98 @@
-import { createHash } from "node:crypto";
-
-import { db, members, projects, type SelectProject } from "@roster/db";
+import {
+  db,
+  members,
+  projects,
+  type SelectMember,
+  type SelectProject,
+} from "@roster/db";
 import { mintJwt, routingKey, tryDecryptApiKey } from "@roster/superset";
 import { and, eq } from "drizzle-orm";
-
-const CREDENTIAL_TTL_MS = 30_000;
-const JWT_SKEW_MS = 60_000;
-const JWT_FALLBACK_TTL_MS = 5 * 60 * 1000;
 
 export interface HostConnection {
   jwt: string;
   project: SelectProject;
   hostKey: string;
+  memberId: string;
 }
 
-interface CachedJwt {
-  jwt: string;
-  expiresAt: number;
-}
+export type MemberAuth = { jwt: string } | { jwt: null; problem: string };
 
-interface CachedCredential {
-  project: SelectProject | null;
-  encrypted: string | null;
-  expiresAt: number;
-}
+export const NO_MEMBER =
+  "This run has nobody to run as, so there is no Superset key to reach the machine with.";
+export const NOT_CONNECTED =
+  "You have not connected Superset. Connect it in settings to reach your machines.";
+export const UNREADABLE_KEY =
+  "Your stored Superset key can no longer be read. Reconnect Superset in settings.";
+export const OTHER_ORG =
+  "Your Superset connection is to a different organization than this channel's machine. Switch it in settings.";
 
-const jwts = new Map<string, CachedJwt>();
-const inflight = new Map<string, Promise<string>>();
-const credentials = new Map<string, CachedCredential>();
+export type MemberKey = { apiKey: string } | { apiKey: null; problem: string };
 
-function fingerprint(encrypted: string): string {
-  return createHash("sha256").update(encrypted).digest("base64url");
-}
+type KeyHolder = Pick<SelectMember, "supersetKeyEncrypted" | "supersetOrgId">;
 
-function jwtLifetime(exp: number): number {
-  const expiresAt = exp > 0 ? exp * 1000 : Date.now() + JWT_FALLBACK_TTL_MS;
-  return expiresAt - JWT_SKEW_MS;
-}
+export function memberKey(
+  member: KeyHolder | null | undefined,
+  supersetOrgId: string,
+): MemberKey {
+  if (!member) return { apiKey: null, problem: NO_MEMBER };
+  if (!member.supersetKeyEncrypted) {
+    return { apiKey: null, problem: NOT_CONNECTED };
+  }
+  if (member.supersetOrgId !== supersetOrgId) {
+    return { apiKey: null, problem: OTHER_ORG };
+  }
 
-async function jwtFor(encrypted: string): Promise<string> {
-  const key = fingerprint(encrypted);
+  const apiKey = tryDecryptApiKey(member.supersetKeyEncrypted);
+  if (!apiKey) return { apiKey: null, problem: UNREADABLE_KEY };
 
-  const cached = jwts.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.jwt;
-
-  const pending = inflight.get(key);
-  if (pending) return pending;
-
-  const minting = (async () => {
-    const apiKey = tryDecryptApiKey(encrypted);
-    if (!apiKey) {
-      throw new Error(
-        "This team's stored Superset key can no longer be read. Reconnect Superset in settings.",
-      );
-    }
-
-    const { jwt, claims } = await mintJwt(apiKey);
-    jwts.set(key, { jwt, expiresAt: jwtLifetime(claims.exp) });
-    return jwt;
-  })().finally(() => {
-    inflight.delete(key);
-  });
-
-  inflight.set(key, minting);
-  return minting;
-}
-
-async function credentialFor(args: {
-  organizationId: string;
-  projectId: string;
-}): Promise<CachedCredential> {
-  const key = `${args.organizationId}:${args.projectId}`;
-
-  const cached = credentials.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached;
-
-  const project =
-    (await db.query.projects.findFirst({
-      where: eq(projects.id, args.projectId),
-    })) ?? null;
-
-  const member = project
-    ? ((await db.query.members.findFirst({
-        where: and(
-          eq(members.organizationId, args.organizationId),
-          eq(members.supersetOrgId, project.supersetOrgId),
-        ),
-      })) ?? null)
-    : null;
-
-  const fresh: CachedCredential = {
-    project,
-    encrypted: member?.supersetKeyEncrypted ?? null,
-    expiresAt: Date.now() + CREDENTIAL_TTL_MS,
-  };
-  credentials.set(key, fresh);
-  return fresh;
+  return { apiKey };
 }
 
 export async function hostConnection(args: {
   organizationId: string;
   projectId: string;
+  runAsMemberId: string | null;
 }): Promise<HostConnection> {
-  const { project, encrypted } = await credentialFor(args);
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, args.projectId),
+  });
+  if (!project) throw new Error("This channel is no longer linked to a project.");
 
-  if (!project) {
-    throw new Error("This channel is no longer linked to a project.");
-  }
-  if (!encrypted) {
-    throw new Error("Nobody on this team has Superset connected.");
-  }
+  const member = args.runAsMemberId
+    ? await db.query.members.findFirst({
+        where: and(
+          eq(members.id, args.runAsMemberId),
+          eq(members.organizationId, args.organizationId),
+        ),
+      })
+    : null;
 
+  const key = memberKey(member, project.supersetOrgId);
+  if (key.apiKey === null) throw new Error(key.problem);
+
+  const { jwt } = await mintJwt(key.apiKey);
   return {
-    jwt: await jwtFor(encrypted),
+    jwt,
     project,
     hostKey: routingKey(project.supersetOrgId, project.supersetHostId),
+    memberId: member!.id,
   };
 }
 
-export async function jwtForHostKey(hostKey: string): Promise<string | null> {
-  const supersetOrgId = hostKey.split(":")[0];
-  if (!supersetOrgId) return null;
+export async function jwtForMember(args: {
+  memberId: string;
+  hostKey: string;
+}): Promise<MemberAuth> {
+  const [supersetOrgId] = args.hostKey.split(":");
+  if (!supersetOrgId) return { jwt: null, problem: NO_MEMBER };
 
   const member = await db.query.members.findFirst({
-    where: eq(members.supersetOrgId, supersetOrgId),
+    where: eq(members.id, args.memberId),
   });
-  if (!member?.supersetKeyEncrypted) return null;
 
-  try {
-    return await jwtFor(member.supersetKeyEncrypted);
-  } catch {
-    return null;
-  }
-}
+  const key = memberKey(member, supersetOrgId);
+  if (key.apiKey === null) return { jwt: null, problem: key.problem };
 
-export function forgetSupersetCredentials(): void {
-  jwts.clear();
-  credentials.clear();
+  const { jwt } = await mintJwt(key.apiKey);
+  return { jwt };
 }

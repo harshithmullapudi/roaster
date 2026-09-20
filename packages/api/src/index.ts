@@ -59,6 +59,16 @@ export {
 } from "./services/sessions";
 export { listTasks, type Task } from "./services/tasks";
 export {
+  type NotificationItem,
+  type NotificationPage,
+  type ThreadSubscriptionState,
+} from "./services/notifications";
+export {
+  previewOf,
+  type NotificationEvent,
+  type PlannedNotification,
+} from "./lib/notification-type";
+export {
   claimInviteLink,
   inviteLink,
   resolveInviteLink,

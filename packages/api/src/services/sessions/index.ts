@@ -19,6 +19,7 @@ export {
   LIVE_THREAD_STATUSES,
   type LiveThread,
   threadDetail,
+  threadLeadStatus,
   threadProjectId,
   threadPublishState,
   threadSummary,

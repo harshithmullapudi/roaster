@@ -20,6 +20,13 @@
         "history_size": 300,
         "history_ttl": "30m",
         "force_recovery": true
+      },
+      {
+        "name": "user",
+        "presence": false,
+        "history_size": 100,
+        "history_ttl": "30m",
+        "force_recovery": true
       }
     ]
   }

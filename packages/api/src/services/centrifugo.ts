@@ -40,6 +40,14 @@ export function channelName(projectId: string): string {
   return `channel:${projectId}`;
 }
 
+export function threadChannelName(threadId: string): string {
+  return `thread:${threadId}`;
+}
+
+export function userChannelName(userId: string): string {
+  return `user:${userId}`;
+}
+
 export async function publish(
   channel: string,
   data: unknown,

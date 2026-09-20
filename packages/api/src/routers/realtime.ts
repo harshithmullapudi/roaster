@@ -5,6 +5,7 @@ import {
   channelName,
   connectionToken,
   subscriptionToken,
+  userChannelName,
   websocketUrl,
 } from "../services/centrifugo";
 import { requireOrgProject } from "../services/channels";
@@ -35,6 +36,13 @@ export const realtimeRouter = createTRPCRouter({
       if (!token) return { enabled: false as const, channel };
       return { enabled: true as const, channel, token };
     }),
+
+  userSubscriptionToken: memberProcedure.query(({ ctx }) => {
+    const channel = userChannelName(ctx.session.user.id);
+    const token = subscriptionToken(ctx.session.user.id, channel);
+    if (!token) return { enabled: false as const, channel };
+    return { enabled: true as const, channel, token };
+  }),
 
   threadSubscriptionToken: memberProcedure
     .input(z.object({ threadId: z.string().uuid() }))

@@ -27,7 +27,8 @@ import {
   listMentionableChannels,
   listMentionableMembers,
 } from "./channels";
-import { channelName, publish } from "./centrifugo";
+import { channelName, publish, threadChannelName } from "./centrifugo";
+import { emitMessage, messageById } from "./message-events";
 import {
   cancelThread,
   createThread,
@@ -36,7 +37,6 @@ import {
   reapThread,
   startSession,
   steer,
-  threadChannelName,
   threadTarget,
 } from "./sessions";
 
@@ -97,40 +97,7 @@ async function findByClientId(args: {
   return row ? toChannelMessage(row) : null;
 }
 
-export async function messageById(id: string): Promise<ChannelMessage> {
-  const [row] = await db
-    .select(messageColumns)
-    .from(messages)
-    .leftJoin(members, eq(messages.authorMemberId, members.id))
-    .leftJoin(users, eq(members.userId, users.id))
-    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
-    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
-    .where(eq(messages.id, id))
-    .limit(1);
-
-  if (!row) throw new Error("Message not found.");
-  return toChannelMessage(row);
-}
-
-export async function publishMessage(
-  message: ChannelMessage,
-): Promise<void> {
-  const payload = {
-    type: "message" as const,
-    message: {
-      ...message,
-      createdAt: message.createdAt.toISOString(),
-      editedAt: message.editedAt ? message.editedAt.toISOString() : null,
-    },
-  };
-
-  const targets = [publish(channelName(message.projectId), payload)];
-  if (message.threadId && message.parentMessageId) {
-    targets.push(publish(threadChannelName(message.threadId), payload));
-  }
-
-  await Promise.all(targets);
-}
+export { messageById, publishMessage } from "./message-events";
 
 export interface MessageDeletion {
   messageId: string;
@@ -315,7 +282,7 @@ export async function sendMessage(args: {
 
   if (!row) throw new Error("Message could not be stored.");
 
-  await publishMessage(row);
+  await emitMessage(row);
 
   if (row.kind !== "user") return row;
 

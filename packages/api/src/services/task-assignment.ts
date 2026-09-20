@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { textToTiptap } from "../utils/tiptap";
 
 import { allocateSeq, requireOrgProject, type ChannelScope } from "./channels";
-import { messageById, publishMessage } from "./messages";
+import { emitMessageById } from "./message-events";
 import { createThread, ensureStarted, startSession } from "./sessions";
 import { linkTaskThread, reachableTask, type Task } from "./tasks";
 
@@ -123,7 +123,7 @@ async function postTask(args: {
     return existing.id;
   }
 
-  await publishMessage(await messageById(inserted.id));
+  await emitMessageById(inserted.id);
 
   return inserted.id;
 }

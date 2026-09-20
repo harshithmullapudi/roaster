@@ -281,6 +281,18 @@ export async function listLiveThreads(
   }));
 }
 
+export async function threadLeadStatus(
+  threadId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ status: statusSql.as("lead_status") })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+
+  return row?.status ?? null;
+}
+
 export async function threadProjectId(
   threadId: string,
 ): Promise<string | null> {

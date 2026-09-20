@@ -39,10 +39,14 @@ import { mergeSteers, undeliveredSteerNotice } from "../../utils/steer-queue";
 import { agentReply, lastMeaningfulLine } from "../../utils/thread-progress";
 import { markdownToTiptap } from "../../utils/tiptap";
 import { allocateSeq, channelAgentIdentity } from "../channels";
-import { channelName, publish } from "../centrifugo";
+import { channelName, publish, threadChannelName } from "../centrifugo";
+import { emitMessageById } from "../message-events";
+import { notifyThreadFailed, subscribeThreadAuthor } from "../notifications";
 import { taskForThread } from "../tasks";
 import { hostConnection, jwtForHostKey } from "./connection";
 import { threadPublishState } from "./queries";
+
+export { threadChannelName };
 
 const POLL_INTERVAL_MS = 2000;
 const WRITE_INTERVAL_MS = 1000;
@@ -73,10 +77,6 @@ function isTerminal(status: string): boolean {
 
 function isParked(status: string): boolean {
   return status === "waiting";
-}
-
-export function threadChannelName(threadId: string): string {
-  return `thread:${threadId}`;
 }
 
 interface HostLink {
@@ -674,15 +674,23 @@ async function finishOnce(args: {
     return NOTHING_TO_RESUME;
   }
 
-  if (finalText && finalText.trim().length > 0) {
-    await persistAgentMessage({
-      thread: threadIdentity(row),
-      text: finalText,
-      agentChannelId: row.projectId,
-    });
-  }
+  const spoke =
+    finalText !== null && finalText.trim().length > 0
+      ? await persistAgentMessage({
+          thread: threadIdentity(row),
+          text: finalText,
+          agentChannelId: row.projectId,
+        })
+      : false;
 
   await publishThread(row.threadId);
+
+  if (args.status === "failed" && !spoke) {
+    await notifyThreadFailed({
+      threadId: row.threadId,
+      reason: args.error ?? null,
+    });
+  }
 
   if (args.status === "canceled" && queued.length > 0) {
     await reportUndelivered(row.id, "that session was canceled.", queued);
@@ -763,7 +771,7 @@ export async function persistAgentMessage(args: {
   text: string;
   agentChannelId?: string;
   dedupe?: boolean;
-}): Promise<void> {
+}): Promise<boolean> {
   const { thread, text } = args;
   const agentChannelId = args.agentChannelId ?? thread.projectId;
 
@@ -772,7 +780,7 @@ export async function persistAgentMessage(args: {
       where: and(eq(messages.threadId, thread.id), eq(messages.kind, "agent")),
       orderBy: desc(messages.seq),
     });
-    if (existing?.text === text) return;
+    if (existing?.text === text) return false;
   }
 
   const seq = await allocateSeq(thread.projectId);
@@ -792,37 +800,10 @@ export async function persistAgentMessage(args: {
     })
     .returning();
 
-  if (!row) return;
+  if (!row) return false;
 
-  const identity = await channelAgentIdentity(agentChannelId);
-
-  const payload = {
-    type: "message" as const,
-    message: {
-      id: row.id,
-      projectId: row.projectId,
-      seq: Number(row.seq),
-      kind: row.kind,
-      body: row.body,
-      text: row.text,
-      clientId: null,
-      parentMessageId: row.parentMessageId,
-      threadId: row.threadId,
-      createdAt: row.createdAt.toISOString(),
-      editedAt: null,
-      authorMemberId: null,
-      authorName: null,
-      authorEmail: null,
-      agentChannelId: row.agentChannelId,
-      agentDisplay: identity?.agentDisplay ?? null,
-      agentHandle: identity?.agentHandle ?? null,
-    },
-  };
-
-  await Promise.all([
-    publish(channelName(thread.projectId), payload),
-    publish(threadChannelName(thread.id), payload),
-  ]);
+  await emitMessageById(row.id);
+  return true;
 }
 
 async function briefedPrompt(args: {
@@ -1442,6 +1423,12 @@ export async function createThread(args: {
     .update(messages)
     .set({ threadId: row.id })
     .where(and(eq(messages.id, args.rootMessageId), isNull(messages.threadId)));
+
+  await subscribeThreadAuthor({
+    threadId: row.id,
+    memberId: args.runAsMemberId,
+  });
+
   await publishThread(row.id);
 
   return row;

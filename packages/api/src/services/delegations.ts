@@ -18,14 +18,14 @@ import {
   resolveAgentHandle,
 } from "./channels";
 import type { ChannelScope } from "./channels";
-import { channelName, publish } from "./centrifugo";
+import { emitMessageById } from "./message-events";
+import { notifyDelegationReceived } from "./notifications";
 import {
   createThread,
   ensureStarted,
   markWaiting,
   startSession,
   steer,
-  threadChannelName,
 } from "./sessions";
 import { markdownToTiptap, textToTiptap } from "../utils/tiptap";
 
@@ -178,6 +178,12 @@ export async function delegate(
       message: "This thread is already waiting on an answer.",
     });
   }
+
+  await notifyDelegationReceived({
+    childThreadId: childThread.id,
+    originChannelId: parent.projectId,
+    task,
+  });
 
   await markWaiting({ threadId: parent.id, waitingOn: target.agentHandle });
 
@@ -340,35 +346,7 @@ async function writeReplyIntoParent(args: {
 
   if (!row) return;
 
-  const identity = await channelAgentIdentity(args.agentChannelId);
-
-  const payload = {
-    type: "message" as const,
-    message: {
-      id: row.id,
-      projectId: row.projectId,
-      seq: Number(row.seq),
-      kind: row.kind,
-      body: row.body,
-      text: row.text,
-      clientId: null,
-      parentMessageId: row.parentMessageId,
-      threadId: row.threadId,
-      createdAt: row.createdAt.toISOString(),
-      editedAt: null,
-      authorMemberId: null,
-      authorName: null,
-      authorEmail: null,
-      agentChannelId: row.agentChannelId,
-      agentDisplay: identity?.agentDisplay ?? null,
-      agentHandle: identity?.agentHandle ?? null,
-    },
-  };
-
-  await Promise.all([
-    publish(channelName(args.thread.projectId), payload),
-    publish(threadChannelName(args.thread.id), payload),
-  ]);
+  await emitMessageById(row.id, "agent_replied");
 }
 
 export async function openDelegationOrigins(

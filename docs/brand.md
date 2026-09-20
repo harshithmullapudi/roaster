@@ -59,9 +59,35 @@ python3 scripts/generate-logo.py     # no dependencies
 | `apps/web/src/utils/logo-paths.ts` | — | The React paths, emitted by the same script so they cannot drift. |
 | `apps/web/public/brand/_contact-sheet.png` | — | Every size on one page, for eyeballing. |
 
-Desktop icon sizes are fixed by Tauri and Windows and most are not multiples of
-9, so each one takes the largest whole-pixel cell that fits and centres it. The
-leftover becomes extra ground — the cells never land on fractions.
+## Two icon shapes, on purpose
+
+**macOS is not full-bleed.** Apple's template is a 1024 canvas with an 824
+rounded tile inside it, so ~100px on every side is *transparent* — the Dock
+draws that gap and it is not ours to fill. Ship a full-bleed square and macOS
+renders a hard-cornered slab standing proud of every neighbour, which is what
+0.1.2 did.
+
+The corner is continuous curvature, not a circular arc — a superellipse
+quadrant. The figure quoted everywhere is "radius 185.4 on an 824 tile" (22.5%),
+but that is the *apparent* radius: what you measure if you assume an arc and
+find where the straight edge begins. Fitting the real outline of a system icon
+(`Notes.app`, decoded and least-squares fitted across its corner profile) gives
+**exponent 3.0 at a radius of 31.6% of the tile**, to within 1px RMS. The two
+agree — push 31.6%/n=3 back through the apparent-radius measurement and 21.8%
+comes out. Build from 22.5% with n=5 and the corner is visibly tighter than
+every icon beside it.
+
+**Everything else stays full-bleed**, also on purpose. iOS masks the touch icon
+itself and double-rounds anything pre-rounded, Windows tiles are square, and a
+favicon is drawn in a square box. Only `icon.icns` gets the tile.
+
+Flat icons put the mark at 7 cells of 12. Mac icons put it at 54.5% of the tile.
+Desktop sizes are fixed by Tauri and Windows and most are not multiples of
+either grid, so each takes the largest whole-pixel cell that fits and centres
+it. The leftover becomes ground — cells never land on fractions.
+
+If you change the shape, re-run the comparison: render a size, decode a system
+icon, and check the tile fraction, margin and corner profile line up.
 
 In React, use the components in `apps/web/src/components/logo/` —
 `RosterLockup`, `RosterWordmark`, `RosterMark`, and `HashMark` for the channel
@@ -74,9 +100,10 @@ they sit in and work in light and dark without a variant.
   there shouldn't be — it is the same mark on every background.
 - **Scale by whole cells** where you can. The PNGs are all exact integer
   multiples of the grid, so the squares stay crisp with no resampling.
-- **Don't add effects.** No gradients, shadows, rounded corners, or outline
-  variants. The grid is the identity; softening it removes the only thing that
-  ties it to Superset.
+- **Don't add effects.** No gradients, shadows, or outline variants. The grid
+  is the identity; softening it removes the only thing that ties it to
+  Superset. The one rounded corner in the system is the macOS tile, which is
+  the platform's shape rather than ours — never round the mark itself.
 - **Minimum sizes**, from the contact sheet: the lockup stops being legible
   below roughly 14px tall and the wordmark below 12px. The mark holds down to
   16px square, where the open members are still a cell wide — below that, the

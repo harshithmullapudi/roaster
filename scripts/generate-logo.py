@@ -61,7 +61,34 @@ LOCKUP_GAP = 2  # blank letter-columns between mark and wordmark
 
 MARK_CELL = 5  # mark cells, in common units
 LETTER_CELL = 7  # letter cells, in common units — 7x5 == 5x7, so heights match
-ICON_MARGIN = 1  # cells of ground around the mark in the square app icon
+ICON_MARGIN = 2.5  # cells of ground around the mark in the flat square icon
+
+# Apple's macOS icon template, which is not the same shape as the icon file.
+# The canvas is 1024 and the rounded tile inside it is 824, so roughly 100px of
+# the canvas on every side is *transparent* — the Dock draws that gap, it is not
+# ours to fill. Shipping a full-bleed square means macOS renders a hard-cornered
+# slab sitting proud of every neighbouring icon, which is what 0.1.2 did.
+#
+# The corner is not a circular arc. Apple uses continuous curvature, so the
+# corner is a superellipse quadrant rather than a quarter circle.
+#
+# The figure quoted everywhere for the corner is 185.4 on an 824 tile, or 22.5%.
+# That is the *apparent* radius — what you measure if you assume a circular arc
+# and find where the straight edge begins. Fitting the real outline of a system
+# icon (Notes.app, decoded and least-squares fitted over its corner profile)
+# gives a superellipse of exponent 3.0 with a radius of 31.6% of the tile, to
+# within 1px RMS. Those two descriptions agree: feed 31.6%/n=3 through the
+# apparent-radius measurement and 21.8% comes back out. Build from 22.5% and
+# n=5 and the corner comes out visibly tighter than every neighbouring icon.
+MAC_TILE = 824 / 1024  # rounded tile as a fraction of the canvas
+MAC_RADIUS = 0.316  # corner radius as a fraction of the tile, fitted
+MAC_SUPERELLIPSE = 3.0  # corner exponent, fitted; 2 would be a circle
+MAC_GLYPH = 0.545  # mark height as a fraction of the tile
+
+# Everything that is not macOS stays full-bleed, deliberately. iOS masks the
+# touch icon itself and double-rounds anything pre-rounded, Windows tiles are
+# square, and a favicon is drawn in a square box.
+FLAT_GLYPH = 7 / 12  # mark height as a fraction of a full-bleed icon: 7 cells of 12
 
 
 def cells(rows, ox=0, oy=0):
@@ -103,15 +130,21 @@ def lockup(text):
 # ----------------------------------------------------------------- svg output
 
 
+def num(v):
+    """Trim trailing zeros so the generated paths stay readable."""
+    return f"{v:.4f}".rstrip("0").rstrip(".")
+
+
 def svg_boxes(boxes, w, h, title, pad=0):
     """One <path> of square cells, exactly as Superset builds its wordmark."""
     d = "".join(
-        f"M{x + pad} {y + pad}H{x + pad + s}V{y + pad + s}H{x + pad}Z"
+        f"M{num(x + pad)} {num(y + pad)}H{num(x + pad + s)}"
+        f"V{num(y + pad + s)}H{num(x + pad)}Z"
         for x, y, s in boxes
     )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {w + pad * 2} {h + pad * 2}" fill="none" '
+        f'viewBox="0 0 {num(w + pad * 2)} {num(h + pad * 2)}" fill="none" '
         f'role="img" aria-label="{title}">\n'
         f"  <title>{title}</title>\n"
         f'  <path d="{d}" fill="currentColor" shape-rendering="crispEdges"/>\n'
@@ -121,7 +154,8 @@ def svg_boxes(boxes, w, h, title, pad=0):
 
 def path_of(boxes, pad=0):
     return "".join(
-        f"M{x + pad} {y + pad}H{x + pad + s}V{y + pad + s}H{x + pad}Z"
+        f"M{num(x + pad)} {num(y + pad)}H{num(x + pad + s)}"
+        f"V{num(y + pad + s)}H{num(x + pad)}Z"
         for x, y, s in boxes
     )
 
@@ -176,22 +210,17 @@ def render(path, cells_, gw, gh, scale, fg, bg=None, pad=0):
     png(path, pixels, W, H)
 
 
-def icon_pixels(size, fg, bg):
-    """Square app icon at an exact pixel size.
-
-    Cells are always whole pixels — the largest that fits with a 1-cell margin,
-    falling back to no margin when the size is too small for one. Whatever is
-    left over becomes extra ground, so the mark stays crisp and centred instead
-    of being resampled onto fractional cells.
-    """
+def place_mark(size, fraction):
+    """Largest whole-pixel cell that lands the mark near `fraction` of `size`."""
     mw = len(MARK[0])
-    for margin in (ICON_MARGIN, 0):
-        cell = size // (mw + margin * 2)
-        if cell >= 2 or margin == 0:
-            break
-    cell = max(1, cell)
+    cell = max(1, round(size * fraction / mw))
     drawn = mw * cell
-    off = (size - drawn) // 2
+    return cell, (size - drawn) // 2
+
+
+def icon_pixels(size, fg, bg):
+    """Full-bleed square icon. Windows, Linux, the favicon, the touch icon."""
+    cell, off = place_mark(size, FLAT_GLYPH)
     pixels = canvas(size, size, bg)
     draw(pixels, cells(MARK), cell, fg, ox=off, oy=off)
     return pixels
@@ -199,6 +228,65 @@ def icon_pixels(size, fg, bg):
 
 def icon_png(size, fg, bg):
     return png_bytes(icon_pixels(size, fg, bg), size, size)
+
+
+def squircle_coverage(size, tile, radius, n, samples=8):
+    """Per-pixel alpha for a continuous-curvature rounded square.
+
+    Scanline rather than supersampled in both axes: for any horizontal slice the
+    shape is one interval, so the exact span is computable and only the two end
+    pixels need partial coverage. Sub-rows are averaged for vertical smoothing.
+    """
+    off = (size - tile) / 2.0
+    cov = [[0.0] * size for _ in range(size)]
+    inv_n = 1.0 / n
+    for py in range(size):
+        row = cov[py]
+        for s in range(samples):
+            y = py + (s + 0.5) / samples - off
+            if y < 0.0 or y > tile:
+                continue
+            if y < radius:
+                dy = radius - y
+            elif y > tile - radius:
+                dy = y - (tile - radius)
+            else:
+                dy = 0.0
+            if dy <= 0.0:
+                x0, x1 = 0.0, tile
+            else:
+                t = 1.0 - (dy / radius) ** n
+                if t <= 0.0:
+                    continue
+                inset = radius - radius * (t**inv_n)
+                x0, x1 = inset, tile - inset
+            a0, a1 = x0 + off, x1 + off
+            for px in range(max(0, int(a0)), min(size, int(a1) + 1)):
+                overlap = min(a1, px + 1.0) - max(a0, float(px))
+                if overlap > 0.0:
+                    row[px] += overlap
+        for px in range(size):
+            row[px] /= samples
+    return cov
+
+
+def mac_icon_pixels(size, fg, bg):
+    """macOS icon: Apple's rounded tile, inset in a transparent canvas."""
+    tile = size * MAC_TILE
+    cov = squircle_coverage(size, tile, tile * MAC_RADIUS, MAC_SUPERELLIPSE)
+    pixels = [
+        [[bg[0], bg[1], bg[2], int(round(cov[y][x] * 255))] for x in range(size)]
+        for y in range(size)
+    ]
+    cell, _ = place_mark(size, MAC_TILE * MAC_GLYPH)
+    drawn = len(MARK[0]) * cell
+    off = (size - drawn) // 2
+    draw(pixels, cells(MARK), cell, fg, ox=off, oy=off)
+    return pixels
+
+
+def mac_icon_png(size, fg, bg):
+    return png_bytes(mac_icon_pixels(size, fg, bg), size, size)
 
 
 # ------------------------------------------------------------- ico and icns
@@ -229,11 +317,14 @@ def write_icns(path, fg, bg):
         ("icon_256x256.png", 256), ("icon_256x256@2x.png", 512),
         ("icon_512x512.png", 512), ("icon_512x512@2x.png", 1024),
     ]
+    rendered = {}
     with tempfile.TemporaryDirectory() as tmp:
         iconset = Path(tmp) / "roster.iconset"
         iconset.mkdir()
         for name, size in pairs:
-            (iconset / name).write_bytes(icon_png(size, fg, bg))
+            if size not in rendered:
+                rendered[size] = mac_icon_png(size, fg, bg)
+            (iconset / name).write_bytes(rendered[size])
         subprocess.run(
             ["iconutil", "-c", "icns", str(iconset), "-o", str(path)], check=True
         )
@@ -284,12 +375,12 @@ png(out / "roster-lockup.png", lk_px, lk_w * LK_SCALE, lk_h * LK_SCALE)
 
 # Web icons: light glyph on Superset's dark ground, on the 9-cell icon grid.
 ICON_GRID = mark_w + ICON_MARGIN * 2
-for path, scale in (
-    (app / "icon.png", 40),  # 360px
-    (app / "apple-icon.png", 20),  # 180px, the size Apple asks for
-    (out / "roster-icon-72.png", 8),
+for path, size in (
+    (app / "icon.png", 360),  # favicon; 12-cell grid at 30px a cell
+    (app / "apple-icon.png", 180),  # touch icon, the size Apple asks for
+    (out / "roster-icon-72.png", 72),
 ):
-    render(path, mark_cells, mark_w, mark_h, scale, LIGHT_FG, DARK_BG, ICON_MARGIN)
+    path.write_bytes(icon_png(size, LIGHT_FG, DARK_BG))
 
 # For anywhere the icon has to be uploaded rather than served: the Railway
 # template, a GitHub org avatar, an app directory listing.
@@ -329,8 +420,14 @@ write_icns(icons / "icon.icns", LIGHT_FG, DARK_BG)
 
 # Contact sheet so the result can actually be looked at — every size on one
 # page, including the ones small enough to stop being legible.
-sheet_w, sheet_h = 960, 460
+sheet_w, sheet_h = 960, 620
 sheet = canvas(sheet_w, sheet_h, (250, 250, 250, 255))
+
+
+def panel(x0, y0, x1, y1, color):
+    for y in range(max(0, y0), min(sheet_h, y1)):
+        for x in range(max(0, x0), min(sheet_w, x1)):
+            sheet[y][x] = list(color)
 
 
 def blit_boxes(boxes, ox, oy, scale, fg):
@@ -346,7 +443,9 @@ blit_boxes(wm_boxes, 60, 180, 14, FG)  # wordmark, medium
 blit_boxes(mark_boxes, 640, 150, 24, FG)  # mark, large
 blit_boxes(hash_boxes, 830, 168, 24, (150, 150, 150, 255))  # sigil, for reference
 
-# App icon at four sizes, each rendered exactly as it ships.
+# Two rows, because the two shapes are the point. Flat icons are what Windows,
+# Linux, the favicon and the touch icon get. Mac icons are Apple's tile, drawn
+# over a mid grey so the transparent margin and the corner are both visible.
 x0 = 60
 for size in (128, 64, 32, 16):
     px = icon_pixels(size, LIGHT_FG, DARK_BG)
@@ -354,6 +453,26 @@ for size in (128, 64, 32, 16):
         for x in range(size):
             sheet[300 + y][x0 + x] = px[y][x]
     x0 += size + 20
+
+GREY = (176, 176, 176, 255)
+MAC_ROW = 452
+x0 = 60
+for size in (128, 64, 32, 16):
+    pad = 14
+    panel(x0 - pad, MAC_ROW - pad, x0 + size + pad, MAC_ROW + size + pad, GREY)
+    px = mac_icon_pixels(size, LIGHT_FG, DARK_BG)
+    for y in range(size):
+        for x in range(size):
+            r, g, b, a = px[y][x]
+            base = sheet[MAC_ROW + y][x0 + x]
+            k = a / 255.0
+            sheet[MAC_ROW + y][x0 + x] = [
+                int(r * k + base[0] * (1 - k)),
+                int(g * k + base[1] * (1 - k)),
+                int(b * k + base[2] * (1 - k)),
+                255,
+            ]
+    x0 += size + 2 * pad + 14
 
 blit_boxes(wm_boxes, 480, 330, 6, FG)  # wordmark, tiny — legibility check
 blit_boxes(lk, 480, 370, 1, FG)  # lockup, tiny

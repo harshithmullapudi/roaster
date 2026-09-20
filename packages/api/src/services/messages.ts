@@ -22,7 +22,11 @@ import {
   messageColumns,
   toChannelMessage,
 } from "./message-columns";
-import { allocateSeq, listMentionableChannels } from "./channels";
+import {
+  allocateSeq,
+  listMentionableChannels,
+  listMentionableMembers,
+} from "./channels";
 import { channelName, publish } from "./centrifugo";
 import {
   cancelThread,
@@ -345,6 +349,11 @@ async function channelIsWatching(projectId: string): Promise<boolean> {
  *
  * Scoped to the author's visible channels so a handle they could not have
  * picked from the autocomplete cannot be typed out to the same effect.
+ *
+ * People are passed in as candidates too, not to wake anything but to be
+ * claimed: "@harshith" has to resolve to the person, or the longest-first
+ * match would leave it unattached and "@harshith-roster" is the only reading
+ * left. Only `.agents` decides the wake.
  */
 async function mentionsAnyAgent(args: {
   organizationId: string;
@@ -353,19 +362,25 @@ async function mentionsAnyAgent(args: {
   body: unknown;
   text: string;
 }): Promise<boolean> {
-  const channels = await listMentionableChannels({
+  const scope = {
     organizationId: args.organizationId,
     memberId: args.authorMemberId,
     role: args.role,
-  });
+  };
+
+  const [channels, people] = await Promise.all([
+    listMentionableChannels(scope),
+    listMentionableMembers(scope),
+  ]);
 
   const mentioned = mentionedHandles({
     body: args.body,
     text: args.text,
-    known: channels.map((channel) => channel.agentHandle),
+    agents: channels.map((channel) => channel.agentHandle),
+    members: people.map((person) => person.handle),
   });
 
-  return mentioned.length > 0;
+  return mentioned.agents.length > 0;
 }
 
 async function contextFor(message: ChannelMessage): Promise<string[]> {

@@ -27,9 +27,12 @@ function decorate(doc: import("@tiptap/pm/model").Node): DecorationSet {
 
     for (const match of findMentions(node.text, candidates)) {
       decorations.push(
+        // `data-kind` matches what the Mention node renders, so a typed-out
+        // handle and one picked from the autocomplete style identically.
         Decoration.inline(position + match.from, position + match.to, {
           class: "mention",
           "data-mention-handle": match.handle,
+          "data-kind": match.kind,
         }),
       );
     }

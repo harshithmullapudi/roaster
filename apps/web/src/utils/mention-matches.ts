@@ -1,4 +1,4 @@
-import type { MentionItem } from "./mentions";
+import type { MentionItem, MentionKind } from "./mentions";
 
 export interface MentionMatch {
   /** Offset of the "@" within the text. */
@@ -6,6 +6,7 @@ export interface MentionMatch {
   /** Offset just past the handle. */
   to: number;
   handle: string;
+  kind: MentionKind;
 }
 
 /** A handle ends where handle characters end. */
@@ -17,7 +18,10 @@ const TRAILING = /[a-z0-9-]+/y;
  * Unknown handles are deliberately left as plain text — styling `@anyone`
  * would promise a link that goes nowhere. Candidates are tried longest-first
  * so "@fern-core-web" is never truncated to "@fern-core", which matters
- * because both halves of a handle may contain hyphens.
+ * because both halves of a handle may contain hyphens — and is also what
+ * keeps the agent "@harshith-roster" from being read as the person
+ * "@harshith". On an exact tie the agent wins, which is how the string read
+ * before people could be mentioned at all.
  */
 export function findMentions(
   text: string,
@@ -26,7 +30,9 @@ export function findMentions(
   if (candidates.length === 0) return [];
 
   const byLength = [...candidates].sort(
-    (a, b) => b.handle.length - a.handle.length,
+    (a, b) =>
+      b.handle.length - a.handle.length ||
+      Number(a.kind === "member") - Number(b.kind === "member"),
   );
   const lower = text.toLowerCase();
   const matches: MentionMatch[] = [];
@@ -48,7 +54,12 @@ export function findMentions(
       if (!word.startsWith(candidate.handle)) continue;
 
       const to = index + 1 + candidate.handle.length;
-      matches.push({ from: index, to, handle: candidate.handle });
+      matches.push({
+        from: index,
+        to,
+        handle: candidate.handle,
+        kind: candidate.kind,
+      });
       index = to - 1;
       break;
     }

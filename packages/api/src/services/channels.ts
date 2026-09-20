@@ -1,5 +1,5 @@
-import { channelStars, db, members, projects } from "@roster/db";
-import { and, asc, eq, isNotNull, or, sql } from "drizzle-orm";
+import { channelStars, db, members, projects, users } from "@roster/db";
+import { and, asc, eq, isNotNull, ne, or, sql } from "drizzle-orm";
 
 import { can } from "../lib/access";
 import { agentDisplay, agentHandle } from "../lib/agent-identity";
@@ -94,6 +94,9 @@ function toAgent(
  * Every channel the caller may mention, flattened — the autocomplete draws
  * from this and so does `roster ask`, so an agent can never address a channel
  * its operator could not have addressed by hand.
+ *
+ * Agents only. People are mentionable too, but they are not channels and
+ * `roster ask` must not reach them — see `listMentionableMembers`.
  */
 export async function listMentionableChannels(
   scope: ChannelScope,
@@ -102,6 +105,101 @@ export async function listMentionableChannels(
   return [...groups.starred, ...groups.public, ...groups.private].sort((a, b) =>
     a.agentHandle.localeCompare(b.agentHandle),
   );
+}
+
+/**
+ * A person, addressed by the handle they already have.
+ *
+ * `members.agent_name` is the handle: it is lowercased and unique per
+ * organization at the index, so "@harshith" needs no new column and no
+ * generation step. Their agent in a channel is "@harshith-roster" — longer,
+ * so the composer's longest-first rule tells the two apart on its own.
+ */
+export interface MentionableMember {
+  id: string;
+  handle: string;
+  name: string;
+}
+
+/**
+ * Everyone the caller may mention. The whole organization: unlike a channel,
+ * a person is not private to anyone, and the autocomplete already only ever
+ * runs for a member of that organization.
+ *
+ * The caller is excluded — mentioning yourself is a no-op that only crowds
+ * the list.
+ */
+export async function listMentionableMembers(
+  scope: ChannelScope,
+): Promise<MentionableMember[]> {
+  const rows = await db
+    .select({
+      id: members.id,
+      agentName: members.agentName,
+      name: users.name,
+      email: users.email,
+    })
+    .from(members)
+    .innerJoin(users, eq(members.userId, users.id))
+    .where(
+      and(
+        eq(members.organizationId, scope.organizationId),
+        isNotNull(members.agentName),
+        ne(members.id, scope.memberId),
+      ),
+    );
+
+  return rows
+    .flatMap((row) => {
+      const handle = (row.agentName ?? "").trim().toLowerCase();
+      if (handle.length === 0) return [];
+      const name = row.name.trim();
+      return [
+        {
+          id: row.id,
+          handle,
+          // `users.name` defaults to "", so the email is the only name some
+          // invited-but-unfinished accounts have.
+          name: name.length > 0 ? name : row.email,
+        },
+      ];
+    })
+    .sort((a, b) => a.handle.localeCompare(b.handle));
+}
+
+/** The person behind "@harshith", if that handle names one at all. */
+export async function findMemberByHandle(args: {
+  organizationId: string;
+  handle: string;
+}): Promise<MentionableMember | null> {
+  const wanted = args.handle.trim().toLowerCase().replace(/^@/, "");
+  if (wanted.length === 0) return null;
+
+  const [row] = await db
+    .select({
+      id: members.id,
+      agentName: members.agentName,
+      name: users.name,
+      email: users.email,
+    })
+    .from(members)
+    .innerJoin(users, eq(members.userId, users.id))
+    .where(
+      and(
+        eq(members.organizationId, args.organizationId),
+        eq(sql`lower(${members.agentName})`, wanted),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  const name = row.name.trim();
+  return {
+    id: row.id,
+    handle: (row.agentName ?? "").toLowerCase(),
+    name: name.length > 0 ? name : row.email,
+  };
 }
 
 /**

@@ -70,6 +70,11 @@ const MARKDOWN_BODY = {
   ],
 };
 
+const mentionBody = (attrs: Record<string, unknown>) => ({
+  type: "doc",
+  content: [{ type: "paragraph", content: [{ type: "mention", attrs }] }],
+});
+
 describe("richTextExtensions", () => {
   it("parses every node a markdown body can carry", () => {
     const schema = getSchema(richTextExtensions);
@@ -78,5 +83,30 @@ describe("richTextExtensions", () => {
     doc.check();
     expect(doc.childCount).toBe(MARKDOWN_BODY.content.length);
     expect(doc.textContent).toContain("Recommendation");
+  });
+
+  /**
+   * The reader renders stored bodies, so an attribute the composer writes and
+   * this schema does not declare is dropped on the way back in — the person
+   * would be read as an agent from then on.
+   */
+  it("keeps a member mention's kind through the reader's schema", () => {
+    const schema = getSchema(richTextExtensions);
+    const body = mentionBody({ id: "m1", label: "harshith", kind: "member" });
+    const doc = schema.nodeFromJSON(body);
+
+    doc.check();
+    expect(doc.firstChild?.firstChild?.attrs).toMatchObject({
+      id: "m1",
+      label: "harshith",
+      kind: "member",
+    });
+  });
+
+  it("reads a mention written before kind existed as an agent", () => {
+    const schema = getSchema(richTextExtensions);
+    const doc = schema.nodeFromJSON(mentionBody({ id: "c1", label: "fern-core" }));
+
+    expect(doc.firstChild?.firstChild?.attrs.kind).toBe("agent");
   });
 });

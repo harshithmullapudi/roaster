@@ -5,11 +5,24 @@ import { filterMentions, mentionAttrs, type MentionItem } from "./mentions";
 function item(handle: string, slug: string, name: string): MentionItem {
   return {
     id: handle,
+    kind: "agent",
     slug,
     name,
     visibility: "public",
     handle,
     display: `${handle.split("-")[0]} [${slug}]`,
+  };
+}
+
+function person(handle: string, name: string): MentionItem {
+  return {
+    id: handle,
+    kind: "member",
+    slug: handle,
+    name,
+    visibility: "public",
+    handle,
+    display: name,
   };
 }
 
@@ -50,11 +63,35 @@ describe("filterMentions", () => {
     );
     expect(filterMentions(many, "fern")).toHaveLength(8);
   });
+
+  const mixed = [
+    ...agents,
+    person("harshith", "Harshith Mullapudi"),
+    person("ash", "Ash Kumar"),
+  ];
+
+  it("matches a person's handle", () => {
+    expect(filterMentions(mixed, "harsh")).toEqual([mixed[3]]);
+  });
+
+  it("matches a person's name", () => {
+    expect(filterMentions(mixed, "mullapudi")).toEqual([mixed[3]]);
+  });
+
+  it("offers people and agents from the one list", () => {
+    // "@ash" is both a person and half of "ash-web"; the list ranks them, it
+    // does not choose between them.
+    expect(filterMentions(mixed, "ash").map((one) => one.handle)).toEqual([
+      "ash",
+      "ash-web",
+    ]);
+  });
 });
 
 describe("mentionAttrs", () => {
   const channel: MentionItem = {
     id: "522cf3d5-47bc-48b9-a7cf-406c289e49f6",
+    kind: "agent",
     slug: "spark-wilderness",
     name: "Spark Wilderness",
     visibility: "public",
@@ -68,10 +105,21 @@ describe("mentionAttrs", () => {
     expect(mentionAttrs(channel)).toEqual({
       id: "522cf3d5-47bc-48b9-a7cf-406c289e49f6",
       label: "fern-spark-wilderness",
+      kind: "agent",
     });
   });
 
-  it("keeps only the two attributes the node declares", () => {
-    expect(Object.keys(mentionAttrs(channel)).sort()).toEqual(["id", "label"]);
+  it("keeps only the attributes the node declares", () => {
+    expect(Object.keys(mentionAttrs(channel)).sort()).toEqual([
+      "id",
+      "kind",
+      "label",
+    ]);
+  });
+
+  it("marks a person's node so the handle is not read as an agent's", () => {
+    expect(mentionAttrs(person("harshith", "Harshith Mullapudi")).kind).toBe(
+      "member",
+    );
   });
 });

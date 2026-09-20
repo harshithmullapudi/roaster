@@ -155,10 +155,23 @@ export const threads = rosterSchema.table(
     rootMessageId: uuid("root_message_id").notNull(),
 
     turnCount: integer("turn_count").default(0).notNull(),
+
+    /**
+     * Bumped by every message posted into the thread. A thread list wants to
+     * be ordered by what happened last, and the session rows only know when
+     * the thread was opened — so recency has to be stored, not derived.
+     */
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     uniqueIndex("threads_root_message_idx").on(table.rootMessageId),
     index("threads_project_idx").on(table.projectId),
+    index("threads_project_activity_idx").on(
+      table.projectId,
+      table.lastActivityAt.desc(),
+    ),
   ],
 );
 
@@ -218,6 +231,57 @@ export const threadSessions = rosterSchema.table(
 
 export type SelectThreadSession = typeof threadSessions.$inferSelect;
 export type InsertThreadSession = typeof threadSessions.$inferInsert;
+
+export const THREAD_SUBSCRIPTION_REASONS = [
+  "author",
+  "replied",
+  "mentioned",
+  "manual",
+] as const;
+export type ThreadSubscriptionReason =
+  (typeof THREAD_SUBSCRIPTION_REASONS)[number];
+
+/**
+ * Who hears about a thread, and how far each of them has read it.
+ *
+ * Muting and unfollowing are deliberately different: muting sets `muted_at`
+ * and keeps the row, so the thread stays in your list but stops notifying,
+ * while unfollowing deletes the row outright. A kept row also remembers
+ * `last_read_at`, which is what an unread count is measured against — a
+ * tombstone could not answer that.
+ */
+export const threadSubscriptions = rosterSchema.table(
+  "thread_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+
+    /** Why the subscription exists — how it was acquired, not its strength. */
+    reason: text("reason").$type<ThreadSubscriptionReason>().notNull(),
+
+    lastReadAt: timestamp("last_read_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    mutedAt: timestamp("muted_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("thread_subscriptions_thread_member_idx").on(
+      table.threadId,
+      table.memberId,
+    ),
+    index("thread_subscriptions_member_idx").on(table.memberId),
+  ],
+);
+
+export type SelectThreadSubscription = typeof threadSubscriptions.$inferSelect;
+export type InsertThreadSubscription = typeof threadSubscriptions.$inferInsert;
 
 /**
  * A piece of work, which may not belong to anyone yet.
@@ -400,3 +464,77 @@ export const delegations = rosterSchema.table(
 
 export type SelectDelegation = typeof delegations.$inferSelect;
 export type InsertDelegation = typeof delegations.$inferInsert;
+
+export const NOTIFICATION_TYPES = [
+  "agent_replied",
+  "agent_waiting",
+  "agent_failed",
+  "human_replied",
+  "mentioned",
+  "delegation_received",
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/**
+ * One thing that happened, addressed to one member.
+ *
+ * Rows are fanned out per recipient rather than per event, so reading or
+ * dismissing one person's notification can never touch anyone else's. Emitting
+ * is retried when a turn's bookkeeping fails partway, which is what the
+ * partial unique index on `message_id` exists for — a second attempt at the
+ * same message collides instead of notifying twice.
+ */
+export const notifications = rosterSchema.table(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** The recipient. */
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+
+    /**
+     * No foreign key, and nullable: a turn that fails before producing reply
+     * text has no message to point at, and the notification is then the only
+     * record that anything happened at all.
+     */
+    messageId: uuid("message_id"),
+
+    type: text("type").$type<NotificationType>().notNull(),
+
+    /** Who caused it. Null when an agent did — agent messages have no author. */
+    actorMemberId: uuid("actor_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    /** Which channel's agent spoke, mirroring `messages.agent_channel_id`. */
+    actorChannelId: uuid("actor_channel_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("notifications_member_created_idx").on(
+      table.memberId,
+      table.createdAt.desc(),
+    ),
+    /** The unread badge is polled constantly and reads nothing else. */
+    index("notifications_member_unread_idx")
+      .on(table.memberId)
+      .where(sql`read_at is null`),
+    /** Idempotency guard; partial because failure notifications carry no message. */
+    uniqueIndex("notifications_member_message_idx")
+      .on(table.memberId, table.messageId)
+      .where(sql`message_id is not null`),
+  ],
+);
+
+export type SelectNotification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;

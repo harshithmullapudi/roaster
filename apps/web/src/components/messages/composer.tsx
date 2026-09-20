@@ -34,7 +34,7 @@ export function Composer({ placeholder, onSend }: ComposerProps) {
 
   /**
    * Held in a ref, not state: the extension list is built once when the editor
-   * mounts, so the suggestion closure must read the latest agents rather than
+   * mounts, so the suggestion closure must read the latest list rather than
    * the empty array it was created with.
    */
   const mentionsRef = useRef<MentionItem[]>([]);

@@ -10,7 +10,13 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { DELEGATION_KIND } from "../lib/message-kind";
-import { allocateSeq, channelAgentIdentity, resolveAgentHandle } from "./channels";
+import {
+  allocateSeq,
+  channelAgentIdentity,
+  findMemberByHandle,
+  listMentionableChannels,
+  resolveAgentHandle,
+} from "./channels";
 import type { ChannelScope } from "./channels";
 import { channelName, publish } from "./centrifugo";
 import {
@@ -44,6 +50,39 @@ export interface DelegationResult {
   targetChannelId: string;
   childThreadId: string;
   depth: number;
+}
+
+/**
+ * `@harshith` is a person; `@harshith-roster` is their agent. Both are real
+ * handles in the same namespace, so an agent that has read a message naming
+ * the person will try to `roster ask` them — and "no agent called harshith"
+ * reads as a typo when the handle was perfectly good, just not a channel.
+ *
+ * Throws if the handle names a person. Returns quietly otherwise, leaving the
+ * caller to raise its own NOT_FOUND.
+ */
+async function rejectPersonHandle(args: ChannelScope & { handle: string }) {
+  const person = await findMemberByHandle({
+    organizationId: args.organizationId,
+    handle: args.handle,
+  });
+  if (!person) return;
+
+  // Their agent in some channel the asker can already see. There may be
+  // several; any of them makes the distinction concrete.
+  const channels = await listMentionableChannels(args);
+  const theirs = channels.find(
+    (channel) => channel.agentName.toLowerCase() === person.handle,
+  );
+
+  const instead = theirs
+    ? `Their agent is \`${theirs.agentHandle}\` — ask that instead.`
+    : "They have no agent of their own yet; run `roster channels` to see who you can ask.";
+
+  throw new TRPCError({
+    code: "BAD_REQUEST",
+    message: `"@${person.handle}" is ${person.name}, a person — not a channel. \`roster ask\` only reaches agents. ${instead}`,
+  });
 }
 
 /**
@@ -83,6 +122,7 @@ export async function delegate(
 
   const target = await resolveAgentHandle(args, args.handle);
   if (!target) {
+    await rejectPersonHandle(args);
     throw new TRPCError({
       code: "NOT_FOUND",
       message: `No agent called "${args.handle}". Run \`roster channels\` to see who you can ask.`,

@@ -488,7 +488,13 @@ export async function threadDetail(args: {
     .leftJoin(users, eq(members.userId, users.id))
     .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
     .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
-    .where(eq(messages.threadId, args.threadId))
+    /**
+     * Deleted rows stay out, as they do in the channel view. A delete is
+     * published as an event the clients apply to their cache, so anything
+     * returned here comes back on the next read — and `replyCount` has never
+     * counted them, so leaving them in makes a thread disagree with itself.
+     */
+    .where(and(eq(messages.threadId, args.threadId), isNull(messages.deletedAt)))
     .orderBy(asc(messages.seq));
 
   return { thread, messages: await withAttachments(rows.map(toChannelMessage)) };

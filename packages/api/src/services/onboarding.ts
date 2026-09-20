@@ -1,4 +1,5 @@
 import { db, members, projects } from "@roster/db";
+import { tryDecryptApiKey } from "@roster/superset";
 import { and, eq } from "drizzle-orm";
 
 import { listInvitationsForUser } from "./org";
@@ -95,7 +96,10 @@ export async function loadOnboardingState(args: {
   return {
     hasInvitations,
     hasMembership: true,
-    supersetKeyStored: Boolean(member.supersetKeyEncrypted),
+    supersetKeyStored: Boolean(
+      member.supersetKeyEncrypted &&
+        tryDecryptApiKey(member.supersetKeyEncrypted),
+    ),
     supersetOrgChosen: Boolean(member.supersetOrgId),
     organizationHasProjects: Boolean(project),
     hasAgentName: Boolean(member.agentName),

@@ -15,20 +15,39 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@roster/ui";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { CircleCheck, MoreHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
+
+import {
+  ThreadCompleteDialogs,
+  useThreadCompletion,
+} from "~/components/threads/thread-completion";
+import type { ThreadItem } from "~/utils/thread-rows";
 
 export interface MessageActionsProps {
   hasSession: boolean;
-  onDelete: () => Promise<void>;
+  thread?: ThreadItem;
+  onDelete?: () => Promise<void>;
 }
 
-export function MessageActions({ hasSession, onDelete }: MessageActionsProps) {
+export function MessageActions({
+  hasSession,
+  thread,
+  onDelete,
+}: MessageActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
 
+  const completion = useThreadCompletion({
+    projectId: thread?.projectId ?? "",
+    threadId: thread?.id ?? "",
+    status: thread?.status ?? "",
+    completedAt: thread?.completedAt ?? null,
+  });
+
   async function remove() {
+    if (!onDelete) return;
     setPending(true);
     try {
       await onDelete();
@@ -51,21 +70,45 @@ export function MessageActions({ hasSession, onDelete }: MessageActionsProps) {
             <MoreHorizontal size={14} />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-40">
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive gap-2"
-            onSelect={(event) => {
-              event.preventDefault();
-              setMenuOpen(false);
-              if (hasSession) setConfirming(true);
-              else void remove();
-            }}
-          >
-            <Trash2 size={14} />
-            Delete message
-          </DropdownMenuItem>
+        <DropdownMenuContent align="end" className="min-w-44">
+          {thread ? (
+            completion.completed ? (
+              <DropdownMenuItem disabled className="gap-2">
+                <CircleCheck size={14} />
+                Completed
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                className="gap-2"
+                onSelect={(event) => {
+                  event.preventDefault();
+                  setMenuOpen(false);
+                  completion.start();
+                }}
+              >
+                <CircleCheck size={14} />
+                Mark as complete
+              </DropdownMenuItem>
+            )
+          ) : null}
+          {onDelete ? (
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive gap-2"
+              onSelect={(event) => {
+                event.preventDefault();
+                setMenuOpen(false);
+                if (hasSession) setConfirming(true);
+                else void remove();
+              }}
+            >
+              <Trash2 size={14} />
+              Delete message
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {thread ? <ThreadCompleteDialogs completion={completion} /> : null}
 
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>

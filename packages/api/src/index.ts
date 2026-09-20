@@ -45,6 +45,7 @@ export {
   pausedMessageCount,
   type ChannelMessage,
 } from "./services/messages";
+export { type ReactionRef } from "./services/reactions";
 export {
   readAttachment,
   readAttachmentWithKey,
@@ -64,8 +65,10 @@ export {
 export {
   ensureStarted,
   listChannelThreads,
+  listLiveThreads,
   threadDetail,
   THREAD_STATUSES,
+  type LiveThread,
   type ThreadDetail,
   type ThreadStatus,
   type ThreadSummary,

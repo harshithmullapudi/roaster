@@ -6,11 +6,13 @@ import { useEffect } from "react";
 
 import type { MessageItem } from "~/types";
 import {
+  applyReactionToCaches,
   channelMessagesKey,
   mergeMessage,
   mergeMessages,
   parsePublishedDeletion,
   parsePublishedMessage,
+  parsePublishedReaction,
   removeMessage,
 } from "~/utils/message-cache";
 import { speakerName } from "~/utils/message-groups";
@@ -110,6 +112,12 @@ export function useChannelRealtime(projectId: string): void {
               (previous) => removeThread(previous ?? [], threadId),
             );
           }
+          return;
+        }
+
+        const reaction = parsePublishedReaction(ctx.data);
+        if (reaction && reaction.projectId === projectId) {
+          applyReactionToCaches(queryClient, reaction);
           return;
         }
 

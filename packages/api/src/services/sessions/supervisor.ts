@@ -4,6 +4,7 @@ import {
   members,
   messages,
   projects,
+  reactions,
   type SelectThread,
   type SelectThreadSession,
   threadSessions,
@@ -43,7 +44,8 @@ import {
   textWithAttachments,
 } from "../attachments";
 import { allocateSeq, channelAgentIdentity } from "../channels";
-import { channelName, publish } from "../centrifugo";
+import { channelName, publish, threadChannelName } from "../centrifugo";
+import { toggleReaction } from "../reactions";
 import { taskForThread } from "../tasks";
 import { hostConnection, jwtForHostKey } from "./connection";
 import { threadPublishState } from "./queries";
@@ -80,9 +82,9 @@ function isParked(status: string): boolean {
   return status === "waiting";
 }
 
-export function threadChannelName(threadId: string): string {
-  return `thread:${threadId}`;
-}
+export { threadChannelName };
+
+const COMPLETE_EMOJI = "✅";
 
 interface HostLink {
   socket: WebSocket | null;
@@ -237,6 +239,8 @@ async function publishThread(threadId: string, hops = 0): Promise<void> {
       startedAt: state.startedAt.toISOString(),
       endedAt: state.endedAt ? state.endedAt.toISOString() : null,
       waitingOn: state.waitingOn,
+      completedAt: state.completedAt ? state.completedAt.toISOString() : null,
+      completedByMemberId: state.completedByMemberId,
     },
   };
   await Promise.all([
@@ -1377,6 +1381,58 @@ export async function reapThread(args: { threadId: string }): Promise<void> {
 
     await patch(session.id, { workspaceReapedAt: new Date() });
   }
+}
+
+export function workspaceSurvivedReap(session: {
+  supersetWorkspaceId: string | null;
+  workspaceReapedAt: Date | null;
+}): boolean {
+  return session.supersetWorkspaceId !== null && !session.workspaceReapedAt;
+}
+
+export async function assertReaped(args: { threadId: string }): Promise<void> {
+  const sessions = await sessionsOf(args.threadId);
+  const survived = sessions.filter(workspaceSurvivedReap);
+  if (survived.length === 0) return;
+
+  throw new Error(
+    `${survived.length} workspace${survived.length === 1 ? "" : "s"} for thread ${args.threadId} outlived the reap`,
+  );
+}
+
+export async function completeThread(args: {
+  threadId: string;
+  memberId: string;
+}): Promise<void> {
+  const [thread] = await db
+    .update(threads)
+    .set({ completedAt: new Date(), completedByMemberId: args.memberId })
+    .where(eq(threads.id, args.threadId))
+    .returning({ rootMessageId: threads.rootMessageId });
+
+  if (!thread) return;
+
+  const already = await db
+    .select({ id: reactions.id })
+    .from(reactions)
+    .where(
+      and(
+        eq(reactions.messageId, thread.rootMessageId),
+        eq(reactions.memberId, args.memberId),
+        eq(reactions.emoji, COMPLETE_EMOJI),
+      ),
+    )
+    .limit(1);
+
+  if (already.length === 0) {
+    await toggleReaction({
+      messageId: thread.rootMessageId,
+      memberId: args.memberId,
+      emoji: COMPLETE_EMOJI,
+    });
+  }
+
+  await publishThread(args.threadId);
 }
 
 export async function retryThread(args: {

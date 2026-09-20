@@ -1,8 +1,13 @@
 import type { ThreadSummary, WaitingOn } from "@roster/api";
 
-export type ThreadItem = Omit<ThreadSummary, "startedAt" | "endedAt"> & {
+export type ThreadItem = Omit<
+  ThreadSummary,
+  "startedAt" | "endedAt" | "completedAt" | "completedByMemberId"
+> & {
   startedAt: Date;
   endedAt: Date | null;
+  completedAt: Date | null;
+  completedByMemberId: string | null;
 };
 
 export function threadsKey(projectId: string) {
@@ -24,9 +29,11 @@ export function isWaiting(status: string): boolean {
 /**
  * Still someone's turn. A parked thread is not running itself, but another
  * agent is running on its behalf — so it keeps its status card, its cancel
- * button and its ticking clock.
+ * button and its ticking clock. A completed thread is settled whatever its
+ * last session said.
  */
-export function isActive(status: string): boolean {
+export function isActive(status: string, completedAt?: Date | null): boolean {
+  if (completedAt) return false;
   return isLive(status) || isWaiting(status);
 }
 
@@ -35,7 +42,9 @@ export function canRetry(status: string, error: string | null): boolean {
   return isLive(status) && error !== null;
 }
 
-export function statusLabel(status: string): string {
+export function statusLabel(status: string, completedAt?: Date | null): string {
+  if (completedAt) return "Completed";
+
   switch (status) {
     case "starting":
       return "Starting";
@@ -143,6 +152,11 @@ export function parsePublishedThread(data: unknown): ThreadItem | null {
         )
       : [],
     waitingOn: parseWaitingOn(raw.waitingOn),
+    completedAt: asDate(raw.completedAt),
+    completedByMemberId:
+      typeof raw.completedByMemberId === "string"
+        ? raw.completedByMemberId
+        : null,
   };
 }
 

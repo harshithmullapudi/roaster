@@ -9,7 +9,11 @@ import {
 } from "@roster/ui";
 import { ChevronDown } from "lucide-react";
 
+import type { LiveThreadItem } from "~/utils/live-threads";
+
 import { ChannelRow } from "./channel-row";
+
+const NONE: LiveThreadItem[] = [];
 
 export interface ChannelSectionProps {
   label: string;
@@ -18,6 +22,7 @@ export interface ChannelSectionProps {
   orgSlug: string;
   activeChannelSlug?: string;
   canManage: boolean;
+  liveThreads: Map<string, LiveThreadItem[]>;
   onOpenChange: (open: boolean) => void;
   onToggleStar: (channel: Channel) => void;
   onChangeVisibility: (channel: Channel, visibility: string) => void;
@@ -30,6 +35,7 @@ export function ChannelSection({
   orgSlug,
   activeChannelSlug,
   canManage,
+  liveThreads,
   onOpenChange,
   onToggleStar,
   onChangeVisibility,
@@ -57,6 +63,7 @@ export function ChannelSection({
               href={`/${orgSlug}/${channel.slug}`}
               active={channel.slug === activeChannelSlug}
               canManage={canManage}
+              liveThreads={liveThreads.get(channel.id) ?? NONE}
               onToggleStar={onToggleStar}
               onChangeVisibility={onChangeVisibility}
             />

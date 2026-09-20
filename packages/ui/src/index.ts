@@ -12,6 +12,8 @@ export * from "./command";
 export * from "./context-menu";
 export * from "./dialog";
 export * from "./dropdown-menu";
+export * from "./emoji-picker";
+export * from "./hover-card";
 export * from "./input";
 export * from "./input-group";
 export * from "./label";

@@ -5,11 +5,13 @@ import Link from "next/link";
 
 import { OpenSessionButton } from "~/components/terminals/open-session-button";
 
+import { ThreadMenu } from "./thread-menu";
 import { ThreadPanel } from "./thread-panel";
 
 export interface ThreadSidebarProps {
   projectId: string;
   threadId: string;
+  memberId: string;
   authorName: string;
   authorEmail: string;
   detail: ThreadDetail;
@@ -19,6 +21,7 @@ export interface ThreadSidebarProps {
 export function ThreadSidebar({
   projectId,
   threadId,
+  memberId,
   authorName,
   authorEmail,
   detail,
@@ -40,6 +43,12 @@ export function ThreadSidebar({
           </Button>
           <h2 className="min-w-0 flex-1 truncate text-base">Thread</h2>
           <OpenSessionButton projectId={projectId} threadId={threadId} />
+          <ThreadMenu
+            projectId={projectId}
+            threadId={threadId}
+            status={detail.thread.status}
+            completedAt={detail.thread.completedAt}
+          />
           <Button
             variant="ghost"
             className="!rounded-md px-1.5 max-sm:hidden"
@@ -55,6 +64,7 @@ export function ThreadSidebar({
       <ThreadPanel
         projectId={projectId}
         threadId={threadId}
+        memberId={memberId}
         authorName={authorName}
         authorEmail={authorEmail}
         initialDetail={detail}

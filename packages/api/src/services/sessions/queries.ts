@@ -8,10 +8,21 @@ import {
   threads,
   users,
 } from "@roster/db";
-import { and, asc, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { agentDisplay, agentHandle } from "../../lib/agent-identity";
 import { readableError } from "../../utils/session-error";
+import { type ChannelScope, visibleToMember } from "../channels";
 import {
   AGENT_IDENTITY_ON,
   agentChannel,
@@ -60,6 +71,8 @@ export interface ThreadSummary {
   lastReplyAt: Date | null;
   replierNames: string[];
   waitingOn: WaitingOn | null;
+  completedAt: Date | null;
+  completedByMemberId: string | null;
 }
 
 const REPLY_SCOPE = sql`rp.thread_id = ${threads.id} and rp.id <> ${threads.rootMessageId} and rp.deleted_at is null`;
@@ -178,6 +191,8 @@ const summaryColumns = {
   id: threads.id,
   projectId: threads.projectId,
   rootMessageId: threads.rootMessageId,
+  completedAt: threads.completedAt,
+  completedByMemberId: threads.completedByMemberId,
   ...sessionState,
   rootText: messages.text,
   authorName: users.name,
@@ -254,6 +269,60 @@ export async function listChannelThreads(
   }));
 }
 
+export const LIVE_THREAD_STATUSES = ["starting", "running", "waiting"] as const;
+
+export interface LiveThread {
+  id: string;
+  projectId: string;
+  status: string;
+  rootText: string;
+  lastProgress: string | null;
+  startedAt: Date;
+}
+
+const LIVE_STATUS_LIST = sql.join(
+  LIVE_THREAD_STATUSES.map((status) => sql`${status}`),
+  sql`, `,
+);
+
+const HAS_LIVE_SESSION = sql`exists (select 1 from roster.thread_sessions ts where ts.thread_id = ${THREAD_ID} and ts.status in (${LIVE_STATUS_LIST}))`;
+
+export async function listLiveThreads(
+  scope: ChannelScope,
+): Promise<LiveThread[]> {
+  const rows = await db
+    .select({
+      id: threads.id,
+      projectId: threads.projectId,
+      status: statusSql.as("lead_status"),
+      lastProgress: lastProgressSql.as("lead_progress"),
+      startedAt: startedAtSql.as("lead_started_at"),
+      rootText: messages.text,
+    })
+    .from(threads)
+    .innerJoin(projects, eq(threads.projectId, projects.id))
+    .leftJoin(messages, eq(threads.rootMessageId, messages.id))
+    .where(
+      and(
+        eq(threads.organizationId, scope.organizationId),
+        visibleToMember(scope.memberId, scope.role),
+        isNull(threads.completedAt),
+        HAS_LIVE_SESSION,
+      ),
+    )
+    .orderBy(desc(startedAtSql))
+    .limit(200);
+
+  return rows.map((row) => ({
+    id: row.id,
+    projectId: row.projectId,
+    status: row.status ?? "starting",
+    rootText: row.rootText ?? "",
+    lastProgress: row.lastProgress,
+    startedAt: asDate(row.startedAt) ?? new Date(),
+  }));
+}
+
 export async function threadProjectId(
   threadId: string,
 ): Promise<string | null> {
@@ -270,6 +339,7 @@ export interface ThreadTarget {
   projectId: string;
   rootMessageId: string;
   status: string;
+  completedAt: Date | null;
 }
 
 export async function threadTarget(
@@ -282,6 +352,7 @@ export async function threadTarget(
       projectId: threads.projectId,
       rootMessageId: threads.rootMessageId,
       status: statusSql.as("lead_status"),
+      completedAt: threads.completedAt,
     })
     .from(threads)
     .where(eq(threads.id, threadId))
@@ -300,6 +371,8 @@ export interface ThreadPublishState {
   startedAt: Date;
   endedAt: Date | null;
   waitingOn: WaitingOn | null;
+  completedAt: Date | null;
+  completedByMemberId: string | null;
 }
 
 export async function threadPublishState(
@@ -310,6 +383,8 @@ export async function threadPublishState(
       id: threads.id,
       projectId: threads.projectId,
       rootMessageId: threads.rootMessageId,
+      completedAt: threads.completedAt,
+      completedByMemberId: threads.completedByMemberId,
       ...sessionState,
     })
     .from(threads)
@@ -330,6 +405,8 @@ export async function threadPublishState(
     startedAt: asDate(row.startedAt) ?? new Date(),
     endedAt: asDate(row.endedAt),
     waitingOn: waiting.get(row.id) ?? null,
+    completedAt: asDate(row.completedAt),
+    completedByMemberId: row.completedByMemberId,
   };
 }
 
@@ -345,6 +422,7 @@ export async function joinableThread(args: {
       projectId: threads.projectId,
       rootMessageId: threads.rootMessageId,
       status: threadSessions.status,
+      completedAt: threads.completedAt,
     })
     .from(threads)
     .innerJoin(messages, eq(threads.rootMessageId, messages.id))

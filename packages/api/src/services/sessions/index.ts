@@ -1,5 +1,7 @@
 export {
+  assertReaped,
   cancelThread,
+  completeThread,
   createThread,
   ensureStarted,
   markWaiting,
@@ -15,6 +17,9 @@ export {
 export {
   joinableThread,
   listChannelThreads,
+  listLiveThreads,
+  LIVE_THREAD_STATUSES,
+  type LiveThread,
   threadDetail,
   threadProjectId,
   threadPublishState,

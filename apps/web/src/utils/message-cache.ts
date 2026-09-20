@@ -1,3 +1,7 @@
+import type { QueryClient } from "@tanstack/react-query";
+
+import type { MessageAttachment, ReactionRef, ThreadDetail } from "@roster/api";
+
 import type { MessageItem } from "~/types";
 
 export const PENDING_SEQ = Number.MAX_SAFE_INTEGER;
@@ -81,6 +85,7 @@ export function optimisticMessage(args: {
   text: string;
   authorName: string;
   authorEmail: string;
+  attachments?: MessageAttachment[];
 }): MessageItem {
   return {
     id: args.clientId,
@@ -100,6 +105,8 @@ export function optimisticMessage(args: {
     authorMemberId: null,
     authorName: args.authorName,
     authorEmail: args.authorEmail,
+    attachments: args.attachments ?? [],
+    reactions: [],
     pending: true,
   };
 }
@@ -108,6 +115,22 @@ function asDate(value: unknown): Date | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toReactionRefs(value: unknown): ReactionRef[] {
+  if (!Array.isArray(value)) return [];
+
+  const refs: ReactionRef[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const ref = entry as Record<string, unknown>;
+    if (typeof ref.emoji !== "string" || typeof ref.memberId !== "string") {
+      continue;
+    }
+    refs.push({ emoji: ref.emoji, memberId: ref.memberId });
+  }
+
+  return refs;
 }
 
 export interface MessageDeletion {
@@ -174,5 +197,156 @@ export function parsePublishedMessage(data: unknown): MessageItem | null {
       typeof raw.authorMemberId === "string" ? raw.authorMemberId : null,
     authorName: typeof raw.authorName === "string" ? raw.authorName : null,
     authorEmail: typeof raw.authorEmail === "string" ? raw.authorEmail : null,
+    attachments: parseAttachments(raw.attachments),
+    reactions: toReactionRefs(raw.reactions),
   };
+}
+
+function parseAttachments(value: unknown): MessageAttachment[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+
+    const raw = entry as Record<string, unknown>;
+    if (
+      typeof raw.id !== "string" ||
+      typeof raw.filename !== "string" ||
+      typeof raw.mimeType !== "string" ||
+      typeof raw.size !== "number" ||
+      typeof raw.url !== "string"
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        id: raw.id,
+        filename: raw.filename,
+        mimeType: raw.mimeType,
+        size: raw.size,
+        width: typeof raw.width === "number" ? raw.width : null,
+        height: typeof raw.height === "number" ? raw.height : null,
+        url: raw.url,
+      },
+    ];
+  });
+}
+
+export interface MessageReaction {
+  messageId: string;
+  projectId: string;
+  threadId: string | null;
+  emoji: string;
+  memberId: string;
+  added: boolean;
+}
+
+export interface ReactionGroup {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
+
+export function parsePublishedReaction(data: unknown): MessageReaction | null {
+  if (typeof data !== "object" || data === null) return null;
+
+  const raw = data as Record<string, unknown>;
+  if (raw.type !== "reaction") return null;
+  if (
+    typeof raw.messageId !== "string" ||
+    typeof raw.projectId !== "string" ||
+    typeof raw.emoji !== "string" ||
+    typeof raw.memberId !== "string" ||
+    typeof raw.added !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    messageId: raw.messageId,
+    projectId: raw.projectId,
+    threadId: typeof raw.threadId === "string" ? raw.threadId : null,
+    emoji: raw.emoji,
+    memberId: raw.memberId,
+    added: raw.added,
+  };
+}
+
+function holds(ref: ReactionRef, emoji: string, memberId: string): boolean {
+  return ref.emoji === emoji && ref.memberId === memberId;
+}
+
+export function groupReactions(
+  reactions: ReactionRef[] | undefined,
+  memberId: string,
+): ReactionGroup[] {
+  const byEmoji = new Map<string, Set<string>>();
+
+  for (const ref of reactions ?? []) {
+    const reactors = byEmoji.get(ref.emoji);
+    if (reactors) reactors.add(ref.memberId);
+    else byEmoji.set(ref.emoji, new Set([ref.memberId]));
+  }
+
+  return [...byEmoji]
+    .map(([emoji, reactors]) => ({
+      emoji,
+      count: reactors.size,
+      mine: reactors.has(memberId),
+    }))
+    .sort((a, b) => (a.emoji < b.emoji ? -1 : a.emoji > b.emoji ? 1 : 0));
+}
+
+export function applyReaction(
+  list: MessageItem[],
+  reaction: MessageReaction,
+): MessageItem[] {
+  let changed = false;
+
+  const next = list.map((message) => {
+    if (message.id !== reaction.messageId) return message;
+
+    const current = message.reactions ?? [];
+    const held = current.some((ref) =>
+      holds(ref, reaction.emoji, reaction.memberId),
+    );
+    if (held === reaction.added) return message;
+
+    changed = true;
+    return {
+      ...message,
+      reactions: reaction.added
+        ? [...current, { emoji: reaction.emoji, memberId: reaction.memberId }]
+        : current.filter(
+            (ref) => !holds(ref, reaction.emoji, reaction.memberId),
+          ),
+    };
+  });
+
+  return changed ? next : list;
+}
+
+export function applyReactionToDetail(
+  detail: ThreadDetail,
+  reaction: MessageReaction,
+): ThreadDetail {
+  const messages = applyReaction(detail.messages as MessageItem[], reaction);
+  return messages === detail.messages ? detail : { ...detail, messages };
+}
+
+export function applyReactionToCaches(
+  queryClient: QueryClient,
+  reaction: MessageReaction,
+): void {
+  queryClient.setQueryData<MessageItem[]>(
+    channelMessagesKey(reaction.projectId),
+    (previous) => (previous ? applyReaction(previous, reaction) : previous),
+  );
+
+  queryClient.setQueriesData<ThreadDetail>(
+    { queryKey: ["thread"] },
+    (previous) =>
+      previous ? applyReactionToDetail(previous, reaction) : previous,
+  );
 }

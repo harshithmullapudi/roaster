@@ -21,7 +21,10 @@ import {
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
+  withAttachment,
+  withAttachments,
 } from "./message-columns";
+import { bindAttachments, textWithAttachments } from "./attachments";
 import {
   allocateSeq,
   listMentionableChannels,
@@ -71,7 +74,7 @@ export async function listMessages(args: {
     .orderBy(desc(messages.seq))
     .limit(limit);
 
-  return rows.reverse().map(toChannelMessage);
+  return withAttachments(rows.reverse().map(toChannelMessage));
 }
 
 async function findByClientId(args: {
@@ -94,7 +97,7 @@ async function findByClientId(args: {
     .orderBy(asc(messages.seq))
     .limit(1);
 
-  return row ? toChannelMessage(row) : null;
+  return row ? withAttachment(toChannelMessage(row)) : null;
 }
 
 export { messageById, publishMessage } from "./message-events";
@@ -226,6 +229,7 @@ export async function sendMessage(args: {
   text: string;
   clientId: string;
   threadId?: string;
+  attachmentIds?: string[];
 }): Promise<ChannelMessage> {
   const existing = await findByClientId({
     projectId: args.projectId,
@@ -273,6 +277,15 @@ export async function sendMessage(args: {
     })
     .returning({ id: messages.id });
 
+  if (inserted[0] && args.attachmentIds?.length) {
+    await bindAttachments({
+      attachmentIds: args.attachmentIds,
+      messageId: inserted[0].id,
+      projectId: args.projectId,
+      uploaderMemberId: args.authorMemberId,
+    });
+  }
+
   const row = inserted[0]
     ? await messageById(inserted[0].id)
     : await findByClientId({
@@ -287,12 +300,16 @@ export async function sendMessage(args: {
   if (row.kind !== "user") return row;
 
   if (target) {
-    void steer({ threadId: target.id, text: row.text }).catch(() => {});
+    void steer({ threadId: target.id, text: agentText(row) }).catch(() => {});
   } else if (row.parentMessageId === null && addressed) {
     void driveSession(row).catch(() => {});
   }
 
   return row;
+}
+
+export function agentText(message: ChannelMessage): string {
+  return textWithAttachments(message.text, message.attachments);
 }
 
 async function channelIsWatching(projectId: string): Promise<boolean> {
@@ -385,7 +402,7 @@ async function driveSession(message: ChannelMessage): Promise<void> {
   });
   if (!thread) return;
 
-  await startSession({ threadId: thread.id, text: message.text, context });
+  await startSession({ threadId: thread.id, text: agentText(message), context });
 }
 
 export async function pausedMessageCount(projectId: string): Promise<number> {
@@ -450,7 +467,7 @@ export async function startPausedSession(
 
   if (!newest) return null;
 
-  const row = toChannelMessage(newest);
+  const row = await withAttachment(toChannelMessage(newest));
   void driveSession(row).catch(() => {});
   return row;
 }

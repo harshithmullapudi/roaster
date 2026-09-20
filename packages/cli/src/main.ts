@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 
 import { flagNumber, flagString, parseArgs } from "./args.js";
 import { mutate, query, RosterError } from "./client.js";
+import { downloadAttachment } from "./files.js";
 import {
   type Config,
   DEFAULT_API_URL,
@@ -17,6 +18,7 @@ const USAGE = `roster — talk to Roster from inside an agent session
   roster tasks create <title> [--channel-id ID]
   roster tasks status <task-id> <todo|in_progress|done>
   roster ask <handle> <task> --thread THREAD_ID
+  roster files download <url-or-id> [--out PATH]
 
 Pass --channel-id only when someone named the channel the work belongs to;
 that channel's agent starts on it right away. Without it the task waits in
@@ -175,6 +177,26 @@ async function ask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
   );
 }
 
+async function filesDownload(
+  parsed: ReturnType<typeof parseArgs>,
+): Promise<void> {
+  const config = requireConfig();
+
+  const input = parsed.positionals[2];
+  if (!input) {
+    throw new RosterError(
+      "Say which file, e.g. `roster files download <url>`. The URL is in the message the file came with.",
+    );
+  }
+
+  const file = await downloadAttachment(config, {
+    input,
+    out: flagString(parsed, "out"),
+  });
+
+  console.log(`Saved ${file.path} (${file.bytes} bytes).`);
+}
+
 export async function main(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv);
   const [command, sub] = parsed.positionals;
@@ -191,6 +213,7 @@ export async function main(argv: string[]): Promise<number> {
     else if (command === "tasks" && sub === "create") await createTask(parsed);
     else if (command === "tasks" && sub === "status") await setTaskStatus(parsed);
     else if (command === "ask") await ask(parsed);
+    else if (command === "files" && sub === "download") await filesDownload(parsed);
     else {
       console.error(`Unknown command: ${[command, sub].filter(Boolean).join(" ")}\n`);
       console.error(USAGE);

@@ -4,7 +4,10 @@ import type { ThreadDetail } from "@roster/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
-import { Composer } from "~/components/messages/composer";
+import {
+  Composer,
+  type ComposerSendPayload,
+} from "~/components/messages/composer";
 import { MessageRow } from "~/components/messages/message-row";
 import { useNow } from "~/hooks/use-now";
 import { useThreadRealtime } from "~/hooks/use-thread-realtime";
@@ -30,6 +33,7 @@ import { WaitingOnCard } from "./waiting-on";
 export interface ThreadPanelProps {
   projectId: string;
   threadId: string;
+  memberId: string;
   authorName: string;
   authorEmail: string;
   initialDetail: ThreadDetail;
@@ -38,6 +42,7 @@ export interface ThreadPanelProps {
 export function ThreadPanel({
   projectId,
   threadId,
+  memberId,
   authorName,
   authorEmail,
   initialDetail,
@@ -64,7 +69,7 @@ export function ThreadPanel({
     if (node) node.scrollTop = node.scrollHeight;
   }, [detail]);
 
-  async function send(payload: { body: unknown; text: string }) {
+  async function send(payload: ComposerSendPayload) {
     const clientId = crypto.randomUUID();
     const optimistic: MessageItem = {
       ...optimisticMessage({
@@ -74,6 +79,7 @@ export function ThreadPanel({
         text: payload.text,
         authorName,
         authorEmail,
+        attachments: payload.attachments,
       }),
       threadId,
       parentMessageId: detail.thread.rootMessageId,
@@ -90,6 +96,7 @@ export function ThreadPanel({
         text: payload.text,
         clientId,
         threadId,
+        attachmentIds: payload.attachmentIds,
       });
       queryClient.setQueryData<ThreadDetail>(queryKey, (previous) =>
         previous ? mergeReply(previous, saved as MessageItem) : previous,
@@ -108,7 +115,9 @@ export function ThreadPanel({
         className="overscroll-contain flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
         <div className="flex w-full flex-col pb-3">
-          {root ? <MessageRow message={root} leading /> : null}
+          {root ? (
+            <MessageRow message={root} memberId={memberId} leading />
+          ) : null}
 
           <ReplyDivider count={replies.length} />
 
@@ -116,6 +125,7 @@ export function ThreadPanel({
             <MessageRow
               key={message.clientId ?? message.id}
               message={message}
+              memberId={memberId}
               leading={startsNewGroup(message, replies[index - 1])}
             />
           ))}
@@ -165,7 +175,7 @@ export function ThreadPanel({
       </div>
 
       <div className="pb-safe-2 shrink-0 px-2 sm:px-3 sm:pb-3">
-        <Composer placeholder="Reply…" onSend={send} />
+        <Composer placeholder="Reply…" projectId={projectId} onSend={send} />
       </div>
     </div>
   );

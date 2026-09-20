@@ -19,7 +19,7 @@ export interface ThreadAffordanceProps {
 }
 
 export function ThreadAffordance({ thread, href }: ThreadAffordanceProps) {
-  const live = isActive(thread.status);
+  const live = isActive(thread.status, thread.completedAt);
   const now = useNow(live);
 
   return (

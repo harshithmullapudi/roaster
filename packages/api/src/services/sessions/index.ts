@@ -1,5 +1,7 @@
 export {
+  assertReaped,
   cancelThread,
+  completeThread,
   createThread,
   ensureStarted,
   markWaiting,

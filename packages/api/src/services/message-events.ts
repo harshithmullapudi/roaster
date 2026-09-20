@@ -21,6 +21,7 @@ import {
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
+  withAttachment,
 } from "./message-columns";
 import {
   ensureThreadSubscription,
@@ -39,7 +40,7 @@ export async function messageById(id: string): Promise<ChannelMessage> {
     .limit(1);
 
   if (!row) throw new Error("Message not found.");
-  return toChannelMessage(row);
+  return withAttachment(toChannelMessage(row));
 }
 
 export async function publishMessage(message: ChannelMessage): Promise<void> {

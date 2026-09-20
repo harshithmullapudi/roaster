@@ -23,7 +23,7 @@ import { trpc } from "~/utils/trpc";
 
 import { WatchResumeOffer } from "~/components/channels/watch-resume-offer";
 
-import { Composer } from "./composer";
+import { Composer, type ComposerSendPayload } from "./composer";
 import { MessageList } from "./message-list";
 
 export interface MessagePanelProps {
@@ -78,7 +78,7 @@ export function MessagePanel({
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages]);
 
-  async function send(payload: { body: unknown; text: string }) {
+  async function send(payload: ComposerSendPayload) {
     const clientId = crypto.randomUUID();
     const optimistic = optimisticMessage({
       projectId,
@@ -87,6 +87,7 @@ export function MessagePanel({
       text: payload.text,
       authorName,
       authorEmail,
+      attachments: payload.attachments,
     });
 
     queryClient.setQueryData<MessageItem[]>(queryKey, (previous) =>
@@ -99,6 +100,7 @@ export function MessagePanel({
         body: payload.body,
         text: payload.text,
         clientId,
+        attachmentIds: payload.attachmentIds,
       });
       queryClient.setQueryData<MessageItem[]>(queryKey, (previous) =>
         mergeMessage(previous ?? [], saved),
@@ -153,7 +155,11 @@ export function MessagePanel({
         {pausedCount > 0 ? (
           <WatchResumeOffer projectId={projectId} count={pausedCount} />
         ) : null}
-        <Composer placeholder={`Message #${channelName}`} onSend={send} />
+        <Composer
+          placeholder={`Message #${channelName}`}
+          projectId={projectId}
+          onSend={send}
+        />
       </div>
     </div>
   );

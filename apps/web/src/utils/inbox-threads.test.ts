@@ -27,6 +27,8 @@ function thread(over: Partial<InboxThread> = {}): InboxThread {
     lastReplyAt: null,
     replierNames: ["Ada"],
     waitingOn: null,
+    completedAt: null,
+    completedByMemberId: null,
     channelSlug: "web",
     channelName: "web",
     lastActivityAt: new Date("2026-09-20T09:00:00"),

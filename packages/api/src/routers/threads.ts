@@ -3,10 +3,13 @@ import { z } from "zod";
 
 import { requireOrgProject } from "../services/channels";
 import {
+  assertReaped,
   cancelThread,
+  completeThread,
   listChannelThreads,
   listInboxThreads,
   listLiveThreads,
+  reapThread,
   retryThread,
   threadDetail,
   threadSummary,
@@ -98,6 +101,53 @@ export const threadsRouter = createTRPCRouter({
           message: "That session already finished.",
         });
       }
+
+      return threadSummary({ projectId: project.id, threadId: target.id });
+    }),
+
+  complete: memberProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        threadId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const project = await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: input.projectId,
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const target = await threadTarget(input.threadId);
+      if (!target || target.projectId !== project.id) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      if (target.completedAt) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "That thread is already complete.",
+        });
+      }
+
+      await cancelThread({ threadId: target.id });
+      await reapThread({ threadId: target.id });
+
+      try {
+        await assertReaped({ threadId: target.id });
+      } catch (cause) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "Could not reach that machine to delete the worktree, so the thread was left as it was.",
+          cause,
+        });
+      }
+
+      await completeThread({ threadId: target.id, memberId: ctx.member.id });
 
       return threadSummary({ projectId: project.id, threadId: target.id });
     }),

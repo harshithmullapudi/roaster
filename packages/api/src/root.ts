@@ -5,6 +5,7 @@ import { inviteLinksRouter } from "./routers/invite-links";
 import { messagesRouter } from "./routers/messages";
 import { notificationsRouter } from "./routers/notifications";
 import { onboardingRouter } from "./routers/onboarding";
+import { reactionsRouter } from "./routers/reactions";
 import { realtimeRouter } from "./routers/realtime";
 import { supersetRouter } from "./routers/superset";
 import { tasksRouter } from "./routers/tasks";
@@ -29,6 +30,7 @@ export const appRouter = createTRPCRouter({
   terminals: terminalsRouter,
   threads: threadsRouter,
   notifications: notificationsRouter,
+  reactions: reactionsRouter,
   realtime: realtimeRouter,
 });
 

@@ -4,6 +4,13 @@ import { flagNumber, flagString, parseArgs } from "./args.js";
 import { mutate, query, RosterError } from "./client.js";
 import { downloadAttachment } from "./files.js";
 import {
+  type ChannelPage,
+  formatChannel,
+  formatThread,
+  readTarget,
+  type ThreadPage,
+} from "./read.js";
+import {
   type Config,
   DEFAULT_API_URL,
   loadConfig,
@@ -15,6 +22,7 @@ const USAGE = `roster — talk to Roster from inside an agent session
   roster login [--api-url URL]              store this machine's API key
   roster channels                           agents you can ask, with handles
   roster read messages --channel-id ID [--limit N]
+  roster read messages --thread-id ID [--limit N]
   roster tasks create <title> [--channel-id ID]
   roster tasks status <task-id> <todo|in_progress|done>
   roster ask <handle> <task> --thread THREAD_ID
@@ -26,7 +34,11 @@ the backlog for a person to assign.
 
 Your thread id, channel id and task id are in the <roster> block at the top
 of your session. \`roster ask\` returns immediately — say what you asked for
-and end your turn; you are resumed automatically with the answer.`;
+and end your turn; you are resumed automatically with the answer.
+
+A channel read shows what was said out loud, and marks every message that
+has a thread hanging off it with that thread's id. Read the thread with
+\`roster read messages --thread-id <id>\`.`;
 
 function requireConfig(): Config {
   const config = loadConfig();
@@ -86,21 +98,28 @@ async function channels(): Promise<void> {
 
 async function readMessages(parsed: ReturnType<typeof parseArgs>): Promise<void> {
   const config = requireConfig();
-  const channelId = flagString(parsed, "channel-id");
-  if (!channelId) throw new RosterError("Pass --channel-id.");
 
-  const result = (await query(config, "cli.readMessages", {
-    channelId,
-    limit: flagNumber(parsed, "limit") ?? 20,
-  })) as {
-    channel: { slug: string };
-    messages: Array<{ author: string; text: string; createdAt: string }>;
-  };
+  const target = readTarget(parsed);
+  if (!target.ok) throw new RosterError(target.message);
 
-  console.log(`# ${result.channel.slug}`);
-  for (const message of result.messages) {
-    console.log(`\n[${message.createdAt}] ${message.author}:\n${message.text}`);
+  const limit = flagNumber(parsed, "limit") ?? 20;
+
+  if (target.kind === "thread") {
+    const page = (await query(config, "cli.readThread", {
+      threadId: target.id,
+      limit,
+    })) as ThreadPage;
+
+    console.log(formatThread(page));
+    return;
   }
+
+  const page = (await query(config, "cli.readMessages", {
+    channelId: target.id,
+    limit,
+  })) as ChannelPage;
+
+  console.log(formatChannel(page));
 }
 
 async function createTask(parsed: ReturnType<typeof parseArgs>): Promise<void> {

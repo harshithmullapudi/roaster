@@ -7,10 +7,30 @@ import {
   requireOrgProject,
 } from "../services/channels";
 import { delegate } from "../services/delegations";
-import { listMessages } from "../services/messages";
+import type { ChannelMessage } from "../services/messages";
+import { listMessages, replyCountsByThread } from "../services/messages";
+import { threadDetail, threadProjectId } from "../services/sessions";
 import { assignTask } from "../services/task-assignment";
 import { createTask, setTaskStatus } from "../services/tasks";
 import { cliProcedure, createTRPCRouter } from "../trpc";
+
+/**
+ * `||`, not `??`: `users.name` defaults to the empty string rather than null,
+ * so a nullish fallback yields a blank author.
+ */
+function toCliMessage(message: ChannelMessage) {
+  return {
+    id: message.id,
+    author:
+      message.agentDisplay ||
+      message.authorName ||
+      message.authorEmail ||
+      "unknown",
+    kind: message.kind,
+    text: message.text,
+    createdAt: message.createdAt.toISOString(),
+  };
+}
 
 /**
  * What the `roster` CLI can do, as an agent running on someone's machine.
@@ -74,23 +94,79 @@ export const cliRouter = createTRPCRouter({
         limit: input.limit,
       });
 
+      const counts = await replyCountsByThread(
+        messages.flatMap((message) =>
+          message.threadId ? [message.threadId] : [],
+        ),
+      );
+
       return {
         channel: { id: project.id, slug: project.slug, name: project.name },
         messages: messages.map((message) => ({
-          id: message.id,
-          /**
-           * `||`, not `??`: `users.name` defaults to the empty string rather
-           * than null, so a nullish fallback yields a blank author.
-           */
-          author:
-            message.agentDisplay ||
-            message.authorName ||
-            message.authorEmail ||
-            "unknown",
-          kind: message.kind,
-          text: message.text,
-          createdAt: message.createdAt.toISOString(),
+          ...toCliMessage(message),
+          thread: message.threadId
+            ? {
+                id: message.threadId,
+                replyCount: counts.get(message.threadId) ?? 0,
+              }
+            : null,
         })),
+      };
+    }),
+
+  /**
+   * One thread, root message and every reply under it. Delegation messages stay
+   * in — a thread another agent was asked to run opens with one, so filtering
+   * them the way the channel view does would hide the question being answered.
+   */
+  readThread: cliProcedure
+    .input(
+      z.object({
+        threadId: z.string().uuid(),
+        limit: z.number().int().min(1).max(200).default(50),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const projectId = await threadProjectId(input.threadId);
+
+      const project = projectId
+        ? await requireOrgProject({
+            organizationId: ctx.organizationId,
+            memberId: ctx.member.id,
+            role: ctx.member.role,
+            projectId,
+          })
+        : null;
+
+      if (!project) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "This key cannot read that thread. It is in a channel private to someone else, or does not exist.",
+        });
+      }
+
+      const detail = await threadDetail({
+        projectId: project.id,
+        threadId: input.threadId,
+      });
+
+      if (!detail) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No thread with that id.",
+        });
+      }
+
+      return {
+        channel: { id: project.id, slug: project.slug, name: project.name },
+        thread: {
+          id: input.threadId,
+          status: detail.thread.status,
+          replyCount: detail.thread.replyCount,
+        },
+        /** The tail: a long thread should not flood the agent that reads it. */
+        messages: detail.messages.slice(-input.limit).map(toCliMessage),
       };
     }),
 

@@ -12,7 +12,7 @@ import {
   parsePublishedMessage,
   parsePublishedReaction,
 } from "~/utils/message-cache";
-import { mergeReply } from "~/utils/thread-detail";
+import { mergeDetail, mergeReply } from "~/utils/thread-detail";
 import { parsePublishedThread, threadDetailKey } from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
@@ -27,7 +27,10 @@ export function useThreadRealtime(threadId: string, projectId: string): void {
     async function refetch() {
       try {
         const fresh = await trpc.threads.get.query({ projectId, threadId });
-        if (!disposed) queryClient.setQueryData(queryKey, fresh);
+        if (disposed) return;
+        queryClient.setQueryData<ThreadDetail>(queryKey, (previous) =>
+          previous ? mergeDetail(previous, fresh) : fresh,
+        );
       } catch {
         console.warn("[realtime] thread refetch failed");
       }

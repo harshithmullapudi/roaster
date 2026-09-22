@@ -6,8 +6,10 @@ import {
   applyReaction,
   groupReactions,
   type MessageReaction,
+  mergeMessages,
   parsePublishedDeletion,
   parsePublishedReaction,
+  prependMessages,
   removeMessage,
 } from "./message-cache";
 
@@ -265,5 +267,70 @@ describe("applyReaction", () => {
   it("drops the event when the message is not in the cache", () => {
     const list = [message("a", 1)];
     expect(applyReaction(list, reaction({ messageId: "gone" }))).toBe(list);
+  });
+});
+
+describe("mergeMessages", () => {
+  it("keeps the object we already hold when nothing changed", () => {
+    const held = message("a", 1);
+    const refetched = message("a", 1);
+
+    const [merged] = mergeMessages([held], [refetched]);
+
+    expect(merged).toBe(held);
+  });
+
+  it("returns the same array when the whole page is unchanged", () => {
+    const list = [message("a", 1), message("b", 2)];
+
+    expect(mergeMessages(list, [message("a", 1), message("b", 2)])).toBe(list);
+  });
+
+  it("takes the incoming object when the text changed", () => {
+    const held = message("a", 1);
+    const edited = { ...message("a", 1), text: "edited" };
+
+    const [merged] = mergeMessages([held], [edited]);
+
+    expect(merged).toBe(edited);
+  });
+
+  it("keeps the held body but adopts new reactions", () => {
+    const held = { ...message("a", 1), body: { doc: true } };
+    const reacted = {
+      ...message("a", 1),
+      body: { doc: true },
+      reactions: [{ emoji: "✅", memberId: "member-2" }],
+    };
+
+    const [merged] = mergeMessages([held], [reacted]);
+
+    expect(merged?.body).toBe(held.body);
+    expect(merged?.reactions).toEqual(reacted.reactions);
+  });
+
+  it("does not drop messages outside the incoming page", () => {
+    const older = [message("a", 1), message("b", 2)];
+
+    const merged = mergeMessages(older, [message("c", 3)]);
+
+    expect(merged.map((m) => m.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("prependMessages", () => {
+  it("puts an older page in front, sorted by seq", () => {
+    const list = [message("c", 3), message("d", 4)];
+
+    const merged = prependMessages(list, [message("a", 1), message("b", 2)]);
+
+    expect(merged.map((m) => m.id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("returns the same array when the page adds nothing", () => {
+    const list = [message("a", 1), message("b", 2)];
+
+    expect(prependMessages(list, [message("a", 1)])).toBe(list);
+    expect(prependMessages(list, [])).toBe(list);
   });
 });

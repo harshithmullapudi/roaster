@@ -2,7 +2,9 @@
 
 import type { ThreadDetail } from "@roster/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import {
   Composer,
@@ -17,8 +19,11 @@ import { startsNewGroup } from "~/utils/message-groups";
 import { elapsedLabel } from "~/utils/relative-time";
 import {
   addReply,
+  detailMessages,
   failReply,
+  mergeDetail,
   mergeReply,
+  prependReplies,
   splitThread,
 } from "~/utils/thread-detail";
 import { canRetry, isActive, threadDetailKey } from "~/utils/thread-rows";
@@ -48,13 +53,20 @@ export function ThreadPanel({
   initialDetail,
 }: ThreadPanelProps) {
   const queryClient = useQueryClient();
-  const queryKey = threadDetailKey(threadId);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const queryKey = useMemo(() => threadDetailKey(threadId), [threadId]);
 
   const { data: detail } = useQuery({
     queryKey,
-    queryFn: () => trpc.threads.get.query({ projectId, threadId }),
+    queryFn: () =>
+      trpc.threads.get.query({ projectId, threadId, limit: INITIAL_PAGE }),
     initialData: initialDetail,
+    structuralSharing: (previous, next) =>
+      previous
+        ? (mergeDetail(
+            previous as ThreadDetail,
+            next as ThreadDetail,
+          ) as typeof next)
+        : next,
   });
 
   useThreadRealtime(threadId, projectId);
@@ -64,10 +76,55 @@ export function ThreadPanel({
   const retryable = canRetry(detail.thread.status, detail.thread.error);
   const { root, replies } = splitThread(detail);
 
-  useEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [detail]);
+  const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingRef = useRef(false);
+  const hasMoreRef = useRef(
+    detailMessages(initialDetail).filter(
+      (message) => message.id !== initialDetail.thread.rootMessageId,
+    ).length >= INITIAL_PAGE,
+  );
+
+  const loadOlder = useCallback(async () => {
+    if (loadingRef.current || !hasMoreRef.current) return;
+
+    const current = queryClient.getQueryData<ThreadDetail>(queryKey);
+    if (!current) return;
+    const oldest = detailMessages(current).find(
+      (message) =>
+        !message.pending && message.id !== current.thread.rootMessageId,
+    );
+    if (!oldest) {
+      hasMoreRef.current = false;
+      return;
+    }
+
+    loadingRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const older = await trpc.threads.get.query({
+        projectId,
+        threadId,
+        before: oldest.seq,
+        limit: OLDER_PAGE,
+      });
+      if (older.messages.length < OLDER_PAGE) hasMoreRef.current = false;
+
+      let added = 0;
+      queryClient.setQueryData<ThreadDetail>(queryKey, (previous) => {
+        if (!previous) return previous;
+        const next = prependReplies(previous, older.messages as MessageItem[]);
+        added = next.messages.length - previous.messages.length;
+        return next;
+      });
+      if (added > 0) setFirstItemIndex((index) => index - added);
+    } catch {
+      console.warn("[thread] could not load older replies");
+    } finally {
+      loadingRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [projectId, threadId, queryClient, queryKey]);
 
   async function send(payload: ComposerSendPayload) {
     const clientId = crypto.randomUUID();
@@ -108,71 +165,167 @@ export function ThreadPanel({
     }
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        ref={scrollRef}
-        className="overscroll-contain flex min-h-0 flex-1 flex-col overflow-y-auto"
-      >
-        <div className="flex w-full flex-col pb-3">
-          {root ? (
-            <MessageRow message={root} memberId={memberId} leading />
-          ) : null}
+  const reply = useCallback(
+    (index: number, message: MessageItem) => {
+      const position = index - firstItemIndex;
+      return (
+        <MessageRow
+          message={message}
+          memberId={memberId}
+          leading={startsNewGroup(message, replies[position - 1])}
+        />
+      );
+    },
+    [firstItemIndex, replies, memberId],
+  );
 
-          <ReplyDivider count={replies.length} />
-
-          {replies.map((message, index) => (
-            <MessageRow
-              key={message.clientId ?? message.id}
-              message={message}
-              memberId={memberId}
-              leading={startsNewGroup(message, replies[index - 1])}
-            />
-          ))}
-
-          {live ? (
-            <div className="border-border mx-3 mt-2 flex flex-col gap-1 rounded-md border px-2.5 py-2 sm:mx-5">
-              <span className="flex items-center gap-2">
-                <ThreadStatus status={detail.thread.status} />
-                <span
-                  className="text-muted-foreground text-xs"
-                  suppressHydrationWarning
-                >
-                  {elapsedLabel(new Date(detail.thread.startedAt), now)}
-                </span>
+  const header = useMemo(
+    () =>
+      function Header() {
+        return (
+          <>
+            {root ? (
+              <MessageRow message={root} memberId={memberId} leading />
+            ) : null}
+            {loadingOlder ? (
+              <span className="flex items-center justify-center py-3">
+                <Loader2 className="text-muted-foreground size-4 animate-spin" />
               </span>
-              {detail.thread.error ? (
-                <span className="text-destructive text-sm">
-                  {detail.thread.error}
+            ) : (
+              <ReplyDivider count={detail.thread.replyCount} />
+            )}
+          </>
+        );
+      },
+    [root, memberId, loadingOlder, detail.thread.replyCount],
+  );
+
+  const footer = useMemo(
+    () =>
+      function Footer() {
+        return (
+          <div className="pb-3">
+            {live ? (
+              <div className="border-border mx-3 mt-2 flex flex-col gap-1 rounded-md border px-2.5 py-2 sm:mx-5">
+                <span className="flex items-center gap-2">
+                  <ThreadStatus status={detail.thread.status} />
+                  <span
+                    className="text-muted-foreground text-xs"
+                    suppressHydrationWarning
+                  >
+                    {elapsedLabel(new Date(detail.thread.startedAt), now)}
+                  </span>
                 </span>
-              ) : detail.thread.waitingOn ? (
-                <WaitingOnCard waiting={detail.thread.waitingOn} />
-              ) : detail.thread.lastProgress ? (
-                <span className="text-muted-foreground text-sm">
-                  {detail.thread.lastProgress}
+                {detail.thread.error ? (
+                  <span className="text-destructive text-sm">
+                    {detail.thread.error}
+                  </span>
+                ) : detail.thread.waitingOn ? (
+                  <WaitingOnCard waiting={detail.thread.waitingOn} />
+                ) : detail.thread.lastProgress ? (
+                  <span className="text-muted-foreground text-sm">
+                    {detail.thread.lastProgress}
+                  </span>
+                ) : null}
+                <span className="mt-0.5 flex items-center gap-1.5">
+                  <ThreadCancel projectId={projectId} threadId={threadId} />
+                  {retryable ? (
+                    <ThreadRetry projectId={projectId} threadId={threadId} />
+                  ) : null}
                 </span>
-              ) : null}
-              <span className="mt-0.5 flex items-center gap-1.5">
-                <ThreadCancel projectId={projectId} threadId={threadId} />
+              </div>
+            ) : detail.thread.error || retryable ? (
+              <div className="border-border mx-3 mt-2 flex flex-col gap-1 rounded-md border px-2.5 py-2 sm:mx-5">
+                {detail.thread.error ? (
+                  <span className="text-destructive text-sm">
+                    {detail.thread.error}
+                  </span>
+                ) : null}
                 {retryable ? (
                   <ThreadRetry projectId={projectId} threadId={threadId} />
                 ) : null}
-              </span>
-            </div>
-          ) : detail.thread.error || retryable ? (
-            <div className="border-border mx-3 mt-2 flex flex-col gap-1 rounded-md border px-2.5 py-2 sm:mx-5">
-              {detail.thread.error ? (
-                <span className="text-destructive text-sm">
-                  {detail.thread.error}
-                </span>
-              ) : null}
-              {retryable ? (
-                <ThreadRetry projectId={projectId} threadId={threadId} />
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </div>
+              </div>
+            ) : null}
+          </div>
+        );
+      },
+    [live, now, retryable, projectId, threadId, detail.thread],
+  );
+
+  const components = useMemo(
+    () => ({ Header: header, Footer: footer }),
+    [header, footer],
+  );
+
+  const restingAtTop = useRef(false);
+  const restingAtBottom = useRef(true);
+  const listRef = useRef<VirtuosoHandle>(null);
+  const scrollerRef = useRef<HTMLElement | null>(null);
+  const followedKey = useRef<string | undefined>(undefined);
+
+  const newestReply = replies[replies.length - 1];
+  const newestKey = newestReply
+    ? (newestReply.clientId ?? newestReply.id)
+    : undefined;
+
+  const handleTopEdge = useCallback(
+    (isAtTop: boolean) => {
+      restingAtTop.current = isAtTop;
+      if (isAtTop) void loadOlder();
+    },
+    [loadOlder],
+  );
+
+  useEffect(() => {
+    if (!loadingOlder && restingAtTop.current) void loadOlder();
+  }, [loadingOlder, loadOlder]);
+
+  const pinToBottom = useCallback(() => {
+    listRef.current?.scrollToIndex({ index: "LAST", align: "end" });
+    const clampPastFooter = () => {
+      const scroller = scrollerRef.current;
+      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    };
+    clampPastFooter();
+    requestAnimationFrame(clampPastFooter);
+  }, []);
+
+  useEffect(() => {
+    if (newestKey === undefined || newestKey === followedKey.current) return;
+    const opening = followedKey.current === undefined;
+    followedKey.current = newestKey;
+    if (opening || restingAtBottom.current) pinToBottom();
+  }, [newestKey, pinToBottom]);
+
+  useEffect(() => {
+    if (restingAtBottom.current) pinToBottom();
+  }, [detail.thread.lastProgress, detail.thread.status, pinToBottom]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Virtuoso
+        className="min-h-0 flex-1"
+        ref={listRef}
+        scrollerRef={(element) => {
+          scrollerRef.current = element as HTMLElement | null;
+        }}
+        data={replies}
+        firstItemIndex={firstItemIndex}
+        initialTopMostItemIndex={Math.max(replies.length - 1, 0)}
+        startReached={loadOlder}
+        atTopStateChange={handleTopEdge}
+        atBottomStateChange={(isAtBottom) => {
+          restingAtBottom.current = isAtBottom;
+        }}
+        totalListHeightChanged={() => {
+          if (restingAtBottom.current) pinToBottom();
+        }}
+        atBottomThreshold={80}
+        increaseViewportBy={{ top: 600, bottom: 600 }}
+        computeItemKey={(_index, message) => message.clientId ?? message.id}
+        itemContent={reply}
+        components={components}
+      />
 
       <div className="pb-safe-2 shrink-0 px-2 sm:px-3 sm:pb-3">
         <Composer
@@ -185,3 +338,8 @@ export function ThreadPanel({
     </div>
   );
 }
+
+const INITIAL_PAGE = 50;
+const OLDER_PAGE = 25;
+
+const START_INDEX = 1_000_000;

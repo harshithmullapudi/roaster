@@ -1,6 +1,7 @@
 "use client";
 
 import { AvatarText, cn } from "@roster/ui";
+import { memo } from "react";
 
 import { ThreadAffordance } from "~/components/threads/thread-affordance";
 import type { MessageItem } from "~/types";
@@ -22,7 +23,7 @@ export interface MessageRowProps {
   onDelete?: (messageId: string) => Promise<void>;
 }
 
-export function MessageRow({
+export const MessageRow = memo(function MessageRow({
   message,
   leading,
   thread,
@@ -102,4 +103,4 @@ export function MessageRow({
       </div>
     </div>
   );
-}
+});

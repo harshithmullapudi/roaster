@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useChannelRealtime } from "~/hooks/use-channel-realtime";
 import type { MessageItem } from "~/types";
@@ -15,7 +15,9 @@ import {
   channelMessagesKey,
   markFailed,
   mergeMessage,
+  mergeMessages,
   optimisticMessage,
+  prependMessages,
   removeMessage,
   sortMessages,
 } from "~/utils/message-cache";
@@ -38,6 +40,11 @@ export interface MessagePanelProps {
   pausedCount: number;
 }
 
+const START_INDEX = 1_000_000;
+
+const INITIAL_PAGE = 50;
+const OLDER_PAGE = 25;
+
 export function MessagePanel({
   projectId,
   channelName,
@@ -50,15 +57,19 @@ export function MessagePanel({
   pausedCount,
 }: MessagePanelProps) {
   const queryClient = useQueryClient();
-  const queryKey = channelMessagesKey(projectId);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const queryKey = useMemo(() => channelMessagesKey(projectId), [projectId]);
   const router = useRouter();
   const openThreadId = useSearchParams().get("thread");
 
   const { data: messages } = useQuery({
     queryKey,
-    queryFn: () => trpc.messages.list.query({ projectId, limit: 50 }),
+    queryFn: () => trpc.messages.list.query({ projectId, limit: INITIAL_PAGE }),
     initialData: initialMessages,
+    structuralSharing: (previous, next) =>
+      mergeMessages(
+        (previous ?? []) as MessageItem[],
+        next as MessageItem[],
+      ) as typeof next,
   });
 
   const { data: threads } = useQuery({
@@ -69,14 +80,47 @@ export function MessagePanel({
 
   useChannelRealtime(projectId);
 
-  const threadsByRootMessage = new Map(
-    threads.map((thread) => [thread.rootMessageId, thread]),
+  const threadsByRootMessage = useMemo(
+    () => new Map(threads.map((thread) => [thread.rootMessageId, thread])),
+    [threads],
   );
 
-  useEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [messages]);
+  const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingRef = useRef(false);
+  const hasMoreRef = useRef(initialMessages.length >= INITIAL_PAGE);
+
+  const loadOlder = useCallback(async () => {
+    if (loadingRef.current || !hasMoreRef.current) return;
+
+    const current = queryClient.getQueryData<MessageItem[]>(queryKey) ?? [];
+    const oldest = current.find((message) => !message.pending);
+    if (!oldest) return;
+
+    loadingRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const older = await trpc.messages.list.query({
+        projectId,
+        before: oldest.seq,
+        limit: OLDER_PAGE,
+      });
+      if (older.length < OLDER_PAGE) hasMoreRef.current = false;
+
+      let added = 0;
+      queryClient.setQueryData<MessageItem[]>(queryKey, (previous) => {
+        const next = prependMessages(previous ?? [], older as MessageItem[]);
+        added = next.length - (previous?.length ?? 0);
+        return next;
+      });
+      if (added > 0) setFirstItemIndex((index) => index - added);
+    } catch {
+      console.warn("[messages] could not load older messages");
+    } finally {
+      loadingRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [projectId, queryClient, queryKey]);
 
   async function send(payload: ComposerSendPayload) {
     const clientId = crypto.randomUUID();
@@ -112,44 +156,48 @@ export function MessagePanel({
     }
   }
 
-  async function remove(messageId: string) {
-    const thread = threads.find((item) => item.rootMessageId === messageId);
+  const remove = useCallback(
+    async (messageId: string) => {
+      const known =
+        queryClient.getQueryData<ThreadItem[]>(threadsKey(projectId)) ?? [];
+      const thread = known.find((item) => item.rootMessageId === messageId);
 
-    queryClient.setQueryData<MessageItem[]>(queryKey, (previous) =>
-      removeMessage(previous ?? [], messageId),
-    );
-    if (thread) {
-      queryClient.setQueryData<ThreadItem[]>(threadsKey(projectId), (previous) =>
-        removeThread(previous ?? [], thread.id),
+      queryClient.setQueryData<MessageItem[]>(queryKey, (previous) =>
+        removeMessage(previous ?? [], messageId),
       );
-      if (openThreadId === thread.id) router.replace(basePath);
-    }
+      if (thread) {
+        queryClient.setQueryData<ThreadItem[]>(
+          threadsKey(projectId),
+          (previous) => removeThread(previous ?? [], thread.id),
+        );
+        if (openThreadId === thread.id) router.replace(basePath);
+      }
 
-    try {
-      await trpc.messages.remove.mutate({ projectId, messageId });
-    } catch {
-      console.warn("[messages] delete failed");
-      await queryClient.invalidateQueries({ queryKey });
-      await queryClient.invalidateQueries({ queryKey: threadsKey(projectId) });
-    }
-  }
+      try {
+        await trpc.messages.remove.mutate({ projectId, messageId });
+      } catch {
+        console.warn("[messages] delete failed");
+        await queryClient.invalidateQueries({ queryKey });
+        await queryClient.invalidateQueries({ queryKey: threadsKey(projectId) });
+      }
+    },
+    [projectId, queryClient, queryKey, openThreadId, router, basePath],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        ref={scrollRef}
-        className="overscroll-contain flex min-h-0 flex-1 flex-col overflow-y-auto"
-      >
-        <div className="mt-auto w-full">
-          <MessageList
-            channelName={channelName}
-            messages={messages}
-            threadsByRootMessage={threadsByRootMessage}
-            basePath={basePath}
-            memberId={memberId}
-            onDelete={remove}
-          />
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <MessageList
+          channelName={channelName}
+          messages={messages}
+          threadsByRootMessage={threadsByRootMessage}
+          basePath={basePath}
+          memberId={memberId}
+          firstItemIndex={firstItemIndex}
+          loadingOlder={loadingOlder}
+          onLoadOlder={loadOlder}
+          onDelete={remove}
+        />
       </div>
       <div className="pb-safe-2 shrink-0 px-2 sm:px-4 sm:pb-4">
         {pausedCount > 0 ? (

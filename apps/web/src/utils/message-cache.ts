@@ -17,10 +17,49 @@ export function sortMessages(list: MessageItem[]): MessageItem[] {
   });
 }
 
+function sameReactions(a: ReactionRef[], b: ReactionRef[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (ref, index) =>
+      ref.emoji === b[index]?.emoji && ref.memberId === b[index]?.memberId,
+  );
+}
+
+function reconcile(
+  existing: MessageItem | undefined,
+  incoming: MessageItem,
+): MessageItem {
+  if (!existing) return incoming;
+
+  const unchanged =
+    existing.id === incoming.id &&
+    existing.seq === incoming.seq &&
+    existing.text === incoming.text &&
+    existing.pending === incoming.pending &&
+    existing.failed === incoming.failed &&
+    (existing.editedAt?.getTime() ?? null) ===
+      (incoming.editedAt?.getTime() ?? null) &&
+    existing.attachments.length === incoming.attachments.length;
+
+  if (!unchanged) return incoming;
+
+  return sameReactions(existing.reactions, incoming.reactions)
+    ? existing
+    : { ...existing, reactions: incoming.reactions };
+}
+
 export function mergeMessage(
   list: MessageItem[],
   incoming: MessageItem,
 ): MessageItem[] {
+  const previous = list.find((message) =>
+    incoming.clientId
+      ? message.clientId === incoming.clientId
+      : message.id === incoming.id,
+  );
+  const merged = reconcile(previous, incoming);
+  if (merged === previous) return list;
+
   const kept = list.filter((message) =>
     incoming.clientId
       ? message.clientId !== incoming.clientId
@@ -28,13 +67,13 @@ export function mergeMessage(
   );
 
   const alreadyStored = kept.some(
-    (message) => !message.pending && message.seq === incoming.seq,
+    (message) => !message.pending && message.seq === merged.seq,
   );
   if (alreadyStored) {
     return kept.length === list.length ? list : sortMessages(kept);
   }
 
-  return sortMessages([...kept, incoming]);
+  return sortMessages([...kept, merged]);
 }
 
 export function mergeMessages(
@@ -43,12 +82,15 @@ export function mergeMessages(
 ): MessageItem[] {
   if (incoming.length === 0) return list;
 
+  const byId = new Map(list.map((message) => [message.id, message]));
+  const merged = incoming.map((message) => reconcile(byId.get(message.id), message));
+
   const clientIds = new Set(
-    incoming
+    merged
       .map((message) => message.clientId)
       .filter((clientId): clientId is string => Boolean(clientId)),
   );
-  const seqs = new Set(incoming.map((message) => message.seq));
+  const seqs = new Set(merged.map((message) => message.seq));
 
   const kept = list.filter((message) => {
     if (message.clientId && clientIds.has(message.clientId)) return false;
@@ -56,7 +98,26 @@ export function mergeMessages(
     return true;
   });
 
-  return sortMessages([...kept, ...incoming]);
+  const next = sortMessages([...kept, ...merged]);
+
+  const identical =
+    next.length === list.length &&
+    next.every((message, index) => message === list[index]);
+
+  return identical ? list : next;
+}
+
+export function prependMessages(
+  list: MessageItem[],
+  older: MessageItem[],
+): MessageItem[] {
+  if (older.length === 0) return list;
+
+  const seqs = new Set(list.map((message) => message.seq));
+  const fresh = older.filter((message) => !seqs.has(message.seq));
+  if (fresh.length === 0) return list;
+
+  return sortMessages([...fresh, ...list]);
 }
 
 export function removeMessage(

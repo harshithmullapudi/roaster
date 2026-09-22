@@ -22,6 +22,7 @@ export interface PlannedNotification {
 }
 
 function agentOutcome(leadStatus: string | null): NotificationType {
+  if (leadStatus === "needs_input") return "agent_needs_input";
   if (leadStatus === "waiting") return "agent_waiting";
   if (leadStatus === "failed") return "agent_failed";
   return "agent_replied";

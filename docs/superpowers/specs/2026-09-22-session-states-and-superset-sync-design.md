@@ -11,6 +11,19 @@ talking" as "the session is over."
 
 This design fixes (1) and (2). (3) is deferred — see "Deferred: subagents".
 
+## Delivery order
+
+1. **The state model** — `needs_input` and `idle`, the dots, the question
+   card, the notification. Self-contained: on `Stop` the session parks at
+   `idle` and the watch stops as it does today, and a thread reply revives it
+   through the existing `resume()`.
+2. **The watcher and the sync** — the watch survives into `idle`, and
+   Superset-side turns come back as messages.
+3. **Clickable answers** — `roster ask-human`, mirroring `roster ask`, so an
+   option clicked in the thread resumes the agent with that exact answer.
+   Driving Claude Code's TUI with positional keystrokes was considered and
+   rejected: a mis-parse would silently send the wrong answer.
+
 ## Background
 
 `thread_sessions.status` is `starting | running | waiting | completed |

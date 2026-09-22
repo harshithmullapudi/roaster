@@ -481,6 +481,7 @@ export type InsertDelegation = typeof delegations.$inferInsert;
 
 export const NOTIFICATION_TYPES = [
   "agent_replied",
+  "agent_needs_input",
   "agent_waiting",
   "agent_failed",
   "human_replied",

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ThreadDetail } from "@roster/api";
+import { cn } from "@roster/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,7 +28,12 @@ import {
   prependReplies,
   splitThread,
 } from "~/utils/thread-detail";
-import { canRetry, isActive, threadDetailKey } from "~/utils/thread-rows";
+import {
+  canRetry,
+  isActive,
+  needsInput,
+  threadDetailKey,
+} from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
 import { ReplyDivider } from "./reply-divider";
@@ -73,6 +79,7 @@ export function ThreadPanel({
   useThreadRealtime(threadId, projectId);
 
   const live = isActive(detail.thread.status);
+  const asking = needsInput(detail.thread.status);
   const now = useNow(live);
   const retryable = canRetry(detail.thread.status, detail.thread.error);
   const { root, replies } = splitThread(detail);
@@ -212,7 +219,12 @@ export function ThreadPanel({
         return (
           <div className="pb-3">
             {live ? (
-              <div className="border-border mx-3 mt-2 flex flex-col gap-1 rounded-md border px-2.5 py-2 sm:mx-5">
+              <div
+                className={cn(
+                  "border-border mx-3 mt-2 flex flex-col gap-1 rounded-md border px-2.5 py-2 sm:mx-5",
+                  asking && "border-l-warning border-l-2",
+                )}
+              >
                 <span className="flex items-center gap-2">
                   <ThreadStatus status={detail.thread.status} />
                   <span
@@ -228,9 +240,18 @@ export function ThreadPanel({
                   </span>
                 ) : detail.thread.waitingOn ? (
                   <WaitingOnCard waiting={detail.thread.waitingOn} />
+                ) : asking ? (
+                  <span className="text-foreground text-sm">
+                    {detail.thread.lastProgress ?? "Waiting on an answer."}
+                  </span>
                 ) : detail.thread.lastProgress ? (
                   <span className="text-muted-foreground text-sm">
                     {detail.thread.lastProgress}
+                  </span>
+                ) : null}
+                {asking ? (
+                  <span className="text-muted-foreground text-xs">
+                    Reply below to answer.
                   </span>
                 ) : null}
                 <span className="mt-0.5 flex items-center gap-1.5">
@@ -255,7 +276,7 @@ export function ThreadPanel({
           </div>
         );
       },
-    [live, now, retryable, projectId, threadId, detail.thread],
+    [live, asking, now, retryable, projectId, threadId, detail.thread],
   );
 
   const components = useMemo(

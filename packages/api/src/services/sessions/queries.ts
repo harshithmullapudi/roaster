@@ -19,6 +19,8 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
+  ne,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -600,6 +602,8 @@ export interface ThreadDetail {
   messages: ChannelMessage[];
 }
 
+export const THREAD_REPLY_LIMIT = 50;
+
 export async function threadSummary(args: {
   projectId: string;
   threadId: string;
@@ -623,19 +627,47 @@ export async function threadSummary(args: {
 export async function threadDetail(args: {
   projectId: string;
   threadId: string;
+  before?: number;
+  limit?: number;
 }): Promise<ThreadDetail | null> {
   const thread = await threadSummary(args);
   if (!thread) return null;
 
-  const rows = await db
+  const limit = Math.min(Math.max(args.limit ?? THREAD_REPLY_LIMIT, 1), 200);
+
+  const conditions = [
+    eq(messages.threadId, args.threadId),
+    isNull(messages.deletedAt),
+    ne(messages.id, thread.rootMessageId),
+  ];
+  if (args.before !== undefined) conditions.push(lt(messages.seq, args.before));
+
+  const [rootRows, replyRows] = await Promise.all([
+    args.before === undefined
+      ? threadMessageRows([
+          eq(messages.id, thread.rootMessageId),
+          isNull(messages.deletedAt),
+        ])
+      : Promise.resolve([]),
+    threadMessageRows(conditions, limit),
+  ]);
+
+  const rows = [...rootRows, ...replyRows.reverse()];
+
+  return { thread, messages: await withAttachments(rows.map(toChannelMessage)) };
+}
+
+function threadMessageRows(conditions: SQL[], limit?: number) {
+  const query = db
     .select(messageColumns)
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
     .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
     .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
-    .where(and(eq(messages.threadId, args.threadId), isNull(messages.deletedAt)))
-    .orderBy(asc(messages.seq));
+    .where(and(...conditions));
 
-  return { thread, messages: await withAttachments(rows.map(toChannelMessage)) };
+  return limit === undefined
+    ? query.orderBy(asc(messages.seq))
+    : query.orderBy(desc(messages.seq)).limit(limit);
 }

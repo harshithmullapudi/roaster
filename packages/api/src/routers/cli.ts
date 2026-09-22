@@ -130,6 +130,7 @@ export const cliRouter = createTRPCRouter({
       const detail = await threadDetail({
         projectId: project.id,
         threadId: input.threadId,
+        limit: input.limit,
       });
 
       if (!detail) {

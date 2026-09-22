@@ -53,6 +53,8 @@ export const threadsRouter = createTRPCRouter({
       z.object({
         projectId: z.string().uuid(),
         threadId: z.string().uuid(),
+        before: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(100).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -67,6 +69,8 @@ export const threadsRouter = createTRPCRouter({
       const detail = await threadDetail({
         projectId: project.id,
         threadId: input.threadId,
+        before: input.before,
+        limit: input.limit,
       });
       if (!detail) throw new TRPCError({ code: "NOT_FOUND" });
 

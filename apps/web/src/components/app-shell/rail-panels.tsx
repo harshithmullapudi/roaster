@@ -37,16 +37,20 @@ export function RailPanels({
       >
         {main}
       </ResizablePanel>
-      <ResizableHandle className="hover:bg-primary/40 transition-colors after:w-2" />
-      <ResizablePanel
-        id="shell-rail"
-        defaultSize="35"
-        minSize="24"
-        maxSize="60"
-        className="flex min-w-0"
-      >
-        {rail}
-      </ResizablePanel>
+      {rail ? (
+        <>
+          <ResizableHandle className="hover:bg-primary/40 transition-colors after:w-2" />
+          <ResizablePanel
+            id="shell-rail"
+            defaultSize="35"
+            minSize="24"
+            maxSize="60"
+            className="flex min-w-0"
+          >
+            {rail}
+          </ResizablePanel>
+        </>
+      ) : null}
     </ResizablePanelGroup>
   );
 }

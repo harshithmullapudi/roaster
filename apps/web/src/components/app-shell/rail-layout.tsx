@@ -1,8 +1,8 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { useDefaultLayout } from "@roster/ui";
+import type { ReactNode } from "react";
 
-import { PersistedRailPanels } from "./persisted-rail-panels";
 import { RailPanels } from "./rail-panels";
 
 export interface RailLayoutProps {
@@ -10,12 +10,32 @@ export interface RailLayoutProps {
   rail: ReactNode;
 }
 
+const SERVER_STORAGE: Storage = {
+  length: 0,
+  clear: () => {},
+  getItem: () => null,
+  key: () => null,
+  removeItem: () => {},
+  setItem: () => {},
+};
+
+function layoutStorage(): Storage {
+  return typeof window === "undefined" ? SERVER_STORAGE : window.localStorage;
+}
+
 export function RailLayout({ main, rail }: RailLayoutProps) {
-  const [mounted, setMounted] = useState(false);
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: "roster.thread-rail",
+    panelIds: ["shell-main", "shell-rail"],
+    storage: layoutStorage(),
+  });
 
-  useEffect(() => setMounted(true), []);
-
-  if (!mounted) return <RailPanels main={main} rail={rail} />;
-
-  return <PersistedRailPanels main={main} rail={rail} />;
+  return (
+    <RailPanels
+      main={main}
+      rail={rail}
+      defaultLayout={defaultLayout}
+      onLayoutChanged={onLayoutChanged}
+    />
+  );
 }

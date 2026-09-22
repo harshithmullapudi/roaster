@@ -41,11 +41,16 @@ export function MessageList({
     <div className="flex w-full flex-col pb-3">
       {messages.map((message, index) => {
         const thread = threadsByRootMessage.get(message.id);
+        const previous = messages[index - 1];
         return (
           <MessageRow
             key={message.clientId ?? message.id}
             message={message}
-            leading={startsNewGroup(message, messages[index - 1])}
+            leading={startsNewGroup(
+              message,
+              previous,
+              previous ? threadsByRootMessage.has(previous.id) : false,
+            )}
             thread={thread}
             threadHref={thread ? `${basePath}?thread=${thread.id}` : undefined}
             memberId={memberId}

@@ -1,4 +1,4 @@
-import type { ThreadSummary, WaitingOn } from "@roster/api";
+import type { ThreadStatus, ThreadSummary, WaitingOn } from "@roster/api";
 
 export type ThreadItem = Omit<
   ThreadSummary,
@@ -26,9 +26,17 @@ export function isWaiting(status: string): boolean {
   return status === "waiting";
 }
 
+export function needsInput(status: string): boolean {
+  return status === "needs_input";
+}
+
+export function isIdle(status: string): boolean {
+  return status === "idle";
+}
+
 export function isActive(status: string, completedAt?: Date | null): boolean {
   if (completedAt) return false;
-  return isLive(status) || isWaiting(status);
+  return isLive(status) || isWaiting(status) || needsInput(status);
 }
 
 export function canRetry(status: string, error: string | null): boolean {
@@ -44,8 +52,12 @@ export function statusLabel(status: string, completedAt?: Date | null): string {
       return "Starting";
     case "running":
       return "Running";
+    case "needs_input":
+      return "Needs input";
     case "waiting":
       return "Waiting";
+    case "idle":
+      return "Idle";
     case "completed":
       return "Completed";
     case "failed":
@@ -55,6 +67,26 @@ export function statusLabel(status: string, completedAt?: Date | null): string {
     default:
       return status;
   }
+}
+
+/*
+ * Typed as a complete record of ThreadStatus, so adding a status in the API
+ * without giving it a colour here is a type error rather than a silent grey
+ * dot.
+ */
+const TONE: Record<ThreadStatus, string> = {
+  starting: "bg-muted-foreground",
+  running: "bg-primary",
+  needs_input: "bg-warning",
+  waiting: "bg-primary/60",
+  idle: "bg-muted-foreground/50",
+  completed: "bg-muted-foreground",
+  failed: "bg-destructive",
+  canceled: "bg-muted-foreground",
+};
+
+export function statusTone(status: string): string | null {
+  return TONE[status as ThreadStatus] ?? null;
 }
 
 export function waitingOnLabel(waiting: WaitingOn | null): string | null {

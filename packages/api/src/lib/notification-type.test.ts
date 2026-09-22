@@ -66,6 +66,12 @@ describe("notificationTypeFor", () => {
     );
   });
 
+  it("calls an agent turn that stopped to ask a question a request for input", () => {
+    expect(
+      notificationTypeFor(event({ leadStatus: "needs_input" }), AUTHOR),
+    ).toBe("agent_needs_input");
+  });
+
   it("calls a broken agent turn a failure", () => {
     expect(notificationTypeFor(event({ leadStatus: "failed" }), AUTHOR)).toBe(
       "agent_failed",

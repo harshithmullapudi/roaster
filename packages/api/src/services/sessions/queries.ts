@@ -197,7 +197,7 @@ async function leadSessionByThread(
   return found;
 }
 
-const LEAD_ORDER = sql`case ts.status when 'running' then 0 when 'starting' then 1 when 'waiting' then 2 else 3 end, case when ts.role = 'main' then 0 else 1 end, ts.started_at desc`;
+const LEAD_ORDER = sql`case ts.status when 'running' then 0 when 'needs_input' then 1 when 'starting' then 2 when 'waiting' then 3 when 'idle' then 4 else 5 end, case when ts.role = 'main' then 0 else 1 end, ts.started_at desc`;
 
 function leadSession<T>(column: string): SQL<T> {
   return sql<T>`(select ts.${sql.raw(column)} from roster.thread_sessions ts where ts.thread_id = ${THREAD_ID} order by ${LEAD_ORDER} limit 1)`;
@@ -401,7 +401,17 @@ export async function listInboxThreads(
   }));
 }
 
-export const LIVE_THREAD_STATUSES = ["starting", "running", "waiting"] as const;
+/*
+ * What counts as live in the sidebar and the threads list. `idle` is
+ * deliberately absent: it is where every session comes to rest, so including
+ * it would leave every thread ever run showing as live forever.
+ */
+export const LIVE_THREAD_STATUSES = [
+  "starting",
+  "running",
+  "needs_input",
+  "waiting",
+] as const;
 
 export interface LiveThread {
   id: string;

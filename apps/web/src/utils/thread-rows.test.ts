@@ -5,13 +5,16 @@ import {
   isActive,
   parsePublishedThread,
   statusLabel,
+  statusTone,
   waitingOnLabel,
 } from "./thread-rows";
 
 const STATUSES = [
   "starting",
   "running",
+  "needs_input",
   "waiting",
+  "idle",
   "completed",
   "failed",
   "canceled",
@@ -53,6 +56,14 @@ describe("isActive", () => {
     expect(isActive("canceled")).toBe(false);
   });
 
+  it("counts a thread that is asking someone a question", () => {
+    expect(isActive("needs_input")).toBe(true);
+  });
+
+  it("does not count an idle thread — it would sit in the sidebar forever", () => {
+    expect(isActive("idle")).toBe(false);
+  });
+
   it("settles a completed thread whatever its session was doing", () => {
     const completedAt = new Date("2026-09-18T11:00:00.000Z");
     for (const status of STATUSES) {
@@ -80,6 +91,32 @@ describe("statusLabel", () => {
     expect(statusLabel("waiting", null)).toBe("Waiting");
     expect(statusLabel("completed")).toBe("Completed");
     expect(statusLabel("canceled", null)).toBe("Canceled");
+  });
+
+  it("names the two states a stopped session can be in", () => {
+    expect(statusLabel("needs_input")).toBe("Needs input");
+    expect(statusLabel("idle")).toBe("Idle");
+  });
+});
+
+describe("statusTone", () => {
+  it("gives every status the thread list can show a dot colour", () => {
+    for (const status of STATUSES) {
+      expect(statusTone(status)).not.toBeNull();
+    }
+  });
+
+  it("tells running, needs_input and idle apart", () => {
+    const tones = new Set([
+      statusTone("running"),
+      statusTone("needs_input"),
+      statusTone("idle"),
+    ]);
+    expect(tones.size).toBe(3);
+  });
+
+  it("has no colour for a status it does not know", () => {
+    expect(statusTone("banana")).toBeNull();
   });
 });
 

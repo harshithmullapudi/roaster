@@ -2,20 +2,11 @@
 
 import { cn } from "@roster/ui";
 
-import { isLive, isWaiting, statusLabel } from "~/utils/thread-rows";
+import { isLive, isWaiting, statusLabel, statusTone } from "~/utils/thread-rows";
 
 export interface ThreadStatusProps {
   status: string;
 }
-
-const TONE: Record<string, string> = {
-  starting: "bg-muted-foreground",
-  running: "bg-primary",
-  waiting: "bg-primary/60",
-  completed: "bg-muted-foreground",
-  failed: "bg-destructive",
-  canceled: "bg-muted-foreground",
-};
 
 export function ThreadStatus({ status }: ThreadStatusProps) {
   return (
@@ -23,7 +14,9 @@ export function ThreadStatus({ status }: ThreadStatusProps) {
       <span
         className={cn(
           "size-1.5 rounded-full",
-          TONE[status] ?? "bg-muted-foreground",
+          statusTone(status) ?? "bg-muted-foreground",
+          // A pulse means work is happening. Needs input is deliberately
+          // still — it is the colour that should catch the eye, not motion.
           (isLive(status) || isWaiting(status)) && "animate-pulse",
         )}
       />

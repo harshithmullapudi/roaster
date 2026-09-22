@@ -36,6 +36,11 @@ import {
   rosterEnvelope,
 } from "../../utils/roster-envelope";
 import { agentIsGone } from "../../utils/agent-liveness";
+import {
+  type LifecycleEvent,
+  nextStatus,
+  type ThreadStatus,
+} from "../../utils/session-state";
 import { mergeSteers, undeliveredSteerNotice } from "../../utils/steer-queue";
 import { agentReply, lastMeaningfulLine } from "../../utils/thread-progress";
 import { markdownToTiptap } from "../../utils/tiptap";
@@ -67,15 +72,7 @@ const MAX_PUBLISH_HOPS = 3;
 
 const TERMINAL_STATUSES = ["completed", "failed", "canceled"] as const;
 
-export const THREAD_STATUSES = [
-  "starting",
-  "running",
-  "waiting",
-  "completed",
-  "failed",
-  "canceled",
-] as const;
-export type ThreadStatus = (typeof THREAD_STATUSES)[number];
+export { THREAD_STATUSES, type ThreadStatus } from "../../utils/session-state";
 
 function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "canceled";
@@ -83,6 +80,37 @@ function isTerminal(status: string): boolean {
 
 function isParked(status: string): boolean {
   return status === "waiting";
+}
+
+function isIdle(status: string): boolean {
+  return status === "idle";
+}
+
+/**
+ * True when this thread owes an answer to a thread that asked for one. Such a
+ * session has to complete rather than rest at idle, because completing is what
+ * settles the delegation and wakes the asking thread.
+ */
+export async function answersDelegation(threadId: string): Promise<boolean> {
+  const open = await db.query.delegations.findFirst({
+    where: and(
+      eq(delegations.childThreadId, threadId),
+      eq(delegations.status, "open"),
+    ),
+    columns: { id: true },
+  });
+  return open !== undefined;
+}
+
+async function statusAfter(
+  session: SessionView,
+  event: LifecycleEvent,
+): Promise<ThreadStatus | null> {
+  return nextStatus({
+    current: session.status,
+    event,
+    answersDelegation: await answersDelegation(session.threadId),
+  });
 }
 
 const COMPLETE_EMOJI = "✅";
@@ -409,6 +437,12 @@ function handleLifecycle(
 
   if (eventType === "Start") {
     watch.lastStartAt = Date.now();
+    void wake(sessionId);
+    return;
+  }
+
+  if (eventType === "PermissionRequest") {
+    void askForInput(sessionId);
     return;
   }
 
@@ -416,6 +450,69 @@ function handleLifecycle(
     watch.lastStopAt = Date.now();
     void settle(sessionId);
   }
+}
+
+/** The agent's last turn of speech, or null if its output cannot be read. */
+async function captureReply(
+  session: SessionView,
+  watch: Watch,
+): Promise<string | null> {
+  try {
+    const connection = await hostConnection(session);
+    const transcript = await readTranscript({
+      jwt: connection.jwt,
+      routingKey: watch.hostKey,
+      workspaceId: watch.workspaceId,
+      terminalId: watch.terminalId,
+    });
+    return agentReply(transcript.text);
+  } catch {
+    return null;
+  }
+}
+
+/** The agent is working again — clear needs_input, or revive an idle session. */
+async function wake(sessionId: string): Promise<void> {
+  const session = await sessionById(sessionId);
+  if (!session) return;
+
+  const status = await statusAfter(session, "Start");
+  if (status === null) return;
+
+  const row = await patch(sessionId, { status, endedAt: null, error: null });
+  if (row) await publishThread(row.threadId);
+}
+
+/**
+ * The agent has stopped to ask someone something. Post the question so it is
+ * in the thread and the people following it are told, then park at needs_input
+ * until somebody answers.
+ */
+async function askForInput(sessionId: string): Promise<void> {
+  const watch = watches.get(sessionId);
+  const session = await sessionById(sessionId);
+  if (!session || !watch) return;
+
+  const status = await statusAfter(session, "PermissionRequest");
+  if (status === null) return;
+
+  const question = await captureReply(session, watch);
+
+  const row = await patch(sessionId, {
+    status,
+    lastProgress: question ?? session.lastProgress,
+  });
+  if (!row) return;
+
+  if (question && question.trim().length > 0) {
+    await persistAgentMessage({
+      thread: threadIdentity(row),
+      text: question,
+      agentChannelId: row.projectId,
+    });
+  }
+
+  await publishThread(row.threadId);
 }
 
 async function settle(sessionId: string): Promise<void> {
@@ -432,7 +529,10 @@ async function settle(sessionId: string): Promise<void> {
   const session = await sessionById(sessionId);
   if (!session || isTerminal(session.status)) return;
 
-  await finish({ sessionId, status: "completed", error: null, capture: true });
+  const status = await statusAfter(session, "Stop");
+  if (status === null) return;
+
+  await finish({ sessionId, status, error: null, capture: true });
 }
 
 async function pollOnce(sessionId: string): Promise<void> {
@@ -495,12 +595,9 @@ async function pollOnce(sessionId: string): Promise<void> {
         await drainSteers(sessionId);
         return;
       }
-      await finish({
-        sessionId,
-        status: "completed",
-        error: null,
-        capture: true,
-      });
+      const status = await statusAfter(session, "Stop");
+      if (status === null) return;
+      await finish({ sessionId, status, error: null, capture: true });
       return;
     }
     bound = binding !== undefined;
@@ -527,7 +624,10 @@ async function pollOnce(sessionId: string): Promise<void> {
     console.warn(
       `[sessions] nothing has been bound to ${sessionId}'s terminal for ${STALENESS_TIMEOUT_MS}ms and it wrote nothing — ending it`,
     );
-    await finish({ sessionId, status: "completed", error: null, capture: true });
+    const status = await statusAfter(session, "Stop");
+    if (status !== null) {
+      await finish({ sessionId, status, error: null, capture: true });
+    }
     return;
   }
 
@@ -658,21 +758,8 @@ async function finishOnce(args: {
     return NOTHING_TO_RESUME;
   }
 
-  let finalText: string | null = null;
-  if (args.capture && watch) {
-    try {
-      const connection = await hostConnection(session);
-      const transcript = await readTranscript({
-        jwt: connection.jwt,
-        routingKey: watch.hostKey,
-        workspaceId: watch.workspaceId,
-        terminalId: watch.terminalId,
-      });
-      finalText = agentReply(transcript.text);
-    } catch {
-      finalText = null;
-    }
-  }
+  const finalText =
+    args.capture && watch ? await captureReply(session, watch) : null;
 
   stopWatch(args.sessionId);
   const queued = takeSteers(args.sessionId);
@@ -1199,7 +1286,14 @@ export async function steer(args: {
 
   await bumpTurn(session.threadId);
 
-  if (isTerminal(session.status) || isParked(session.status)) {
+  // An idle session has no agent listening, so it needs restarting rather
+  // than typing into. A needs_input one is listening — interrupt types the
+  // answer straight into the prompt it is blocked on.
+  if (
+    isTerminal(session.status) ||
+    isParked(session.status) ||
+    isIdle(session.status)
+  ) {
     await resume({ sessionId: session.id, text: args.text });
     return;
   }

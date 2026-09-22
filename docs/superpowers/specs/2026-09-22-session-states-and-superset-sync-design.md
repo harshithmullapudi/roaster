@@ -66,23 +66,31 @@ Transitions:
 ```
 Start             → running        (also promotes needs_input/idle → running)
 PermissionRequest → needs_input
-Stop | Detached   → idle           role = main
-Stop | Detached   → completed      role = delegate
+Stop | Detached   → idle           thread owes nobody an answer
+Stop | Detached   → completed      thread is the child of an open delegation
 reply while idle  → running        via existing resume()
 thread completed  → completed
 worktree reaped   → completed
 ```
 
-### Delegates still complete
+### What may rest, and what must end
 
-`finish(completed)` is what triggers `settleIfDelegated`, which hands a
-delegate's answer back to the parent thread (`supervisor.ts:729`). If
-delegates went idle, parent threads would hang forever and worktrees would
-leak. A delegate exists to answer one question and end.
+`finish(completed)` is what triggers `settleIfDelegated`, which hands an
+answer back to the thread that asked for it (`supervisor.ts:729`). A session
+that owes an answer must therefore end rather than rest, or the asking thread
+waits forever and its worktree leaks.
 
-So the idle transition is scoped to `role === "main"`. This rule is the most
-likely thing for a later edit to break, so it is pinned by a table-driven
-test rather than left as a conditional in a long function.
+The discriminator is **an open row in `delegations` whose `child_thread_id` is
+this thread** — not the session's role. `thread_sessions.role` looks like the
+natural key but is not one: `settleDelegationFor` looks the delegation up by
+thread, and every session is created with `role: "main"` (the single role
+assignment in the codebase), so `"delegate"` never appears. Keying the rule on
+role would have left it permanently inert — every session would rest at idle,
+including the ones owing answers, hanging every `roster ask`.
+
+This is the rule most likely for a later edit to break, so it is pinned twice:
+a table-driven unit test over the pure transition, and a database test that
+seeds a real delegation and asserts the predicate flips when it is answered.
 
 ### Naming
 

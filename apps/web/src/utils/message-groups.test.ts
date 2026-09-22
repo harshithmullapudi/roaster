@@ -1,6 +1,46 @@
 import { describe, expect, it } from "vitest";
 
-import { displayName, speakerName } from "./message-groups";
+import { displayName, speakerName, startsNewGroup } from "./message-groups";
+
+describe("startsNewGroup", () => {
+  const at = (seconds: number) => new Date(2026, 0, 1, 12, 0, seconds);
+  const said = (memberId: string, seconds: number) => ({
+    authorMemberId: memberId,
+    createdAt: at(seconds),
+  });
+
+  it("starts a group when there is nothing above", () => {
+    expect(startsNewGroup(said("harshith", 0), undefined)).toBe(true);
+  });
+
+  it("keeps the same speaker together inside the window", () => {
+    expect(startsNewGroup(said("harshith", 30), said("harshith", 0))).toBe(
+      false,
+    );
+  });
+
+  it("breaks on a different speaker", () => {
+    expect(startsNewGroup(said("rhea", 30), said("harshith", 0))).toBe(true);
+  });
+
+  it("breaks once the window has passed", () => {
+    expect(startsNewGroup(said("harshith", 600), said("harshith", 0))).toBe(
+      true,
+    );
+  });
+
+  it("breaks after a message that started a thread", () => {
+    expect(
+      startsNewGroup(said("harshith", 30), said("harshith", 0), true),
+    ).toBe(true);
+  });
+
+  it("still groups when the message above has no thread", () => {
+    expect(
+      startsNewGroup(said("harshith", 30), said("harshith", 0), false),
+    ).toBe(false);
+  });
+});
 
 describe("displayName", () => {
   it("uses the name when there is one", () => {

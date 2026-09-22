@@ -13,8 +13,12 @@ function speaker(message: GroupableMessage): string | null {
 export function startsNewGroup(
   message: GroupableMessage,
   previous: GroupableMessage | undefined,
+  previousHasThread = false,
 ): boolean {
   if (!previous) return true;
+  // A thread affordance closes the message it hangs off. Whatever comes next
+  // is a new remark, not another line of the one that started the thread.
+  if (previousHasThread) return true;
   if (speaker(previous) !== speaker(message)) return true;
   return (
     message.createdAt.getTime() - previous.createdAt.getTime() >

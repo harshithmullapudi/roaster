@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countByState,
   groupByChannel,
   type LiveThreadItem,
   threadTitle,
@@ -66,5 +67,33 @@ describe("groupByChannel", () => {
 
   it("returns an empty map for an empty list", () => {
     expect(groupByChannel([]).size).toBe(0);
+  });
+});
+
+describe("countByState", () => {
+  it("counts an agent working separately from one waiting on a person", () => {
+    const counts = countByState([
+      thread({ id: "a", status: "running" }),
+      thread({ id: "b", status: "starting" }),
+      thread({ id: "c", status: "needs_input" }),
+    ]);
+
+    expect(counts).toEqual({ running: 2, needsInput: 1 });
+  });
+
+  it("does not let a thread waiting on a person be counted as running", () => {
+    const counts = countByState([thread({ status: "needs_input" })]);
+
+    expect(counts.running).toBe(0);
+    expect(counts.needsInput).toBe(1);
+  });
+
+  it("ignores states that are neither", () => {
+    const counts = countByState([
+      thread({ id: "a", status: "waiting" }),
+      thread({ id: "b", status: "idle" }),
+    ]);
+
+    expect(counts).toEqual({ running: 0, needsInput: 0 });
   });
 });

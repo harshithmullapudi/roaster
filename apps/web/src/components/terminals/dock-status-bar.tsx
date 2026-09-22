@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "@roster/ui";
 import { SquareTerminal } from "lucide-react";
 
-import { RunningCount } from "~/components/threads/running-count";
-import { isLive, threadsKey } from "~/utils/thread-rows";
+import { SessionCounts } from "~/components/threads/session-counts";
+import { countByState } from "~/utils/live-threads";
+import { threadsKey } from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
 import { useDock } from "./dock-provider";
@@ -29,7 +30,7 @@ function ThreadCounts({
     refetchInterval: 15_000,
   });
 
-  const running = (threads ?? []).filter((thread) => isLive(thread.status)).length;
+  const counts = countByState(threads ?? []);
   const open = worktrees?.length ?? 0;
 
   if (open === 0) return null;
@@ -41,7 +42,11 @@ function ThreadCounts({
       className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-2.5 text-xs"
     >
       <span>{open} open</span>
-      <RunningCount count={running} labeled />
+      <SessionCounts
+        running={counts.running}
+        needsInput={counts.needsInput}
+        labeled
+      />
     </button>
   );
 }

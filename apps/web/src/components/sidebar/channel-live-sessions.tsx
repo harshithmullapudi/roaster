@@ -8,9 +8,13 @@ import {
 } from "@roster/ui";
 import Link from "next/link";
 
-import { RunningCount } from "~/components/threads/running-count";
+import { SessionCounts } from "~/components/threads/session-counts";
 import { ThreadStatus } from "~/components/threads/thread-status";
-import { type LiveThreadItem, threadTitle } from "~/utils/live-threads";
+import {
+  countByState,
+  type LiveThreadItem,
+  threadTitle,
+} from "~/utils/live-threads";
 
 export interface ChannelLiveSessionsProps {
   channelSlug: string;
@@ -25,10 +29,13 @@ export function ChannelLiveSessions({
 }: ChannelLiveSessionsProps) {
   if (threads.length === 0) return null;
 
+  const counts = countByState(threads);
   const heading =
-    threads.length === 1
-      ? "1 session running"
-      : `${threads.length} sessions running`;
+    counts.needsInput > 0
+      ? `${counts.needsInput} of ${threads.length} waiting on you`
+      : threads.length === 1
+        ? "1 session running"
+        : `${threads.length} sessions running`;
 
   return (
     <HoverCard openDelay={120} closeDelay={120}>
@@ -38,7 +45,10 @@ export function ChannelLiveSessions({
           aria-label={`${heading} in ${channelSlug}`}
           className="text-muted-foreground hover:text-foreground min-w-(--btn-h-xs) flex h-(--btn-h-xs) shrink-0 items-center justify-end gap-1.5 px-0.5"
         >
-          <RunningCount count={threads.length} />
+          <SessionCounts
+            running={counts.running}
+            needsInput={counts.needsInput}
+          />
         </button>
       </HoverCardTrigger>
 

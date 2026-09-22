@@ -4,7 +4,7 @@ import type { ThreadDetail } from "@roster/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso } from "react-virtuoso";
 
 import {
   Composer,
@@ -12,6 +12,7 @@ import {
 } from "~/components/messages/composer";
 import { MessageRow } from "~/components/messages/message-row";
 import { useNow } from "~/hooks/use-now";
+import { useTailFollow } from "~/hooks/use-tail-follow";
 import { useThreadRealtime } from "~/hooks/use-thread-realtime";
 import type { MessageItem } from "~/types";
 import { optimisticMessage } from "~/utils/message-cache";
@@ -126,7 +127,12 @@ export function ThreadPanel({
     }
   }, [projectId, threadId, queryClient, queryKey]);
 
+  const reachTop = useCallback(() => void loadOlder(), [loadOlder]);
+  const tail = useTailFollow({ onReachTop: reachTop });
+
   async function send(payload: ComposerSendPayload) {
+    tail.stick();
+
     const clientId = crypto.randomUUID();
     const optimistic: MessageItem = {
       ...optimisticMessage({
@@ -257,10 +263,6 @@ export function ThreadPanel({
     [header, footer],
   );
 
-  const restingAtTop = useRef(false);
-  const restingAtBottom = useRef(true);
-  const listRef = useRef<VirtuosoHandle>(null);
-  const scrollerRef = useRef<HTMLElement | null>(null);
   const followedKey = useRef<string | undefined>(undefined);
 
   const newestReply = replies[replies.length - 1];
@@ -268,58 +270,33 @@ export function ThreadPanel({
     ? (newestReply.clientId ?? newestReply.id)
     : undefined;
 
-  const handleTopEdge = useCallback(
-    (isAtTop: boolean) => {
-      restingAtTop.current = isAtTop;
-      if (isAtTop) void loadOlder();
-    },
-    [loadOlder],
-  );
-
   useEffect(() => {
-    if (!loadingOlder && restingAtTop.current) void loadOlder();
-  }, [loadingOlder, loadOlder]);
-
-  const pinToBottom = useCallback(() => {
-    listRef.current?.scrollToIndex({ index: "LAST", align: "end" });
-    const clampPastFooter = () => {
-      const scroller = scrollerRef.current;
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    };
-    clampPastFooter();
-    requestAnimationFrame(clampPastFooter);
-  }, []);
+    if (!loadingOlder && tail.restingAtTop()) void loadOlder();
+  }, [loadingOlder, loadOlder, tail]);
 
   useEffect(() => {
     if (newestKey === undefined || newestKey === followedKey.current) return;
-    const opening = followedKey.current === undefined;
     followedKey.current = newestKey;
-    if (opening || restingAtBottom.current) pinToBottom();
-  }, [newestKey, pinToBottom]);
+    if (tail.following()) tail.followTail();
+  }, [newestKey, tail]);
 
   useEffect(() => {
-    if (restingAtBottom.current) pinToBottom();
-  }, [detail.thread.lastProgress, detail.thread.status, pinToBottom]);
+    if (tail.following()) tail.followTail();
+  }, [detail.thread.lastProgress, detail.thread.status, tail]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Virtuoso
         className="min-h-0 flex-1"
-        ref={listRef}
-        scrollerRef={(element) => {
-          scrollerRef.current = element as HTMLElement | null;
-        }}
+        ref={tail.listRef}
+        scrollerRef={tail.attachScroller}
         data={replies}
         firstItemIndex={firstItemIndex}
-        initialTopMostItemIndex={Math.max(replies.length - 1, 0)}
-        startReached={loadOlder}
-        atTopStateChange={handleTopEdge}
-        atBottomStateChange={(isAtBottom) => {
-          restingAtBottom.current = isAtBottom;
-        }}
-        totalListHeightChanged={() => {
-          if (restingAtBottom.current) pinToBottom();
-        }}
+        initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+        startReached={tail.reachedTop}
+        atTopStateChange={tail.atTopChanged}
+        atBottomStateChange={tail.atBottomChanged}
+        totalListHeightChanged={tail.heightChanged}
         atBottomThreshold={80}
         increaseViewportBy={{ top: 600, bottom: 600 }}
         computeItemKey={(_index, message) => message.clientId ?? message.id}

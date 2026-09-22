@@ -2,8 +2,9 @@
 
 import { Hash, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso } from "react-virtuoso";
 
+import { useTailFollow } from "~/hooks/use-tail-follow";
 import type { MessageItem } from "~/types";
 import { startsNewGroup } from "~/utils/message-groups";
 import type { ThreadItem } from "~/utils/thread-rows";
@@ -20,6 +21,7 @@ export interface MessageListProps {
   loadingOlder: boolean;
   onLoadOlder: () => void;
   onDelete: (messageId: string) => Promise<void>;
+  onSentRef?: React.MutableRefObject<(() => void) | undefined>;
 }
 
 export function MessageList({
@@ -32,6 +34,7 @@ export function MessageList({
   loadingOlder,
   onLoadOlder,
   onDelete,
+  onSentRef,
 }: MessageListProps) {
   const row = useCallback(
     (virtuosoIndex: number, message: MessageItem) => {
@@ -63,43 +66,25 @@ export function MessageList({
     ],
   );
 
-  const restingAtTop = useRef(false);
-  const restingAtBottom = useRef(true);
-  const listRef = useRef<VirtuosoHandle>(null);
-  const scrollerRef = useRef<HTMLElement | null>(null);
+  const tail = useTailFollow({ onReachTop: onLoadOlder });
   const followedKey = useRef<string | undefined>(undefined);
 
   const newest = messages[messages.length - 1];
   const newestKey = newest ? (newest.clientId ?? newest.id) : undefined;
 
-  const handleTopEdge = useCallback(
-    (isAtTop: boolean) => {
-      restingAtTop.current = isAtTop;
-      if (isAtTop) onLoadOlder();
-    },
-    [onLoadOlder],
-  );
+  useEffect(() => {
+    if (!loadingOlder && tail.restingAtTop()) onLoadOlder();
+  }, [loadingOlder, onLoadOlder, tail]);
 
   useEffect(() => {
-    if (!loadingOlder && restingAtTop.current) onLoadOlder();
-  }, [loadingOlder, onLoadOlder]);
-
-  const pinToBottom = useCallback(() => {
-    listRef.current?.scrollToIndex({ index: "LAST", align: "end" });
-    const clampPastFooter = () => {
-      const scroller = scrollerRef.current;
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    };
-    clampPastFooter();
-    requestAnimationFrame(clampPastFooter);
-  }, []);
+    if (onSentRef) onSentRef.current = tail.stick;
+  }, [onSentRef, tail.stick]);
 
   useEffect(() => {
     if (newestKey === undefined || newestKey === followedKey.current) return;
-    const opening = followedKey.current === undefined;
     followedKey.current = newestKey;
-    if (opening || restingAtBottom.current) pinToBottom();
-  }, [newestKey, pinToBottom]);
+    if (tail.following()) tail.followTail();
+  }, [newestKey, tail]);
 
   const components = useMemo(
     () => ({
@@ -127,19 +112,13 @@ export function MessageList({
       className="min-h-0 flex-1"
       data={messages}
       firstItemIndex={firstItemIndex}
-      initialTopMostItemIndex={messages.length - 1}
-      ref={listRef}
-      startReached={onLoadOlder}
-      atTopStateChange={handleTopEdge}
-      atBottomStateChange={(isAtBottom) => {
-        restingAtBottom.current = isAtBottom;
-      }}
-      scrollerRef={(element) => {
-        scrollerRef.current = element as HTMLElement | null;
-      }}
-      totalListHeightChanged={() => {
-        if (restingAtBottom.current) pinToBottom();
-      }}
+      initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+      ref={tail.listRef}
+      startReached={tail.reachedTop}
+      atTopStateChange={tail.atTopChanged}
+      atBottomStateChange={tail.atBottomChanged}
+      scrollerRef={tail.attachScroller}
+      totalListHeightChanged={tail.heightChanged}
       atBottomThreshold={80}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       computeItemKey={(_index, message) => message.clientId ?? message.id}

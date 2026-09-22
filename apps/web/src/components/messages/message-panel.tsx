@@ -122,7 +122,11 @@ export function MessagePanel({
     }
   }, [projectId, queryClient, queryKey]);
 
+  const stickToBottom = useRef<(() => void) | undefined>(undefined);
+
   async function send(payload: ComposerSendPayload) {
+    stickToBottom.current?.();
+
     const clientId = crypto.randomUUID();
     const optimistic = optimisticMessage({
       projectId,
@@ -197,6 +201,7 @@ export function MessagePanel({
           loadingOlder={loadingOlder}
           onLoadOlder={loadOlder}
           onDelete={remove}
+          onSentRef={stickToBottom}
         />
       </div>
       <div className="pb-safe-2 shrink-0 px-2 sm:px-4 sm:pb-4">

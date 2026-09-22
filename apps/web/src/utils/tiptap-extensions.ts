@@ -1,7 +1,10 @@
+import { Extension } from "@tiptap/core";
 import Mention, { type MentionOptions } from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit, { type StarterKitOptions } from "@tiptap/starter-kit";
+import Suggestion from "@tiptap/suggestion";
 
+import { createEmojiSuggestion } from "./emoji-suggestion";
 import { MentionHighlight } from "./mention-highlight";
 import { createMentionSuggestion } from "./mention-suggestion";
 import type { MentionAttrs, MentionItem } from "./mentions";
@@ -81,6 +84,14 @@ function mention(suggestion?: ReturnType<typeof createMentionSuggestion>) {
   });
 }
 
+const EmojiSuggestion = Extension.create({
+  name: "emojiSuggestion",
+
+  addProseMirrorPlugins() {
+    return [Suggestion({ editor: this.editor, ...createEmojiSuggestion() })];
+  },
+});
+
 export const richTextExtensions = [
   readOnlyStarterKit,
   mention(),
@@ -95,6 +106,7 @@ export function composerExtensions(
     starterKit,
     MentionHighlight,
     mention(getMentions ? createMentionSuggestion(getMentions) : undefined),
+    EmojiSuggestion,
     Placeholder.configure({
       placeholder,
       includeChildren: true,

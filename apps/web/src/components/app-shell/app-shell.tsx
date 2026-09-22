@@ -72,7 +72,7 @@ export function AppShell({
         <div className="hidden md:flex">{sidebar}</div>
 
         <main className="bg-background-2 shadow-1 flex min-w-0 flex-1 overflow-hidden md:mr-2 md:mt-2 md:rounded-xl">
-          {rail ? <RailLayout main={column} rail={rail} /> : column}
+          <RailLayout main={column} rail={rail} />
         </main>
 
         <MentionPopover />

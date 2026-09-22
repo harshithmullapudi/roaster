@@ -175,7 +175,12 @@ export function ThreadPanel({
       </div>
 
       <div className="pb-safe-2 shrink-0 px-2 sm:px-3 sm:pb-3">
-        <Composer placeholder="Reply…" projectId={projectId} onSend={send} />
+        <Composer
+          placeholder="Reply…"
+          projectId={projectId}
+          threadId={threadId}
+          onSend={send}
+        />
       </div>
     </div>
   );

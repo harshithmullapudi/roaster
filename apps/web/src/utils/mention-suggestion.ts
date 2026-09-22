@@ -14,24 +14,9 @@ import {
   type MentionAttrs,
   type MentionItem,
 } from "./mentions";
+import { placeSuggestion } from "./suggestion-position";
 
 export type { MentionItem };
-
-function place(element: HTMLElement, rect: DOMRect | null): void {
-  if (!rect) return;
-
-  const margin = 8;
-  const height = element.offsetHeight || 240;
-  const width = element.offsetWidth || 280;
-
-  const above = rect.top - height - margin;
-  const below = rect.bottom + margin;
-
-  element.style.position = "fixed";
-  element.style.left = `${Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin))}px`;
-  element.style.top = `${above > margin ? above : below}px`;
-  element.style.zIndex = "50";
-}
 
 export const mentionPluginKey = new PluginKey<{ active: boolean }>(
   "mentionSuggestion",
@@ -63,13 +48,13 @@ export function createMentionSuggestion(
 
           const element = renderer.element as HTMLElement;
           document.body.appendChild(element);
-          place(element, props.clientRect?.() ?? null);
+          placeSuggestion(element, props.clientRect?.() ?? null);
         },
 
         onUpdate: (props) => {
           renderer?.updateProps(props);
           if (renderer) {
-            place(renderer.element as HTMLElement, props.clientRect?.() ?? null);
+            placeSuggestion(renderer.element as HTMLElement, props.clientRect?.() ?? null);
           }
         },
 

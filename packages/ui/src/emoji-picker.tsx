@@ -10,26 +10,13 @@ import {
   CommandItem,
   CommandList,
 } from "./command";
+import {
+  type EmojiEntry,
+  loadedEmojis,
+  loadEmojis,
+  searchEmojis,
+} from "./emoji-data";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
-
-interface CompactEmojiRecord {
-  hexcode: string;
-  label: string;
-  unicode: string;
-  group?: number;
-  order?: number;
-  tags?: string[];
-}
-
-interface EmojiEntry {
-  hexcode: string;
-  label: string;
-  name: string;
-  unicode: string;
-  group: number;
-  order: number;
-  haystack: string;
-}
 
 interface EmojiGroup {
   group: number;
@@ -49,85 +36,12 @@ const GROUP_HEADINGS: Record<number, string> = {
   9: "Flags",
 };
 
-const COMPONENT_GROUP = 2;
 const MAX_RESULTS = 60;
 const DEFAULT_PER_GROUP = 16;
 
 const EMOJI_GRID =
   "**:[[cmdk-group-items]]:grid **:[[cmdk-group-items]]:grid-cols-8 **:[[cmdk-group-items]]:gap-0.5";
 
-let emojiCache: EmojiEntry[] | null = null;
-let emojiRequest: Promise<EmojiEntry[]> | null = null;
-
-async function loadEmojis() {
-  if (emojiCache) {
-    return emojiCache;
-  }
-
-  if (!emojiRequest) {
-    emojiRequest = Promise.all([
-      import("emojibase-data/en/compact.json"),
-      import("emojibase-data/en/shortcodes/emojibase.json"),
-    ]).then(([compact, shortcodes]) => {
-      const records = compact.default as unknown as CompactEmojiRecord[];
-      const codes = shortcodes.default as unknown as Record<
-        string,
-        string | string[] | undefined
-      >;
-
-      const entries = records
-        .filter(
-          (record) =>
-            record.group !== undefined && record.group !== COMPONENT_GROUP,
-        )
-        .map((record) => {
-          const shortcode = codes[record.hexcode];
-          const names =
-            shortcode === undefined
-              ? []
-              : Array.isArray(shortcode)
-                ? shortcode
-                : [shortcode];
-
-          return {
-            hexcode: record.hexcode,
-            label: record.label,
-            name: names[0] ?? record.label,
-            unicode: record.unicode,
-            group: record.group ?? 0,
-            order: record.order ?? 0,
-            haystack: [record.label, ...names, ...(record.tags ?? [])]
-              .join(" ")
-              .toLowerCase(),
-          };
-        })
-        .sort((a, b) => a.order - b.order);
-
-      emojiCache = entries;
-
-      return entries;
-    });
-  }
-
-  return emojiRequest;
-}
-
-function searchEmojis(entries: EmojiEntry[], query: string) {
-  const needle = query.trim().toLowerCase();
-  const matches: EmojiEntry[] = [];
-
-  for (const entry of entries) {
-    if (entry.haystack.includes(needle)) {
-      matches.push(entry);
-
-      if (matches.length === MAX_RESULTS) {
-        break;
-      }
-    }
-  }
-
-  return matches;
-}
 
 function groupEmojis(entries: EmojiEntry[]) {
   const groups: EmojiGroup[] = [];
@@ -167,7 +81,9 @@ export function EmojiPicker({
 }: EmojiPickerProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [entries, setEntries] = React.useState<EmojiEntry[] | null>(emojiCache);
+  const [entries, setEntries] = React.useState<EmojiEntry[] | null>(
+    loadedEmojis(),
+  );
 
   React.useEffect(() => {
     if (!open || entries) {
@@ -190,7 +106,8 @@ export function EmojiPicker({
   const searching = query.trim().length > 0;
 
   const matches = React.useMemo(
-    () => (entries && searching ? searchEmojis(entries, query) : []),
+    () =>
+      entries && searching ? searchEmojis(entries, query, MAX_RESULTS) : [],
     [entries, query, searching],
   );
 

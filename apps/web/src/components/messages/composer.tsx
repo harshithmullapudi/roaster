@@ -14,6 +14,8 @@ import {
   transferHasFiles,
 } from "~/utils/attachments";
 import { submitsOnEnter } from "~/utils/composer-keys";
+import { clearDraft, draftKey, readDraft, writeDraft } from "~/utils/draft-store";
+import { isEmojiSuggestionOpen } from "~/utils/emoji-suggestion";
 import { isMentionSuggestionOpen } from "~/utils/mention-suggestion";
 import type { MentionItem } from "~/utils/mentions";
 import { composerExtensions } from "~/utils/tiptap-extensions";
@@ -32,8 +34,11 @@ export interface ComposerSendPayload {
 export interface ComposerProps {
   placeholder: string;
   projectId: string;
+  threadId?: string;
   onSend: (payload: ComposerSendPayload) => void;
 }
+
+const DRAFT_SAVE_MS = 300;
 
 function isTouchKeyboard() {
   return (
@@ -42,9 +47,47 @@ function isTouchKeyboard() {
   );
 }
 
-export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
+export function Composer({
+  placeholder,
+  projectId,
+  threadId,
+  onSend,
+}: ComposerProps) {
   const sendRef = useRef(onSend);
   sendRef.current = onSend;
+
+  const key = useMemo(
+    () => draftKey({ projectId, threadId }),
+    [projectId, threadId],
+  );
+
+  const savedKey = useRef(key);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestDoc = useRef<unknown>(null);
+
+  const cancelSave = useCallback(() => {
+    if (saveTimer.current === null) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+  }, []);
+
+  const flushDraft = useCallback(() => {
+    cancelSave();
+    if (latestDoc.current !== null) writeDraft(savedKey.current, latestDoc.current);
+  }, [cancelSave]);
+
+  const scheduleSave = useCallback(
+    (doc: unknown) => {
+      latestDoc.current = doc;
+      cancelSave();
+      const target = savedKey.current;
+      saveTimer.current = setTimeout(() => {
+        saveTimer.current = null;
+        writeDraft(target, doc);
+      }, DRAFT_SAVE_MS);
+    },
+    [cancelSave],
+  );
 
   const editorRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -72,38 +115,49 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
     };
   }, []);
 
-  const submit = useCallback((instance: Editor) => {
-    const text = instance.getText().trim();
-    const tray = attachmentsRef.current;
+  const submit = useCallback(
+    (instance: Editor) => {
+      const text = instance.getText().trim();
+      const tray = attachmentsRef.current;
 
-    if (text.length === 0 && tray.attachmentIds.length === 0) return false;
-    if (tray.uploading) return false;
+      if (text.length === 0 && tray.attachmentIds.length === 0) return false;
+      if (tray.uploading) return false;
 
-    sendRef.current({
-      body: instance.getJSON(),
-      text,
-      attachmentIds: tray.attachmentIds,
-      attachments: tray.attachments,
-    });
-    tray.clear();
+      sendRef.current({
+        body: instance.getJSON(),
+        text,
+        attachmentIds: tray.attachmentIds,
+        attachments: tray.attachments,
+      });
+      tray.clear();
 
-    queueMicrotask(() => {
-      instance.chain().focus().clearContent(true).unsetAllMarks().run();
-    });
-    return true;
-  }, []);
+      cancelSave();
+      latestDoc.current = null;
+      clearDraft(savedKey.current);
+
+      queueMicrotask(() => {
+        instance.chain().focus().clearContent(true).unsetAllMarks().run();
+      });
+      return true;
+    },
+    [cancelSave],
+  );
 
   const editor = useEditor({
     extensions: composerExtensions(placeholder, getMentions),
     immediatelyRender: false,
     autofocus: isTouchKeyboard() ? false : "end",
+    content: readDraft(key) ?? undefined,
+    onUpdate: ({ editor: instance }) => scheduleSave(instance.getJSON()),
     editorProps: {
       attributes: {
         class: "tiptap max-w-full focus:outline-none",
       },
       handleKeyDown(view, event) {
         const send = submitsOnEnter(event, {
-          suggestionOpen: isMentionSuggestionOpen(view.state),
+          suggestionOpen:
+            isMentionSuggestionOpen(view.state) ||
+            isEmojiSuggestionOpen(editorRef.current),
           touchKeyboard: isTouchKeyboard(),
         });
         if (!send || !editorRef.current) return false;
@@ -130,6 +184,17 @@ export function Composer({ placeholder, projectId, onSend }: ComposerProps) {
   });
 
   editorRef.current = editor;
+
+  useEffect(() => {
+    if (!editor || savedKey.current === key) return;
+
+    flushDraft();
+    savedKey.current = key;
+    latestDoc.current = null;
+    editor.commands.setContent(readDraft(key) ?? "", { emitUpdate: false });
+  }, [editor, key, flushDraft]);
+
+  useEffect(() => flushDraft, [flushDraft]);
 
   if (!editor) {
     return (

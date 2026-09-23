@@ -69,6 +69,7 @@ export {
   listLiveThreads,
   threadDetail,
   THREAD_STATUSES,
+  type ChannelThread,
   type InboxThread,
   type LiveThread,
   type ThreadDetail,

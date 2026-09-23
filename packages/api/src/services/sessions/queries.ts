@@ -327,22 +327,40 @@ function toSummary(row: SummaryRow, extras: ThreadExtras): ThreadSummary {
   };
 }
 
-export async function listChannelThreads(
-  projectId: string,
-): Promise<ThreadSummary[]> {
+export interface ChannelThread extends ThreadSummary {
+  lastReadAt: Date | null;
+}
+
+export async function listChannelThreads(args: {
+  projectId: string;
+  memberId: string;
+}): Promise<ChannelThread[]> {
   const rows = await db
-    .select(summaryColumns)
+    .select({
+      ...summaryColumns,
+      lastReadAt: threadSubscriptions.lastReadAt,
+    })
     .from(threads)
     .leftJoin(messages, eq(threads.rootMessageId, messages.id))
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
-    .where(eq(threads.projectId, projectId))
+    .leftJoin(
+      threadSubscriptions,
+      and(
+        eq(threadSubscriptions.threadId, threads.id),
+        eq(threadSubscriptions.memberId, args.memberId),
+      ),
+    )
+    .where(eq(threads.projectId, args.projectId))
     .orderBy(desc(startedAtSql))
     .limit(100);
 
   const extras = await threadExtras(rows.map((row) => row.id));
 
-  return rows.map((row) => toSummary(row, extras));
+  return rows.map((row) => ({
+    ...toSummary(row, extras),
+    lastReadAt: asDate(row.lastReadAt),
+  }));
 }
 
 export interface InboxThread extends ThreadSummary {

@@ -69,7 +69,9 @@ export default async function ChannelPage({
           role: member.role,
         })
       : [],
-    activeTab === "messages" ? listChannelThreads(channel.id) : [],
+    activeTab === "messages"
+      ? listChannelThreads({ projectId: channel.id, memberId: member.id })
+      : [],
     activeTab === "messages" && channel.watchEnabled
       ? pausedMessageCount(channel.id)
       : 0,

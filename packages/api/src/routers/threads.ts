@@ -29,7 +29,10 @@ export const threadsRouter = createTRPCRouter({
       });
       if (!project) throw new TRPCError({ code: "NOT_FOUND" });
 
-      return listChannelThreads(project.id);
+      return listChannelThreads({
+        projectId: project.id,
+        memberId: ctx.member.id,
+      });
     }),
 
   live: memberProcedure.query(({ ctx }) =>

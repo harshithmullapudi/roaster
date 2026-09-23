@@ -8,7 +8,10 @@ export type ThreadItem = Omit<
   endedAt: Date | null;
   completedAt: Date | null;
   completedByMemberId: string | null;
+  lastReadAt: Date | null;
 };
+
+export type ThreadUpdate = Omit<ThreadItem, "lastReadAt">;
 
 export function threadsKey(projectId: string) {
   return ["threads", projectId] as const;
@@ -32,6 +35,22 @@ export function needsInput(status: string): boolean {
 
 export function isIdle(status: string): boolean {
   return status === "idle";
+}
+
+export function turnFinished(status: string): boolean {
+  return status === "idle" || status === "completed";
+}
+
+export function turnUnseen(
+  thread: Pick<
+    ThreadItem,
+    "status" | "endedAt" | "lastReadAt" | "completedAt"
+  >,
+): boolean {
+  if (thread.completedAt) return false;
+  if (!turnFinished(thread.status)) return false;
+  if (!thread.endedAt || !thread.lastReadAt) return false;
+  return thread.endedAt > thread.lastReadAt;
 }
 
 export function isActive(status: string, completedAt?: Date | null): boolean {
@@ -132,7 +151,7 @@ function asDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function parsePublishedThread(data: unknown): ThreadItem | null {
+export function parsePublishedThread(data: unknown): ThreadUpdate | null {
   if (typeof data !== "object" || data === null) return null;
 
   const envelope = data as { type?: unknown; thread?: unknown };
@@ -184,14 +203,15 @@ export function parsePublishedThread(data: unknown): ThreadItem | null {
 
 export function mergeThread(
   list: ThreadItem[],
-  incoming: ThreadItem,
+  incoming: ThreadUpdate,
 ): ThreadItem[] {
   const index = list.findIndex((thread) => thread.id === incoming.id);
-  if (index === -1) return [incoming, ...list];
+  if (index === -1) return [{ ...incoming, lastReadAt: null }, ...list];
 
   const previous = list[index];
   const merged: ThreadItem = {
     ...incoming,
+    lastReadAt: previous?.lastReadAt ?? null,
     rootText: incoming.rootText || (previous?.rootText ?? ""),
     authorName: incoming.authorName ?? previous?.authorName ?? null,
     authorEmail: incoming.authorEmail ?? previous?.authorEmail ?? null,
@@ -238,6 +258,22 @@ export function countReply(
       ? previous.replierNames
       : [...previous.replierNames, args.replierName],
   };
+  return next;
+}
+
+export function markThreadSeen(
+  list: ThreadItem[],
+  threadId: string,
+  seenAt: Date,
+): ThreadItem[] {
+  const index = list.findIndex((thread) => thread.id === threadId);
+  if (index === -1) return list;
+
+  const previous = list[index];
+  if (!previous) return list;
+
+  const next = [...list];
+  next[index] = { ...previous, lastReadAt: seenAt };
   return next;
 }
 

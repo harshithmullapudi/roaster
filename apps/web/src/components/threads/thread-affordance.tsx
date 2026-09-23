@@ -8,10 +8,11 @@ import {
   isActive,
   replyCountLabel,
   type ThreadItem,
+  turnUnseen,
 } from "~/utils/thread-rows";
 
 import { ReplyAvatars } from "./reply-avatars";
-import { ThreadStatus } from "./thread-status";
+import { ThreadStatus, TurnCompleted } from "./thread-status";
 
 export interface ThreadAffordanceProps {
   thread: ThreadItem;
@@ -42,6 +43,7 @@ export function ThreadAffordance({ thread, href }: ThreadAffordanceProps) {
         </span>
       ) : null}
       {live ? <ThreadStatus status={thread.status} /> : null}
+      {!live && turnUnseen(thread) ? <TurnCompleted /> : null}
       {thread.waitingOn ? (
         <span className="text-muted-foreground truncate text-xs">
           {`on @${thread.waitingOn.handle}`}

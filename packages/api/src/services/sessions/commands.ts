@@ -1,11 +1,23 @@
 import { TRPCError } from "@trpc/server";
-import { Queue, QueueEvents } from "bullmq";
+import { type Job, Queue, QueueEvents } from "bullmq";
 
 import { redis } from "../../lib/redis";
 
 export const SESSION_QUEUE = "roster-sessions";
 
-export const REPLY_TIMEOUT_MS = 15_000;
+/**
+ * Every one of these reaches the member's own machine through the relay —
+ * minting a JWT, then one or more round trips to a laptop that may be asleep,
+ * on a bad network, or gone. The supervisor gives those its own retries, so
+ * the budget here has to outlast them rather than race them.
+ */
+export const REPLY_TIMEOUT_MS: Record<SessionCommand, number> = {
+  startSession: 30_000,
+  steer: 30_000,
+  cancelThread: 45_000,
+  retryThread: 45_000,
+  reapThread: 90_000,
+};
 
 export interface SessionCommands {
   startSession: {
@@ -60,13 +72,32 @@ export async function tell<C extends SessionCommand>(
   });
 }
 
-const NO_WORKER =
-  "No worker picked that up in time. Roster's background service may be " +
-  "down or still starting — the session was left as it was.";
-
 function timedOut(cause: unknown): boolean {
   const message = cause instanceof Error ? cause.message : String(cause);
-  return message.includes("timed out") || message.includes("Timed out");
+  return message.toLowerCase().includes("timed out");
+}
+
+const STILL_RUNNING =
+  "That machine is taking longer than expected. Roster is still working on " +
+  "it — give it a moment and reload before trying again.";
+
+const NOT_PICKED_UP =
+  "Roster's background service did not pick that up. It may be down or " +
+  "restarting; the session was left as it was.";
+
+async function timeoutError(job: Job): Promise<TRPCError> {
+  const state = await job.getState().catch(() => "unknown");
+
+  if (state === "active") {
+    return new TRPCError({ code: "TIMEOUT", message: STILL_RUNNING });
+  }
+
+  if (state === "waiting" || state === "delayed" || state === "prioritized") {
+    await job.remove().catch(() => {});
+    return new TRPCError({ code: "TIMEOUT", message: NOT_PICKED_UP });
+  }
+
+  return new TRPCError({ code: "TIMEOUT", message: STILL_RUNNING });
 }
 
 export async function ask<C extends SessionCommand, T>(
@@ -80,12 +111,12 @@ export async function ask<C extends SessionCommand, T>(
   });
 
   try {
-    return (await job.waitUntilFinished(sessionEvents(), REPLY_TIMEOUT_MS)) as T;
+    return (await job.waitUntilFinished(
+      sessionEvents(),
+      REPLY_TIMEOUT_MS[command],
+    )) as T;
   } catch (cause) {
-    if (timedOut(cause)) {
-      await job.remove().catch(() => {});
-      throw new TRPCError({ code: "TIMEOUT", message: NO_WORKER });
-    }
+    if (timedOut(cause)) throw await timeoutError(job);
     throw cause;
   }
 }

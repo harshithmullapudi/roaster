@@ -3,7 +3,6 @@
 import type { ThreadDetail } from "@roster/api";
 import { Button } from "@roster/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { Square } from "lucide-react";
 import { useState } from "react";
 
 import { threadDetailKey } from "~/utils/thread-rows";
@@ -37,14 +36,13 @@ export function ThreadCancel({ projectId, threadId }: ThreadCancelProps) {
 
   return (
     <Button
-      variant="secondary"
+      variant="ghost"
       size="xs"
-      className="self-start gap-1.5 text-xs"
+      className="text-muted-foreground px-1.5 text-xs"
       isLoading={pending}
       onClick={cancel}
     >
-      <Square size={12} />
-      Cancel
+      Stop
     </Button>
   );
 }

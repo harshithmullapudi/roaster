@@ -41,13 +41,7 @@ export function ThreadMenu({
 
   return (
     <>
-      <DropdownMenu
-        open={menuOpen}
-        onOpenChange={(open) => {
-          if (!open && completion.pending) return;
-          setMenuOpen(open);
-        }}
-      >
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"

@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The needs-input card</title>
+    <style>
+      :root {
+        --sp-measure: 70ch;
+        --rail: 3.25rem;
+      }
+
+      body {
+        padding: 0 1.5rem 6rem;
+      }
+
+      main {
+        max-width: 60rem;
+        margin: 0 auto;
+      }
+
+      /* ---- page furniture ---- */
+
+      header {
+        padding: 4.5rem 0 3rem;
+        border-bottom: 1px solid var(--sp-border);
+        margin-bottom: 3.5rem;
+      }
+
+      .eyebrow {
+        font-family: var(--sp-font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        margin: 0 0 1.25rem;
+      }
+
+      h1 {
+        font-size: clamp(2rem, 5vw, 2.9rem);
+        line-height: 1.05;
+        letter-spacing: -0.025em;
+        margin: 0 0 1.25rem;
+        max-width: 18ch;
+      }
+
+      .lede {
+        font-size: 1.075rem;
+        line-height: 1.6;
+        max-width: var(--sp-measure);
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 1.45rem;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.5rem;
+      }
+
+      h3 {
+        font-size: 1.05rem;
+        letter-spacing: -0.01em;
+        margin: 0 0 0.4rem;
+      }
+
+      p {
+        max-width: var(--sp-measure);
+        line-height: 1.65;
+      }
+
+      section {
+        margin: 0 0 4.5rem;
+      }
+
+      .section-head {
+        margin-bottom: 2.25rem;
+      }
+
+      .section-head p {
+        color: var(--sp-muted);
+        margin: 0;
+      }
+
+      code,
+      .ref {
+        font-family: var(--sp-font-mono);
+        font-size: 0.82em;
+      }
+
+      .ref {
+        color: var(--sp-muted);
+        white-space: nowrap;
+      }
+
+      /* ---- numbered findings ---- */
+
+      .finding {
+        display: grid;
+        grid-template-columns: var(--rail) 1fr;
+        gap: 0 1rem;
+        padding: 1.75rem 0;
+        border-top: 1px solid var(--sp-border);
+      }
+
+      .finding:last-of-type {
+        border-bottom: 1px solid var(--sp-border);
+      }
+
+      .finding .num {
+        font-family: var(--sp-font-mono);
+        font-size: 0.8rem;
+        color: var(--sp-muted);
+        padding-top: 0.25rem;
+      }
+
+      .finding p {
+        margin: 0 0 0.75rem;
+      }
+
+      .finding p:last-child {
+        margin-bottom: 0;
+      }
+
+      .finding .where {
+        font-family: var(--sp-font-mono);
+        font-size: 0.75rem;
+        color: var(--sp-muted);
+      }
+
+      @media (max-width: 40rem) {
+        .finding {
+          grid-template-columns: 1fr;
+          gap: 0.35rem;
+        }
+      }
+
+      /* ---- mockup frames ---- */
+
+      figure {
+        margin: 2rem 0 0;
+      }
+
+      figcaption {
+        font-size: 0.85rem;
+        color: var(--sp-muted);
+        line-height: 1.55;
+        margin-top: 0.85rem;
+        max-width: var(--sp-measure);
+      }
+
+      .frame {
+        border: 1px solid var(--sp-border);
+        border-radius: var(--sp-radius);
+        overflow: hidden;
+      }
+
+      .frame img {
+        display: block;
+        width: 100%;
+      }
+
+      /* ---- the app, rebuilt on Roster's own tokens ---- */
+
+      .rs {
+        --bg: oklch(94.28% 0 0);
+        --surface: oklch(97.21% 0 0);
+        --white: oklch(100% 0 0);
+        --fg: oklch(30.87% 0 0);
+        --muted-fg: oklch(55.26% 0 0);
+        --line: oklch(90.67% 0 0);
+        --warning: oklch(70.43% 0.1439 87.96);
+        --primary: oklch(60.21% 0.1823 252.59);
+        --fill: oklch(0% 0 0 / 6%);
+        --fill-strong: oklch(0% 0 0 / 11%);
+
+        background: var(--bg);
+        color: var(--fg);
+        font-size: 14px;
+        line-height: 1.45;
+        padding: 1.75rem 1.25rem;
+      }
+
+      .rs.flush {
+        padding: 1.75rem 0 0;
+      }
+
+      .rs * {
+        box-sizing: border-box;
+      }
+
+      .rs code {
+        background: var(--fill);
+        color: inherit;
+        padding: 1px 4px;
+        border-radius: 3px;
+        font-size: 0.85em;
+      }
+
+      .card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 10px;
+        background: var(--surface);
+      }
+
+      .card.rail {
+        border-left: 2px solid var(--warning);
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        flex: none;
+        background: var(--warning);
+      }
+
+      .dot.blue {
+        background: var(--primary);
+      }
+
+      .meta {
+        font-size: 12px;
+        color: var(--muted-fg);
+      }
+
+      .say {
+        font-size: 14px;
+        color: var(--fg);
+      }
+
+      .line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .spacer {
+        flex: 1;
+      }
+
+      .btn {
+        font: inherit;
+        font-size: 12px;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+        border-radius: 5px;
+        border: none;
+        background: var(--fill);
+        color: var(--fg);
+        cursor: default;
+      }
+
+      .btn.ghost {
+        background: transparent;
+        color: var(--muted-fg);
+      }
+
+      .btn.key::after {
+        content: attr(data-key);
+        font-family: var(--sp-font-mono);
+        font-size: 10px;
+        color: var(--muted-fg);
+        border: 1px solid var(--line);
+        background: var(--white);
+        border-radius: 3px;
+        padding: 1px 4px;
+      }
+
+      .glyph {
+        width: 11px;
+        height: 11px;
+        border: 1.5px solid currentColor;
+        border-radius: 2px;
+        flex: none;
+      }
+
+      /* the composer-attached strip */
+
+      .strip {
+        border-top: 1px solid var(--line);
+        padding: 8px 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .strip.asking {
+        background: color-mix(in oklch, var(--warning) 9%, var(--bg));
+      }
+
+      .composer {
+        margin: 0 14px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+        padding: 9px 11px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .composer .placeholder {
+        color: var(--muted-fg);
+        font-size: 14px;
+        flex: 1;
+      }
+
+      .send {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        background: var(--fill-strong);
+        flex: none;
+      }
+
+      .bubble {
+        padding: 2px 14px 12px;
+        max-width: 52ch;
+      }
+
+      .bubble .who {
+        font-size: 12px;
+        color: var(--muted-fg);
+        margin-bottom: 2px;
+      }
+
+      .answers {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      /* ---- verdict + bug table ---- */
+
+      .verdict {
+        border: 1px solid var(--sp-border);
+        border-radius: var(--sp-radius);
+        padding: 1.5rem 1.75rem;
+        background: var(--sp-surface);
+      }
+
+      .verdict ol {
+        margin: 0.75rem 0 0;
+        padding-left: 1.2rem;
+      }
+
+      .verdict li {
+        margin-bottom: 0.5rem;
+        max-width: var(--sp-measure);
+        line-height: 1.6;
+      }
+
+      .scroll {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+
+      th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--sp-muted);
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--sp-border);
+        padding: 0 1rem 0.6rem 0;
+      }
+
+      td {
+        padding: 0.85rem 1rem 0.85rem 0;
+        border-bottom: 1px solid var(--sp-border);
+        vertical-align: top;
+        line-height: 1.55;
+      }
+
+      td:first-child {
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body class="auto">
+    <main>
+      <header>
+        <p class="eyebrow">Roster · thread panel</p>
+        <h1>The needs-input card</h1>
+        <p class="lede">
+          Five things keeping this card from reading like Linear, and three ways
+          to rebuild it. Every mockup below is live HTML drawn on Roster's own
+          tokens, so the colours are the real ones — only the typeface differs.
+        </p>
+      </header>
+
+      <section>
+        <div class="section-head">
+          <h2>What ships today</h2>
+          <p>
+            <span class="ref">thread-panel.tsx:250–292</span>
+          </p>
+        </div>
+
+        <figure class="frame">
+          <img src="today.png" alt="The current needs-input card" />
+        </figure>
+        <figcaption>
+          A bordered box floating in the transcript, an amber dot and an amber
+          left rail saying the same thing, a sentence of instruction, and one
+          button — the one that throws the run away.
+        </figcaption>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Five observations</h2>
+          <p>Ordered by how much each one costs the reader.</p>
+        </div>
+
+        <div class="finding">
+          <div class="num">01</div>
+          <div>
+            <h3>The card repeats the message directly above it</h3>
+            <p>
+              When a permission request arrives, <code>askForInput</code> does
+              two things with the captured question: it posts it into the thread
+              as a real agent message, and it writes it to
+              <code>lastProgress</code>, which the card then renders. So the
+              same sentence appears twice, a few pixels apart, in two different
+              type styles.
+            </p>
+            <p>
+              Linear never restates content to signal state. A card that only
+              exists to say <em>this needs you</em> should carry the state and
+              the action, and let the question stay where the reader already
+              read it.
+            </p>
+            <p class="where">supervisor.ts:499–513 · thread-panel.tsx:273</p>
+          </div>
+        </div>
+
+        <div class="finding">
+          <div class="num">02</div>
+          <div>
+            <h3>When there is no question, it shows a progress line anyway</h3>
+            <p>
+              That is exactly what the screenshot caught.
+              <em>"Dependencies aren't installed in this fresh worktree.
+              Starting that in the background."</em> is a progress line, not a
+              question — the fallback is
+              <code>question ?? session.lastProgress</code>. Under a heading
+              that says <strong>Needs input</strong>, above a line that says
+              <strong>Reply below to answer</strong>, it reads as a question the
+              reader cannot find the answer to.
+            </p>
+            <p>
+              If no question was captured, say so plainly: <em>"The agent is
+              waiting on you — no prompt captured."</em> A stale progress line
+              dressed as a prompt is worse than an empty card.
+            </p>
+            <p class="where">supervisor.ts:503 · thread-panel.tsx:274</p>
+          </div>
+        </div>
+
+        <div class="finding">
+          <div class="num">03</div>
+          <div>
+            <h3>The state is said three times, and the loudest one is a Slack idiom</h3>
+            <p>
+              An amber dot, the words "Needs input", and a 2px amber left rail
+              all carry one fact. The rail is the odd one out: a coloured left
+              edge is the Slack/Notion callout, and Linear does not use it
+              anywhere. Linear states status with a small coloured glyph beside
+              neutral text, and reserves surface colour for the one thing on
+              screen that wants you.
+            </p>
+            <p>
+              Drop the rail, keep the dot. If you want more presence than a
+              6px dot, tint the whole surface a few percent rather than striping
+              one edge.
+            </p>
+            <p class="where">thread-panel.tsx:254</p>
+          </div>
+        </div>
+
+        <div class="finding">
+          <div class="num">04</div>
+          <div>
+            <h3>The timer counts the run, not the wait</h3>
+            <p>
+              <code>elapsedLabel(startedAt, now)</code> measures from the moment
+              the session started. Sitting next to the words "Needs input",
+              5m 16s reads as <em>blocked on you for five minutes</em> — but it
+              means <em>this session has existed for five minutes</em>, and it
+              keeps climbing across states.
+            </p>
+            <p>
+              In a card whose whole job is to make someone feel late, the number
+              should be time-since-<code>needs_input</code>. That needs a
+              timestamp written when the status flips.
+            </p>
+            <p class="where">thread-panel.tsx:263 · thread_sessions has no state-change stamp</p>
+          </div>
+        </div>
+
+        <div class="finding">
+          <div class="num">05</div>
+          <div>
+            <h3>The only button is the destructive one</h3>
+            <p>
+              The card asks for an answer and then offers no way to give one —
+              just a sentence pointing at a composer somewhere below the fold,
+              and a Cancel button that kills the run. The most prominent
+              affordance in an input-gathering UI should not be the one that
+              discards the work.
+            </p>
+            <p>
+              The design doc already has the fix queued as step 3:
+              <code>roster ask-human</code>, clickable answers. It is the
+              difference between a status card and a useful one. Until it lands,
+              the card should at least focus the composer on click.
+            </p>
+            <p class="where">thread-cancel.tsx:38–49 · 2026-09-22-session-states design, "Delivery order"</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Direction A — quiet it</h2>
+          <p>Ten minutes. No new data, no new endpoints.</p>
+        </div>
+
+        <figure class="frame">
+          <div class="rs">
+            <div class="card">
+              <div class="line">
+                <span class="dot"></span>
+                <span class="meta">Needs input</span>
+                <span class="meta">· waiting 5m 16s</span>
+                <span class="spacer"></span>
+                <button class="btn ghost"><span class="glyph"></span>Stop</button>
+              </div>
+              <div class="say">
+                Allow <code>pnpm install</code> to run in this worktree?
+              </div>
+            </div>
+          </div>
+        </figure>
+        <figcaption>
+          One border in every state, so nothing shifts when the status flips.
+          State, elapsed and actions share one line; the question gets the width
+          and the weight. Stop demotes to a ghost button at the far edge —
+          present, not shouting.
+        </figcaption>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Direction B — attach it to the composer</h2>
+          <p>The structural change. This is the part that actually reads like Linear.</p>
+        </div>
+
+        <figure class="frame">
+          <div class="rs flush">
+            <div class="bubble">
+              <div class="who">@harshith-roster</div>
+              <div class="say">
+                Dependencies aren't installed in this fresh worktree. Allow
+                <code>pnpm install</code>?
+              </div>
+            </div>
+            <div class="strip asking">
+              <span class="dot"></span>
+              <span class="meta">Needs input · waiting 5m 16s</span>
+              <span class="spacer"></span>
+              <button class="btn ghost"><span class="glyph"></span>Stop</button>
+            </div>
+            <div class="composer">
+              <span class="placeholder">Answer @harshith-roster…</span>
+              <span class="send"></span>
+            </div>
+          </div>
+        </figure>
+        <figcaption>
+          Live state belongs to the input, not to the transcript. A full-bleed
+          strip pinned above the composer — hairline top rule, no radius, no
+          outer margin — so it reads as part of the thing you type into.
+          It stays put while the transcript scrolls, which also fixes scrolling
+          up and losing the question. Colour lands as a wash across the strip
+          instead of a stripe down one edge.
+        </figcaption>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Direction C — make it answerable</h2>
+          <p>B's container, plus the content that makes the card worth having.</p>
+        </div>
+
+        <figure class="frame">
+          <div class="rs flush">
+            <div class="bubble">
+              <div class="who">@harshith-roster</div>
+              <div class="say">
+                Dependencies aren't installed in this fresh worktree. Allow
+                <code>pnpm install</code>?
+              </div>
+            </div>
+            <div class="strip asking">
+              <span class="dot"></span>
+              <span class="meta">Needs input · waiting 5m 16s</span>
+              <span class="spacer"></span>
+              <div class="answers">
+                <button class="btn key" data-key="A">Allow</button>
+                <button class="btn key" data-key="⇧A">Always allow</button>
+                <button class="btn key" data-key="D">Deny</button>
+                <button class="btn ghost"><span class="glyph"></span></button>
+              </div>
+            </div>
+            <div class="composer">
+              <span class="placeholder">…or answer in your own words</span>
+              <span class="send"></span>
+            </div>
+          </div>
+        </figure>
+        <figcaption>
+          <code>needs_input</code> comes from a
+          <code>PermissionRequest</code>, so the harness already knows the
+          options — they just aren't carried through. Render them and the
+          sentence "Reply below to answer" deletes itself: an instruction that
+          only exists because the affordance is missing. Single-key shortcuts
+          are the Linear habit worth stealing; the composer stays for answers
+          that aren't one of the three.
+        </figcaption>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Can it actually be answered?</h2>
+          <p>
+            Yes — and the half you would expect to be hard already ships. The
+            gap is not sending the answer. It is knowing what the options are.
+          </p>
+        </div>
+
+        <div class="finding">
+          <div class="num">→</div>
+          <div>
+            <h3>The send path is already in production</h3>
+            <p>
+              <code>steer()</code> special-cases exactly this: an idle session
+              gets restarted, but a <code>needs_input</code> one is still
+              listening, so it calls <code>interrupt()</code> →
+              <code>sendToAgent({ text, submit: true })</code>, which types
+              straight into the prompt the agent is blocked on. That is what
+              already happens when you type a reply in the composer.
+            </p>
+            <p>
+              So an <strong>Allow</strong> button that posts a fixed string
+              through the existing <code>threads.steer</code> mutation is a thin
+              wrapper over a proven path. No new transport, no new Superset
+              procedure, no keystroke simulation.
+            </p>
+            <p class="where">supervisor.ts:1288–1302 · agents.ts:147–166</p>
+          </div>
+        </div>
+
+        <div class="finding">
+          <div class="num">✕</div>
+          <div>
+            <h3>The receive path carries nothing</h3>
+            <p>
+              <code>AgentLifecycleEvent</code> is
+              <code>{ eventType, occurredAt }</code> and nothing else. Superset
+              tells Roster <em>that</em> permission was requested — never what
+              for, and never what the choices are.
+            </p>
+            <p>
+              With no payload, <code>askForInput</code> falls back to
+              <code>captureReply</code> → <code>readTranscript</code> →
+              <code>agentReply</code>, which returns everything after the last
+              <code>Assistant:</code> marker in the transcript. It has no
+              concept of a permission prompt. There is no question extraction
+              anywhere in the codebase — which is the whole of observation 02.
+            </p>
+            <p class="where">agents.ts:399–404 · thread-progress.ts:65–82</p>
+          </div>
+        </div>
+
+        <div class="section-head" style="margin-top: 3rem">
+          <h3>Three ways to get the options</h3>
+        </div>
+
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Route</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Parse the screen</strong></td>
+                <td>
+                  <code>readTranscript</code> returns
+                  <code>source: "screen"</code> when the harness transcript is
+                  unavailable, and Claude Code's permission dialog does render
+                  its numbered options into it. You could regex them out and
+                  send back the digit. <strong>Don't.</strong> The design doc
+                  already rejected this and the rejection is right:
+                  <code>stripAnsi</code> flattens a box-drawn dialog, option
+                  order isn't stable, and the failure mode is silently approving
+                  the wrong command.
+                </td>
+              </tr>
+              <tr>
+                <td><strong><code>roster ask-human</code></strong></td>
+                <td>
+                  The agent asks explicitly —
+                  <code>roster ask-human "Install deps?" --option Allow --option
+                  Deny</code>. The options are structured because the agent
+                  typed them; nothing is parsed, nothing can mis-fire. It
+                  mirrors <code>roster ask</code>, so the machinery exists:
+                  <code>delegations</code> already parks a thread on an answer
+                  and <code>settleDelegationFor</code> hands one back. Buildable
+                  today, entirely inside Roster.
+                  <strong>Limit:</strong> it only covers questions the agent
+                  chose to ask. Claude Code's own tool-permission dialogs — the
+                  majority of <code>needs_input</code> — never route through it.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Ask Superset for the payload</strong></td>
+                <td>
+                  The real fix for the common case: the lifecycle event grows a
+                  <code>permission</code> field (tool, command, option list) and
+                  gains a respond procedure. That is a Superset-side change, not
+                  a Roster one — but it is the only route that makes an
+                  unmodified Claude Code permission dialog clickable
+                  <em>and</em> safe.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="margin-top: 2rem">
+          <strong>What I'd do:</strong> build <code>roster ask-human</code> now,
+          and file the payload request with Superset in parallel. The card
+          renders buttons whenever options exist and falls back to the composer
+          when they don't — which means the same UI serves both routes, and
+          route three lights it up for every permission dialog the day it
+          lands.
+        </p>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>What I'd ship</h2>
+        </div>
+        <div class="verdict">
+          <p>
+            <strong>B for the shape, C for the contents.</strong> A is what you
+            merge today so the card stops shouting; it doesn't change what the
+            card is for.
+          </p>
+          <ol>
+            <li>
+              Delete <code>border-l-warning border-l-2</code> and collapse the
+              header row. One border, actions on the right. Half an hour.
+            </li>
+            <li>
+              Stop echoing the question. The card carries state, elapsed and
+              actions; the question lives in the transcript where
+              <code>persistAgentMessage</code> already put it. Falls out of the
+              same edit.
+            </li>
+            <li>
+              Move the card out of the virtualised list and pin it above the
+              composer as a full-bleed strip. This is the real work — it changes
+              who owns the element — and it is what makes the surface feel like
+              Linear rather than like a callout.
+            </li>
+            <li>
+              Render options as buttons wherever options exist — starting with
+              <code>roster ask-human</code>, because the send path is already
+              live and only the options are missing. See
+              <em>Can it actually be answered?</em> above for why the rest waits
+              on Superset.
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Two things that are wrong regardless of the redesign</h2>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Where</th>
+                <th>What happens</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="ref">thread-panel.tsx:253–254</span></td>
+                <td>
+                  <code>border-l-2</code> overrides a 1px <code>border</code>,
+                  so the card's content jumps one pixel to the right the moment
+                  the status becomes <code>needs_input</code>, and back when it
+                  resolves. Give the rail its 2px in every state and only change
+                  its colour — or drop it, per observation 03.
+                </td>
+              </tr>
+              <tr>
+                <td><span class="ref">thread-panel.tsx:263</span></td>
+                <td>
+                  The elapsed label measures from <code>startedAt</code>, so the
+                  time shown beside "Needs input" is the age of the session, not
+                  the length of the wait. Needs a timestamp stamped when the
+                  status changes.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -62,6 +62,35 @@ const MARKDOWN_BODY = {
       attrs: { language: "ts" },
       content: [{ type: "text", text: "const a = 1;" }],
     },
+    {
+      type: "table",
+      content: [
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableHeader",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "Check" }] },
+              ],
+            },
+          ],
+        },
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableCell",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "passes" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
   ],
 };
 

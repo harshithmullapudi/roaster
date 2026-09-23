@@ -114,8 +114,19 @@ export async function toggleReaction(args: {
       );
   }
 
+  await publishReaction({ ...args, added });
+
+  return { added };
+}
+
+async function publishReaction(args: {
+  messageId: string;
+  memberId: string;
+  emoji: string;
+  added: boolean;
+}): Promise<void> {
   const target = await reactionTarget(args.messageId);
-  if (!target) return { added };
+  if (!target) return;
 
   const payload = reactionPayload({
     messageId: target.id,
@@ -123,7 +134,7 @@ export async function toggleReaction(args: {
     threadId: target.threadId,
     emoji: args.emoji,
     memberId: args.memberId,
-    added,
+    added: args.added,
   });
 
   const targets = [publish(channelName(target.projectId), payload)];
@@ -132,6 +143,27 @@ export async function toggleReaction(args: {
   }
 
   await Promise.all(targets);
+}
+
+export async function addReaction(args: {
+  messageId: string;
+  memberId: string;
+  emoji: string;
+}): Promise<{ added: boolean }> {
+  const inserted = await db
+    .insert(reactions)
+    .values({
+      messageId: args.messageId,
+      memberId: args.memberId,
+      emoji: args.emoji,
+    })
+    .onConflictDoNothing({
+      target: [reactions.messageId, reactions.memberId, reactions.emoji],
+    })
+    .returning({ id: reactions.id });
+
+  const added = inserted.length > 0;
+  if (added) await publishReaction({ ...args, added });
 
   return { added };
 }

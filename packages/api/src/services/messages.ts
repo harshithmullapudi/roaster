@@ -55,6 +55,7 @@ import {
   steer,
   threadTarget,
 } from "./sessions";
+import { linkTaskThread } from "./tasks";
 
 const JOIN_WINDOW_MS = 10_000;
 const RUN_LOOKBACK = 20;
@@ -270,6 +271,7 @@ export async function sendMessage(args: {
   clientId: string;
   threadId?: string;
   attachmentIds?: string[];
+  standalone?: boolean;
 }): Promise<ChannelMessage> {
   const existing = await findByClientId({
     projectId: args.projectId,
@@ -288,7 +290,7 @@ export async function sendMessage(args: {
 
   const target =
     explicit ??
-    (addressed
+    (addressed && !args.standalone
       ? await joinableThread({
           projectId: args.projectId,
           authorMemberId: args.authorMemberId,
@@ -442,7 +444,30 @@ async function driveSession(message: ChannelMessage): Promise<void> {
   });
   if (!thread) return;
 
+  await linkTaskFor(message, thread.id);
+
   await startSession({ threadId: thread.id, text: agentText(message), context });
+}
+
+const TASK_CLIENT_ID = /^task:([0-9a-f-]{36})$/i;
+
+async function linkTaskFor(
+  message: ChannelMessage,
+  threadId: string,
+): Promise<void> {
+  const taskId = TASK_CLIENT_ID.exec(message.clientId ?? "")?.[1];
+  if (!taskId) return;
+
+  await linkTaskThread({
+    taskId,
+    projectId: message.projectId,
+    threadId,
+  }).catch((cause: Error) => {
+    console.warn(
+      `[messages] could not link task ${taskId} to thread ${threadId}: ${cause.message}`,
+    );
+    return null;
+  });
 }
 
 export async function pausedMessageCount(projectId: string): Promise<number> {

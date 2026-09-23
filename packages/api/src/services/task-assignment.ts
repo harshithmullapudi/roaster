@@ -1,13 +1,20 @@
-import { db, messages } from "@roster/db";
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
 
 import { textToTiptap } from "../utils/tiptap";
 
-import { allocateSeq, requireOrgProject, type ChannelScope } from "./channels";
-import { emitMessageById } from "./message-events";
-import { createThread, ensureStarted, startSession } from "./sessions";
-import { linkTaskThread, reachableTask, type Task } from "./tasks";
+import { requireOrgProject, type ChannelScope } from "./channels";
+import { sendMessage } from "./messages";
+import { ensureStarted } from "./sessions";
+import {
+  findById,
+  reachableTask,
+  setTaskProject,
+  type Task,
+} from "./tasks";
+
+export function taskClientId(taskId: string): string {
+  return `task:${taskId}`;
+}
 
 export async function assignTask(
   args: ChannelScope & { taskId: string; projectId: string },
@@ -44,86 +51,47 @@ export async function assignTask(
     });
   }
 
-  const rootMessageId = await postTask({
+  const assigned = await setTaskProject({
+    taskId: task.id,
+    projectId: project.id,
+  });
+  if (!assigned) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Could not record which channel took that task.",
+    });
+  }
+
+  await postTask({
     organizationId: args.organizationId,
     projectId: project.id,
     authorMemberId: args.memberId,
+    role: args.role,
     taskId: task.id,
     title: task.title,
   });
 
-  const thread = await createThread({
-    organizationId: args.organizationId,
-    projectId: project.id,
-    rootMessageId,
-    runAsMemberId: args.memberId,
-  });
-  if (!thread) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Could not open a session in that channel.",
-    });
-  }
-
-  const linked = await linkTaskThread({
-    taskId: task.id,
-    projectId: project.id,
-    threadId: thread.id,
-  });
-  if (!linked) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Could not record which thread took that task.",
-    });
-  }
-
-  await startSession({ threadId: thread.id, text: task.title });
-
-  return linked;
+  return (await findById(task.id)) ?? assigned;
 }
 
-async function postTask(args: {
+export async function postTask(args: {
   organizationId: string;
   projectId: string;
   authorMemberId: string;
+  role: string;
   taskId: string;
   title: string;
 }): Promise<string> {
-  const clientId = `task:${args.taskId}`;
-  const seq = await allocateSeq(args.projectId);
+  const message = await sendMessage({
+    organizationId: args.organizationId,
+    projectId: args.projectId,
+    authorMemberId: args.authorMemberId,
+    role: args.role,
+    body: textToTiptap(args.title),
+    text: args.title,
+    clientId: taskClientId(args.taskId),
+    standalone: true,
+  });
 
-  const [inserted] = await db
-    .insert(messages)
-    .values({
-      organizationId: args.organizationId,
-      projectId: args.projectId,
-      seq,
-      authorMemberId: args.authorMemberId,
-      kind: "user",
-      body: textToTiptap(args.title),
-      text: args.title,
-      clientId,
-    })
-    .onConflictDoNothing({ target: [messages.projectId, messages.clientId] })
-    .returning({ id: messages.id });
-
-  if (!inserted) {
-    const [existing] = await db
-      .select({ id: messages.id })
-      .from(messages)
-      .where(
-        and(
-          eq(messages.projectId, args.projectId),
-          eq(messages.clientId, clientId),
-        ),
-      )
-      .limit(1);
-
-    if (!existing) throw new Error("Could not post the task.");
-    return existing.id;
-  }
-
-  await emitMessageById(inserted.id);
-
-  return inserted.id;
+  return message.id;
 }

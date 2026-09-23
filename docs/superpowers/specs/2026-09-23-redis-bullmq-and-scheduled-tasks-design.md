@@ -348,9 +348,9 @@ One BullMQ job scheduler for the whole system — `every: 60_000` — not one pe
 schedule. `every` is documented API, unlike the job-id format the previous
 design read.
 
-The sweep body takes the existing lease (`acquireLease`, `lib/redis.ts:77`) so
-exactly one worker runs it, then for each row where `enabled AND next_run_at <=
-now()`:
+The sweep worker is started and stopped with the supervisor lease the worker
+process already holds, so exactly one worker runs it without a second lease of
+its own. For each row where `enabled AND next_run_at <= now()`:
 
 1. Insert the `scheduled_task_runs` row for `slot_at = next_run_at` with
    `onConflictDoNothing`. **No rows back means another sweep already took this
@@ -376,10 +376,12 @@ than skipping seven. The skipped ones are recorded.
 
 ### What a firing does
 
-Post via `postMessage` (`messages.ts`), not `postTask`, with
-`clientId = task:<taskId>`. `postMessage` already carries the same
-`onConflictDoNothing` on `(projectId, clientId)` that `postTask` relies on, so a
-redelivered firing is harmless at the message layer too.
+Post via `sendMessage` (`messages.ts`) with `clientId = task:<taskId>`.
+`postTask` survives as a thin wrapper over it rather than the direct insert it
+was, so the web assign path and a firing take the same route. `sendMessage`
+already returns an existing message for a `clientId` it has seen, and carries
+`onConflictDoNothing` on `(projectId, clientId)` besides, so a redelivered
+firing is harmless at the message layer too.
 
 The firing runs as `run_as_member_id`, so `requireOrgProject`'s real access
 checks apply and a schedule cannot become a way to post into a channel its owner
@@ -394,7 +396,7 @@ client id it calls `linkTaskThread`. One place owns the linking, the web assign
 path and a firing behave identically, and the unclaimed case resolves itself:
 no thread, `thread_id` stays null, and the task reads as filed-but-unstarted.
 
-**A firing never joins an open thread.** `postMessage` folds a message into a
+**A firing never joins an open thread.** `sendMessage` folds a message into a
 thread opened in the last 10 seconds by the same author (`JOIN_WINDOW_MS`,
 `messages.ts:295`). Two schedules landing on the same minute as the same
 `run_as` member would then link two tasks to one thread and violate
@@ -471,7 +473,12 @@ whose access every firing borrows, so it belongs on screen next to the rule.
 | `packages/api/src/lib/recurrence.ts` | new — rule parsing, `.toText()`, and next-occurrence in a timezone. The only place `rrule` is imported |
 | `packages/api/src/routers/scheduled-tasks.ts` | new |
 | `packages/api/src/services/messages.ts` | firing path opts out of `joinableThread`; `driveSession` links a `task:<uuid>` root message to its task |
-| `packages/api/src/services/task-assignment.ts` | `startSession` no longer forced; posting goes through `postMessage` |
+| `packages/api/src/services/task-assignment.ts` | `startSession` no longer forced; `postTask` becomes a wrapper over `sendMessage`; `setTaskProject` records the channel so a quiet channel still assigns |
+| `packages/api/src/services/schedule-queue.ts` | new — the one `every: 60_000` scheduler and its queue |
+| `packages/api/src/services/schedules.ts` | new — the `@roster/api/schedules` entry the worker imports |
+| `apps/worker/src/schedule-worker.ts` | new — runs the sweep, started and stopped with the supervisor lease |
+| `apps/web/src/components/tasks/schedule-picker.tsx` | new — Now / Once at / Repeating, and the rule it builds |
+| `apps/web/src/components/channels/channel-schedules.tsx` | new — the Schedules section |
 | `packages/api/src/services/delegations.ts` | conditional settle, `clientId` on `postRequest` |
 | `packages/api/src/services/notifications.ts` | dedupe keys for the two `messageId: null` paths |
 | `packages/db/src/schema/roster.ts` | `scheduled_tasks` and `scheduled_task_runs`; `notifications.dedupe_key` plus its partial unique index for step 1 |

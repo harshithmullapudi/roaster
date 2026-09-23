@@ -187,6 +187,18 @@ export async function reachableTask(
   return task;
 }
 
+export async function setTaskProject(args: {
+  taskId: string;
+  projectId: string;
+}): Promise<Task | null> {
+  await db
+    .update(tasks)
+    .set({ projectId: args.projectId, updatedAt: new Date() })
+    .where(eq(tasks.id, args.taskId));
+
+  return findById(args.taskId);
+}
+
 export async function linkTaskThread(args: {
   taskId: string;
   projectId: string;

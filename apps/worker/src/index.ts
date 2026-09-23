@@ -7,6 +7,7 @@ import {
   releaseLease,
   renewLease,
 } from "@roster/api/redis";
+import { closeScheduleQueue } from "@roster/api/schedules";
 import {
   cancelThread,
   closeSessionQueue,
@@ -18,6 +19,7 @@ import {
   steer,
 } from "@roster/api/sessions";
 
+import { scheduleWorker } from "./schedule-worker";
 import { supervisorWorker } from "./supervisor-worker";
 
 const LEASE_KEY = "roster:supervisor:owner";
@@ -38,6 +40,7 @@ const handlers = {
 runSessionsInThisProcess();
 
 let active: Awaited<ReturnType<typeof supervisorWorker>> | null = null;
+let schedules: Awaited<ReturnType<typeof scheduleWorker>> | null = null;
 let renewTimer: ReturnType<typeof setInterval> | null = null;
 let claimTimer: ReturnType<typeof setTimeout> | null = null;
 let stopping = false;
@@ -47,6 +50,7 @@ async function becomeActive(): Promise<void> {
 
   await ensureStarted();
   active = await supervisorWorker(handlers);
+  schedules = await scheduleWorker();
 
   renewTimer = setInterval(() => {
     void keepLease();
@@ -76,7 +80,10 @@ async function standDown(): Promise<void> {
     renewTimer = null;
   }
   const running = active;
+  const sweeping = schedules;
   active = null;
+  schedules = null;
+  if (sweeping) await sweeping.close();
   if (running) await running.close();
 }
 
@@ -116,6 +123,7 @@ async function shutdown(signal: string): Promise<void> {
   await standDown();
   await releaseLease(redis("worker"), LEASE_KEY, workerId).catch(() => false);
   await closeSessionQueue();
+  await closeScheduleQueue();
   await closeRedis();
 
   process.exit(0);

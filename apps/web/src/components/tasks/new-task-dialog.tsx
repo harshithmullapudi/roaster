@@ -16,6 +16,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage, trpc } from "~/utils/trpc";
 
 import { ChannelPicker, flattenChannels } from "./channel-picker";
+import {
+  browserTimezone,
+  ruleFor,
+  SchedulePicker,
+  type ScheduleValue,
+} from "./schedule-picker";
 import { StatusPicker } from "./status-picker";
 
 export interface NewTaskDialogProps {
@@ -38,6 +44,7 @@ export function NewTaskDialog({
   const [projectId, setProjectId] = useState<string | null>(
     defaultProjectId ?? null,
   );
+  const [schedule, setSchedule] = useState<ScheduleValue>({ kind: "now" });
   const [createMore, setCreateMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,21 +56,29 @@ export function NewTaskDialog({
     setTitle("");
     setStatus("todo");
     setProjectId(defaultProjectId ?? null);
+    setSchedule({ kind: "now" });
     setError(null);
   }, [open, defaultProjectId]);
 
   const submit = useCallback(async () => {
     const trimmed = title.trim();
-    if (!trimmed || saving) return;
+    if (!trimmed || !projectId || saving) return;
 
     setSaving(true);
     setError(null);
     try {
-      await trpc.tasks.create.mutate({
-        title: trimmed,
-        status,
-        ...(projectId ? { projectId } : {}),
-      });
+      const rrule = ruleFor(schedule);
+
+      if (rrule) {
+        await trpc.schedules.create.mutate({
+          projectId,
+          title: trimmed,
+          rrule,
+          timezone: browserTimezone(),
+        });
+      } else {
+        await trpc.tasks.create.mutate({ title: trimmed, status, projectId });
+      }
 
       router.refresh();
 
@@ -83,13 +98,14 @@ export function NewTaskDialog({
     projectId,
     saving,
     status,
+    schedule,
     createMore,
     router,
     onOpenChange,
   ]);
 
   const selected = flattenChannels(channels).find((c) => c.id === projectId);
-  const canSubmit = Boolean(title.trim()) && !saving;
+  const canSubmit = Boolean(title.trim()) && Boolean(projectId) && !saving;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -116,8 +132,7 @@ export function NewTaskDialog({
           <span>New task</span>
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Create a task. Give it a channel to start that channel&apos;s agent on
-          it, or leave it in the backlog.
+          Create a task in a channel, either now or on a schedule.
         </DialogDescription>
 
         <div className="flex flex-col gap-1 px-4 pb-1 pt-3">
@@ -143,12 +158,14 @@ export function NewTaskDialog({
             channels={channels}
             value={projectId}
             onChange={setProjectId}
-            clearable
           />
+          <SchedulePicker value={schedule} onChange={setSchedule} />
           <span className="text-muted-foreground text-xs">
-            {selected
-              ? `#${selected.slug}'s agent starts on it`
-              : "Waits in the backlog"}
+            {!selected
+              ? "Pick a channel"
+              : schedule.kind === "now"
+                ? `#${selected.slug} picks it up now`
+                : `#${selected.slug}, on schedule`}
           </span>
         </div>
 

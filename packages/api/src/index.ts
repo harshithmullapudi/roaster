@@ -77,7 +77,23 @@ export {
   type ThreadSummary,
   type WaitingOn,
 } from "./services/sessions";
-export { listTasks, type Task } from "./services/tasks";
+export { listTasks, type Task, type TaskCreator } from "./services/tasks";
+export {
+  listSchedules,
+  LATE_GRACE_MS,
+  SCHEDULE_OUTCOMES,
+  sweepSchedules,
+  type Schedule,
+  type ScheduleMember,
+  type ScheduleOutcome,
+  type ScheduleRun,
+} from "./services/scheduled-tasks";
+export {
+  describeRecurrence,
+  nextOccurrence,
+  parseRecurrence,
+  RecurrenceError,
+} from "./lib/recurrence";
 export {
   type NotificationItem,
   type NotificationPage,

@@ -64,6 +64,13 @@
       "when": 1790142330607,
       "tag": "0008_kind_supreme_intelligence",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790188553398,
+      "tag": "0009_scheduled_tasks",
+      "breakpoints": true
     }
   ]
 }

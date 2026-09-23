@@ -18,3 +18,15 @@ export {
   TASK_STATUS_ORDER,
   type TaskStatus,
 } from "./lib/task-status";
+export {
+  buildRecurrence,
+  describeRecurrence,
+  floatingStart,
+  nextOccurrence,
+  onceAt,
+  parseRecurrence,
+  RecurrenceError,
+  WEEKDAYS,
+  type Frequency,
+  type Weekday,
+} from "./lib/recurrence";

@@ -8,6 +8,7 @@
     "./client": "./src/client.ts",
     "./attachments": "./src/lib/attachments.ts",
     "./sessions": "./src/services/sessions/index.ts",
+    "./schedules": "./src/services/schedules.ts",
     "./redis": "./src/lib/redis.ts"
   },
   "scripts": {
@@ -24,6 +25,7 @@
     "drizzle-orm": "^0.38.3",
     "ioredis": "^6.0.0",
     "marked": "^18.0.13",
+    "rrule": "^2.8.1",
     "superjson": "^2.2.2",
     "zod": "^3.24.1"
   },

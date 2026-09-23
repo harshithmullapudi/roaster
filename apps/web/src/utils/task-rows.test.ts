@@ -18,6 +18,7 @@ function task(
     completedAt: null,
     channelSlug,
     channelName: channelSlug,
+    createdBy: { memberId: `member-${id}`, name: `Author ${id}` },
   };
 }
 

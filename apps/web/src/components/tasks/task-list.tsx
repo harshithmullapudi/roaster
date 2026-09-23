@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChannelGroups, Task, TaskStatus } from "@roster/api";
-import { Button, cn } from "@roster/ui";
+import { AvatarText, Button, cn } from "@roster/ui";
 import { CircleCheck, Hash, Inbox, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -227,6 +227,17 @@ export function TaskList({ tasks, channels, orgSlug }: TaskListProps) {
                       if (projectId) void assign(row.task.id, projectId);
                     }}
                   />
+                )}
+                {row.task.createdBy && (
+                  <span
+                    className="hidden shrink-0 sm:flex"
+                    title={`Filed by ${row.task.createdBy.name}`}
+                  >
+                    <AvatarText
+                      text={row.task.createdBy.name}
+                      className="h-5 w-5 rounded-md text-[10px]"
+                    />
+                  </span>
                 )}
                 <span className="text-muted-foreground w-16 shrink-0 text-right text-xs">
                   {relativeTime(row.task.createdAt)}

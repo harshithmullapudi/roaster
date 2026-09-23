@@ -423,9 +423,11 @@ export async function listInboxThreads(
 }
 
 /*
- * What counts as live in the sidebar and the threads list. `idle` is
+ * What counts as working in the sidebar and the threads list. `idle` is
  * deliberately absent: it is where every session comes to rest, so including
- * it would leave every thread ever run showing as live forever.
+ * it would leave every thread ever run showing as live forever. A rested
+ * session reaches the sidebar through the unseen-turn half of
+ * `listLiveThreads` instead, which expires as soon as someone reads it.
  */
 export const LIVE_THREAD_STATUSES = [
   "starting",
@@ -434,6 +436,8 @@ export const LIVE_THREAD_STATUSES = [
   "waiting",
 ] as const;
 
+const FINISHED_TURN_STATUSES = ["idle", "completed"] as const;
+
 export interface LiveThread {
   id: string;
   projectId: string;
@@ -441,6 +445,7 @@ export interface LiveThread {
   rootText: string;
   lastProgress: string | null;
   startedAt: Date;
+  turnUnseen: boolean;
 }
 
 const LIVE_STATUS_LIST = sql.join(
@@ -448,12 +453,25 @@ const LIVE_STATUS_LIST = sql.join(
   sql`, `,
 );
 
+const FINISHED_STATUS_LIST = sql.join(
+  FINISHED_TURN_STATUSES.map((status) => sql`${status}`),
+  sql`, `,
+);
+
 const HAS_LIVE_SESSION = sql`exists (select 1 from roster.thread_sessions ts where ts.thread_id = ${THREAD_ID} and ts.status in (${LIVE_STATUS_LIST}))`;
 
-export async function listLiveThreads(
-  scope: ChannelScope,
-): Promise<LiveThread[]> {
-  const rows = await db
+const ENDED_SINCE_LAST_READ = sql`exists (select 1 from roster.thread_sessions ts where ts.thread_id = ${threadSubscriptions.threadId} and ts.status in (${FINISHED_STATUS_LIST}) and ts.ended_at > ${threadSubscriptions.lastReadAt})`;
+
+const LIVE_LIMIT = 200;
+
+interface LiveRow {
+  id: string;
+  projectId: string;
+  rootText: string | null;
+}
+
+function workingThreads(scope: ChannelScope): Promise<LiveRow[]> {
+  return db
     .select({
       id: threads.id,
       projectId: threads.projectId,
@@ -471,22 +489,66 @@ export async function listLiveThreads(
       ),
     )
     .orderBy(desc(startedAtSql))
-    .limit(200);
+    .limit(LIVE_LIMIT);
+}
 
-  const leads = await leadSessionByThread(rows.map((row) => row.id));
+function unreadTurnThreads(scope: ChannelScope): Promise<LiveRow[]> {
+  return db
+    .select({
+      id: threads.id,
+      projectId: threads.projectId,
+      rootText: messages.text,
+    })
+    .from(threadSubscriptions)
+    .innerJoin(threads, eq(threadSubscriptions.threadId, threads.id))
+    .innerJoin(projects, eq(threads.projectId, projects.id))
+    .leftJoin(messages, eq(threads.rootMessageId, messages.id))
+    .where(
+      and(
+        eq(threadSubscriptions.memberId, scope.memberId),
+        isNull(threadSubscriptions.mutedAt),
+        eq(threads.organizationId, scope.organizationId),
+        visibleToMember(scope.memberId, scope.role),
+        isNull(threads.completedAt),
+        ENDED_SINCE_LAST_READ,
+      ),
+    )
+    .orderBy(desc(startedAtSql))
+    .limit(LIVE_LIMIT);
+}
 
-  return rows.map((row) => {
-    const lead = leads.get(row.id) ?? NO_SESSION;
+export async function listLiveThreads(
+  scope: ChannelScope,
+): Promise<LiveThread[]> {
+  const [working, unread] = await Promise.all([
+    workingThreads(scope),
+    unreadTurnThreads(scope),
+  ]);
 
-    return {
-      id: row.id,
-      projectId: row.projectId,
-      status: lead.status ?? "starting",
-      rootText: row.rootText ?? "",
-      lastProgress: lead.lastProgress,
-      startedAt: lead.startedAt ?? new Date(),
-    };
-  });
+  const rows = new Map<string, LiveRow & { turnUnseen: boolean }>();
+  for (const row of working) rows.set(row.id, { ...row, turnUnseen: false });
+  for (const row of unread) {
+    if (!rows.has(row.id)) rows.set(row.id, { ...row, turnUnseen: true });
+  }
+
+  const leads = await leadSessionByThread([...rows.keys()]);
+
+  return [...rows.values()]
+    .map((row) => {
+      const lead = leads.get(row.id) ?? NO_SESSION;
+
+      return {
+        id: row.id,
+        projectId: row.projectId,
+        status: lead.status ?? "starting",
+        rootText: row.rootText ?? "",
+        lastProgress: lead.lastProgress,
+        startedAt: lead.startedAt ?? new Date(),
+        turnUnseen: row.turnUnseen,
+      };
+    })
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+    .slice(0, LIVE_LIMIT);
 }
 
 export async function threadLeadStatus(

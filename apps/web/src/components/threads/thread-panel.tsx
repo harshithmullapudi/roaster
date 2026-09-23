@@ -14,6 +14,7 @@ import { MessageRow } from "~/components/messages/message-row";
 import { useTailFollow } from "~/hooks/use-tail-follow";
 import { useThreadRealtime } from "~/hooks/use-thread-realtime";
 import type { MessageItem } from "~/types";
+import { liveThreadsKey } from "~/utils/live-threads";
 import { optimisticMessage } from "~/utils/message-cache";
 import { startsNewGroup } from "~/utils/message-groups";
 import { unreadCountKey } from "~/utils/notification-cache";
@@ -91,6 +92,7 @@ export function ThreadPanel({
             previous ? markThreadSeen(previous, threadId, seenAt) : previous,
         );
         void queryClient.invalidateQueries({ queryKey: unreadCountKey() });
+        void queryClient.invalidateQueries({ queryKey: liveThreadsKey() });
       })
       .catch(() => undefined);
 

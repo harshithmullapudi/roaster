@@ -5,49 +5,93 @@ import { cn } from "@roster/ui";
 import { SquareTerminal } from "lucide-react";
 
 import { SessionCounts } from "~/components/threads/session-counts";
-import { countByState } from "~/utils/live-threads";
-import { threadsKey } from "~/utils/thread-rows";
+import {
+  type HoverCardThread,
+  SessionsHoverCard,
+} from "~/components/threads/sessions-hover-card";
+import { countByState, sessionsHeading } from "~/utils/live-threads";
+import {
+  isActive,
+  type ThreadItem,
+  threadsKey,
+  turnUnseen,
+} from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
-import { useDock } from "./dock-provider";
+import { type DockChannel, useDock } from "./dock-provider";
+
+function toSessions(threads: ThreadItem[]): HoverCardThread[] {
+  const sessions: HoverCardThread[] = [];
+
+  for (const thread of threads) {
+    const unseen = turnUnseen(thread);
+    if (!unseen && !isActive(thread.status, thread.completedAt)) continue;
+
+    sessions.push({
+      id: thread.id,
+      rootText: thread.rootText,
+      status: thread.status,
+      lastProgress: thread.lastProgress,
+      turnUnseen: unseen,
+    });
+  }
+
+  return sessions;
+}
 
 function ThreadCounts({
-  projectId,
+  channel,
   onOpen,
 }: {
-  projectId: string;
+  channel: DockChannel;
   onOpen: () => void;
 }) {
   const { data: threads } = useQuery({
-    queryKey: threadsKey(projectId),
-    queryFn: () => trpc.threads.list.query({ projectId }),
+    queryKey: threadsKey(channel.projectId),
+    queryFn: () => trpc.threads.list.query({ projectId: channel.projectId }),
     refetchInterval: 10_000,
   });
 
   const { data: worktrees } = useQuery({
-    queryKey: ["terminals", "worktrees", projectId],
-    queryFn: () => trpc.terminals.worktrees.query({ projectId }),
+    queryKey: ["terminals", "worktrees", channel.projectId],
+    queryFn: () => trpc.terminals.worktrees.query({ projectId: channel.projectId }),
     refetchInterval: 15_000,
   });
 
-  const counts = countByState(threads ?? []);
+  const sessions = toSessions(threads ?? []);
+  const counts = countByState(sessions);
   const open = worktrees?.length ?? 0;
 
-  if (open === 0) return null;
+  if (open === 0 && sessions.length === 0) return null;
 
-  return (
+  const button = (
     <button
       type="button"
       onClick={onOpen}
       className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-2.5 text-xs"
     >
-      <span>{open} open</span>
+      {open > 0 ? <span>{open} open</span> : null}
       <SessionCounts
         running={counts.running}
         needsInput={counts.needsInput}
+        turnDone={counts.turnDone}
         labeled
       />
     </button>
+  );
+
+  if (sessions.length === 0) return button;
+
+  return (
+    <SessionsHoverCard
+      threads={sessions}
+      basePath={`/${channel.orgSlug}/${channel.channelSlug}`}
+      heading={sessionsHeading(counts, sessions.length)}
+      side="top"
+      align="end"
+    >
+      {button}
+    </SessionsHoverCard>
   );
 }
 
@@ -62,10 +106,7 @@ export function DockStatusBar() {
       )}
     >
       {channel ? (
-        <ThreadCounts
-          projectId={channel.projectId}
-          onOpen={() => setMode("open")}
-        />
+        <ThreadCounts channel={channel} onOpen={() => setMode("open")} />
       ) : null}
 
       <button

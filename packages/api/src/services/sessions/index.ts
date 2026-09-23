@@ -15,6 +15,7 @@ export {
   threadChannelName,
 } from "./supervisor";
 export {
+  type ChannelThread,
   type InboxThread,
   joinableThread,
   listChannelThreads,

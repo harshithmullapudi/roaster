@@ -18,6 +18,7 @@ import { useThreadRealtime } from "~/hooks/use-thread-realtime";
 import type { MessageItem } from "~/types";
 import { optimisticMessage } from "~/utils/message-cache";
 import { startsNewGroup } from "~/utils/message-groups";
+import { unreadCountKey } from "~/utils/notification-cache";
 import { elapsedLabel } from "~/utils/relative-time";
 import {
   addReply,
@@ -31,8 +32,11 @@ import {
 import {
   canRetry,
   isActive,
+  markThreadSeen,
   needsInput,
+  type ThreadItem,
   threadDetailKey,
+  threadsKey,
 } from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
@@ -77,6 +81,31 @@ export function ThreadPanel({
   });
 
   useThreadRealtime(threadId, projectId);
+
+  const status = detail.thread.status;
+
+  useEffect(() => {
+    let dropped = false;
+
+    void trpc.notifications.markThreadRead
+      .mutate({ threadId })
+      .then((subscription) => {
+        const seenAt = subscription.lastReadAt;
+        if (dropped || !seenAt) return;
+
+        queryClient.setQueryData<ThreadItem[]>(
+          threadsKey(projectId),
+          (previous) =>
+            previous ? markThreadSeen(previous, threadId, seenAt) : previous,
+        );
+        void queryClient.invalidateQueries({ queryKey: unreadCountKey() });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      dropped = true;
+    };
+  }, [projectId, threadId, status, queryClient]);
 
   const live = isActive(detail.thread.status);
   const asking = needsInput(detail.thread.status);

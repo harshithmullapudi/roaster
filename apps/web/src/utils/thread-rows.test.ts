@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   isActive,
+  markThreadSeen,
+  mergeThread,
   parsePublishedThread,
   statusLabel,
   statusTone,
+  type ThreadItem,
+  turnUnseen,
   waitingOnLabel,
 } from "./thread-rows";
 
@@ -138,6 +142,98 @@ describe("waitingOnLabel", () => {
 
   it("is nothing when the thread is waiting on nobody", () => {
     expect(waitingOnLabel(null)).toBeNull();
+  });
+});
+
+const READ_AT = new Date("2026-09-18T10:00:00.000Z");
+const ENDED_AT = new Date("2026-09-18T10:30:00.000Z");
+
+const row = (thread: Partial<ThreadItem> = {}): ThreadItem => ({
+  id: "thread-1",
+  projectId: "channel-1",
+  rootMessageId: "message-1",
+  status: "idle",
+  lastProgress: null,
+  error: null,
+  startedAt: new Date("2026-09-18T09:00:00.000Z"),
+  endedAt: ENDED_AT,
+  rootText: "Draft the README",
+  authorName: "Harshith",
+  authorEmail: "harshith@tegon.ai",
+  replyCount: 2,
+  lastReplyAt: ENDED_AT,
+  replierNames: ["Harshith"],
+  waitingOn: null,
+  completedAt: null,
+  completedByMemberId: null,
+  lastReadAt: READ_AT,
+  ...thread,
+});
+
+describe("turnUnseen", () => {
+  it("is true for a turn that finished after you last looked", () => {
+    expect(turnUnseen(row())).toBe(true);
+    expect(turnUnseen(row({ status: "completed" }))).toBe(true);
+  });
+
+  it("is false once you have opened the thread since it finished", () => {
+    expect(
+      turnUnseen(row({ lastReadAt: new Date("2026-09-18T10:45:00.000Z") })),
+    ).toBe(false);
+  });
+
+  it("is false while the agent is still working", () => {
+    expect(turnUnseen(row({ status: "running", endedAt: null }))).toBe(false);
+    expect(turnUnseen(row({ status: "needs_input", endedAt: null }))).toBe(
+      false,
+    );
+    expect(turnUnseen(row({ status: "waiting", endedAt: null }))).toBe(false);
+  });
+
+  it("is false for a turn that ended badly — green would be a lie", () => {
+    expect(turnUnseen(row({ status: "failed" }))).toBe(false);
+    expect(turnUnseen(row({ status: "canceled" }))).toBe(false);
+  });
+
+  it("is false once somebody has settled the thread", () => {
+    expect(turnUnseen(row({ completedAt: ENDED_AT }))).toBe(false);
+  });
+
+  it("is false for a thread you do not follow — it is not yours to open", () => {
+    expect(turnUnseen(row({ lastReadAt: null }))).toBe(false);
+  });
+});
+
+describe("mergeThread", () => {
+  it("keeps your read mark, which the broadcast payload cannot carry", () => {
+    const list = [row({ status: "running", endedAt: null })];
+    const parsed = parsePublishedThread(
+      published({ status: "idle", endedAt: ENDED_AT.toISOString() }),
+    );
+    const merged = mergeThread(list, parsed!);
+
+    expect(merged[0]?.lastReadAt).toEqual(READ_AT);
+    expect(turnUnseen(merged[0]!)).toBe(true);
+  });
+
+  it("leaves a thread it has never seen unread-by-nobody", () => {
+    const parsed = parsePublishedThread(published({ status: "idle" }));
+    expect(mergeThread([], parsed!)[0]?.lastReadAt).toBeNull();
+  });
+});
+
+describe("markThreadSeen", () => {
+  it("clears the dot the moment the thread is opened", () => {
+    const seenAt = new Date("2026-09-18T11:00:00.000Z");
+    const marked = markThreadSeen([row()], "thread-1", seenAt);
+
+    expect(marked[0]?.lastReadAt).toEqual(seenAt);
+    expect(turnUnseen(marked[0]!)).toBe(false);
+  });
+
+  it("leaves a list without that thread alone", () => {
+    const list = [row()];
+    expect(markThreadSeen(list, "thread-9", new Date())).toBe(list);
   });
 });
 

@@ -15,6 +15,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "~/components/app-shell/app-shell";
 import { ChannelPlaceholder } from "~/components/channels/channel-placeholder";
 import { ChannelTabs } from "~/components/channels/channel-tabs";
+import { CollapseCompletedToggle } from "~/components/channels/collapse-completed-toggle";
 import { WatchToggle } from "~/components/channels/watch-toggle";
 import { HashMark } from "~/components/logo/hash-mark";
 import { MessagePanel } from "~/components/messages/message-panel";
@@ -102,6 +103,9 @@ export default async function ChannelPage({
       }
       actions={
         <span className="flex items-center gap-1">
+          {activeTab === "messages" ? (
+            <CollapseCompletedToggle projectId={channel.id} />
+          ) : null}
           <WatchToggle
             projectId={channel.id}
             enabled={channel.watchEnabled}

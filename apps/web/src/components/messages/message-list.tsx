@@ -6,14 +6,17 @@ import { Virtuoso } from "react-virtuoso";
 
 import { useTailFollow } from "~/hooks/use-tail-follow";
 import type { MessageItem } from "~/types";
+import { type ChannelRow, rowKey } from "~/utils/channel-rows";
 import { startsNewGroup } from "~/utils/message-groups";
 import type { ThreadItem } from "~/utils/thread-rows";
 
+import { CompletedBand } from "./completed-band";
 import { MessageRow } from "./message-row";
 
 export interface MessageListProps {
   channelName: string;
-  messages: MessageItem[];
+  rows: ChannelRow<MessageItem>[];
+  empty: boolean;
   threadsByRootMessage: Map<string, ThreadItem>;
   basePath: string;
   memberId: string;
@@ -21,12 +24,18 @@ export interface MessageListProps {
   loadingOlder: boolean;
   onLoadOlder: () => void;
   onDelete: (messageId: string) => Promise<void>;
+  onToggleBand: (bandId: string) => void;
   onSentRef?: React.MutableRefObject<(() => void) | undefined>;
+}
+
+function messageKey(message: MessageItem): string {
+  return message.clientId ?? message.id;
 }
 
 export function MessageList({
   channelName,
-  messages,
+  rows,
+  empty,
   threadsByRootMessage,
   basePath,
   memberId,
@@ -34,13 +43,28 @@ export function MessageList({
   loadingOlder,
   onLoadOlder,
   onDelete,
+  onToggleBand,
   onSentRef,
 }: MessageListProps) {
   const row = useCallback(
-    (virtuosoIndex: number, message: MessageItem) => {
+    (virtuosoIndex: number, item: ChannelRow<MessageItem>) => {
+      if (item.kind === "band") {
+        return (
+          <CompletedBand
+            count={item.messageIds.length}
+            lastAt={item.lastAt}
+            expanded={item.expanded}
+            onToggle={() => onToggleBand(item.id)}
+          />
+        );
+      }
+
       const position = virtuosoIndex - firstItemIndex;
+      const before = rows[position - 1];
+      const previous = before?.kind === "message" ? before.message : undefined;
+      const message = item.message;
       const thread = threadsByRootMessage.get(message.id);
-      const previous = messages[position - 1];
+
       return (
         <MessageRow
           message={message}
@@ -58,19 +82,20 @@ export function MessageList({
     },
     [
       firstItemIndex,
-      messages,
+      rows,
       threadsByRootMessage,
       basePath,
       memberId,
       onDelete,
+      onToggleBand,
     ],
   );
 
   const tail = useTailFollow({ onReachTop: onLoadOlder });
   const followedKey = useRef<string | undefined>(undefined);
 
-  const newest = messages[messages.length - 1];
-  const newestKey = newest ? (newest.clientId ?? newest.id) : undefined;
+  const newest = rows[rows.length - 1];
+  const newestKey = newest ? rowKey(newest, messageKey) : undefined;
 
   useEffect(() => {
     if (!loadingOlder && tail.restingAtTop()) onLoadOlder();
@@ -95,7 +120,7 @@ export function MessageList({
     [loadingOlder],
   );
 
-  if (messages.length === 0) {
+  if (empty) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-5 py-10">
         <Hash className="text-muted-foreground size-5" />
@@ -110,7 +135,7 @@ export function MessageList({
   return (
     <Virtuoso
       className="min-h-0 flex-1"
-      data={messages}
+      data={rows}
       firstItemIndex={firstItemIndex}
       initialTopMostItemIndex={{ index: "LAST", align: "end" }}
       ref={tail.listRef}
@@ -121,7 +146,7 @@ export function MessageList({
       totalListHeightChanged={tail.heightChanged}
       atBottomThreshold={80}
       increaseViewportBy={{ top: 600, bottom: 600 }}
-      computeItemKey={(_index, message) => message.clientId ?? message.id}
+      computeItemKey={(_index, item) => rowKey(item, messageKey)}
       itemContent={row}
       components={components}
     />

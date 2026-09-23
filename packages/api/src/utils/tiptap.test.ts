@@ -103,11 +103,104 @@ describe("markdownToTiptap", () => {
     });
   });
 
-  it("keeps a table verbatim, since no table node exists", () => {
-    const [block] = markdownToTiptap("| a | b |\n| - | - |\n| 1 | 2 |").content;
+  it("builds a table out of a header row and its body rows", () => {
+    const [table] = markdownToTiptap(
+      "| a | b |\n| - | - |\n| 1 | `2` |",
+    ).content;
+
+    expect(table).toEqual({
+      type: "table",
+      content: [
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableHeader",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "a" }] },
+              ],
+            },
+            {
+              type: "tableHeader",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "b" }] },
+              ],
+            },
+          ],
+        },
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableCell",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "1" }] },
+              ],
+            },
+            {
+              type: "tableCell",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "text", text: "2", marks: [{ type: "code" }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("gives an empty cell a paragraph so the schema still accepts it", () => {
+    const [table] = markdownToTiptap("| a | b |\n| - | - |\n| 1 |  |").content;
+    const [, body] = table?.content ?? [];
+
+    expect(body?.content?.[1]?.content).toEqual([{ type: "paragraph" }]);
+  });
+
+  it("treats pipe rows written without a delimiter row as a table", () => {
+    const [table] = markdownToTiptap("| a | b |\n| 1 | 2 |").content;
+    const [header, body] = table?.content ?? [];
+
+    expect(table?.type).toBe("table");
+    expect(header?.content?.map((cell) => cell.type)).toEqual([
+      "tableHeader",
+      "tableHeader",
+    ]);
+    expect(body?.content?.[1]?.content).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "2" }] },
+    ]);
+  });
+
+  it("starts a table on the line after a paragraph it was written against", () => {
+    const [intro, table] = markdownToTiptap(
+      "**Direct path**:\n| Check | Result |\n| Menu closes | `0` |",
+    ).content;
+
+    expect(intro?.type).toBe("paragraph");
+    expect(table?.type).toBe("table");
+  });
+
+  it("leaves a lone pipe row alone", () => {
+    const [block] = markdownToTiptap("| not a table |").content;
+
+    expect(block?.type).toBe("paragraph");
+  });
+
+  it("leaves pipe rows inside a fenced block as code", () => {
+    const [block] = markdownToTiptap(
+      "```\n| a | b |\n| 1 | 2 |\n```",
+    ).content;
 
     expect(block?.type).toBe("codeBlock");
-    expect(block?.content?.[0]?.text).toBe("| a | b |\n| - | - |\n| 1 | 2 |");
+    expect(block?.content?.[0]?.text).toBe("| a | b |\n| 1 | 2 |");
   });
 
   it("breaks a single newline the way a chat message reads", () => {

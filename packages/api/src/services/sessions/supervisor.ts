@@ -744,6 +744,7 @@ async function finish(args: {
   status: ThreadStatus;
   error?: string | null;
   capture?: boolean;
+  evenIfParked?: boolean;
 }): Promise<void> {
   if (finishing.has(args.sessionId)) return;
   finishing.add(args.sessionId);
@@ -768,6 +769,7 @@ async function finishOnce(args: {
   status: ThreadStatus;
   error?: string | null;
   capture?: boolean;
+  evenIfParked?: boolean;
 }): Promise<FinishOutcome> {
   const watch = watches.get(args.sessionId);
   const session = await sessionById(args.sessionId);
@@ -784,7 +786,7 @@ async function finishOnce(args: {
   stopWatch(args.sessionId);
   const queued = takeSteers(args.sessionId);
 
-  if (isParked(session.status)) {
+  if (isParked(session.status) && !args.evenIfParked) {
     if (finalText && finalText.trim().length > 0) {
       await persistAgentMessage({
         sessionId: args.sessionId,
@@ -1422,7 +1424,21 @@ export async function cancelThread(args: {
 }): Promise<boolean> {
   await ensureStarted();
 
-  const sessions = await sessionsOf(args.threadId);
+  return cancelThreadTree(args.threadId, new Set());
+}
+
+async function cancelThreadTree(
+  threadId: string,
+  seen: Set<string>,
+): Promise<boolean> {
+  if (seen.has(threadId)) return false;
+  seen.add(threadId);
+
+  for (const childThreadId of await closeOpenDelegations(threadId)) {
+    await cancelThreadTree(childThreadId, seen);
+  }
+
+  const sessions = await sessionsOf(threadId);
   const live = sessions.filter((session) => !isTerminal(session.status));
   if (live.length === 0) return false;
 
@@ -1431,6 +1447,23 @@ export async function cancelThread(args: {
   }
 
   return true;
+}
+
+async function closeOpenDelegations(parentThreadId: string): Promise<string[]> {
+  const closed = await db
+    .update(delegations)
+    .set({ status: "canceled", answeredAt: new Date() })
+    .where(
+      and(
+        eq(delegations.parentThreadId, parentThreadId),
+        eq(delegations.status, "open"),
+      ),
+    )
+    .returning({ childThreadId: delegations.childThreadId });
+
+  return closed
+    .map((row) => row.childThreadId)
+    .filter((childThreadId): childThreadId is string => childThreadId !== null);
 }
 
 async function cancelSession(session: SessionView): Promise<void> {
@@ -1456,7 +1489,12 @@ async function cancelSession(session: SessionView): Promise<void> {
     }
   }
 
-  await finish({ sessionId: session.id, status: "canceled", error: null });
+  await finish({
+    sessionId: session.id,
+    status: "canceled",
+    error: null,
+    evenIfParked: true,
+  });
 }
 
 export async function reapThread(args: { threadId: string }): Promise<void> {

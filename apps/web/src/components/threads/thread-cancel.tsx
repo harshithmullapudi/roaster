@@ -37,14 +37,14 @@ export function ThreadCancel({ projectId, threadId }: ThreadCancelProps) {
 
   return (
     <Button
-      variant="secondary"
+      variant="ghost"
       size="xs"
-      className="self-start gap-1.5 text-xs"
+      className="text-muted-foreground gap-1.5 px-1.5 text-xs"
       isLoading={pending}
       onClick={cancel}
     >
       <Square size={12} />
-      Cancel
+      Stop
     </Button>
   );
 }

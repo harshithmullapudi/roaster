@@ -1,6 +1,12 @@
-import { Extension } from "@tiptap/core";
+import { Extension, mergeAttributes } from "@tiptap/core";
 import Mention, { type MentionOptions } from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
+import {
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@tiptap/extension-table";
 import StarterKit, { type StarterKitOptions } from "@tiptap/starter-kit";
 import Suggestion from "@tiptap/suggestion";
 
@@ -92,10 +98,45 @@ const EmojiSuggestion = Extension.create({
   },
 });
 
+/*
+ * Stock renderHTML measures column widths off a live ProseMirror node, which
+ * the static renderer never has — it only holds the stored JSON, so the
+ * colgroup came out empty and took the rows with it. Widths are moot here
+ * anyway: the table is read-only and no cell carries a colwidth.
+ */
+const PlainTable = Table.extend({
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "table",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      ["tbody", 0],
+    ];
+  },
+});
+
+const tableExtensions = [
+  PlainTable.configure({
+    resizable: false,
+    HTMLAttributes: {
+      class: "my-1 block w-max max-w-full overflow-x-auto border-collapse",
+    },
+  }),
+  TableRow,
+  TableHeader.configure({
+    HTMLAttributes: {
+      class: "border-border bg-grayAlpha-100 border px-2 py-1 text-left align-top font-medium",
+    },
+  }),
+  TableCell.configure({
+    HTMLAttributes: { class: "border-border border px-2 py-1 align-top" },
+  }),
+];
+
 export const richTextExtensions = [
   readOnlyStarterKit,
   mention(),
   MentionHighlight,
+  ...tableExtensions,
 ];
 
 export function composerExtensions(

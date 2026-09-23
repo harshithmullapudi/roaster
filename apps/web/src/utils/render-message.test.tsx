@@ -76,6 +76,47 @@ const RICH_BODY = {
         { type: "text", text: " take a look" },
       ],
     },
+    {
+      type: "table",
+      content: [
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableHeader",
+              attrs: { colspan: 2, rowspan: 1, colwidth: null },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "Check" }] },
+              ],
+            },
+          ],
+        },
+        {
+          type: "tableRow",
+          content: [
+            {
+              type: "tableCell",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "Toast" }] },
+              ],
+            },
+            {
+              type: "tableCell",
+              attrs: { colspan: 1, rowspan: 1, colwidth: null },
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "text", text: "shown", marks: [{ type: "code" }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
   ],
 };
 
@@ -88,7 +129,10 @@ function withoutSuggestionChar(html: string): string {
 }
 
 function withLowercaseAttributeNames(html: string): string {
-  return html.replaceAll("spellCheck=", "spellcheck=");
+  return html
+    .replaceAll("spellCheck=", "spellcheck=")
+    .replaceAll("colSpan=", "colspan=")
+    .replaceAll("rowSpan=", "rowspan=");
 }
 
 function normalise(html: string): string {

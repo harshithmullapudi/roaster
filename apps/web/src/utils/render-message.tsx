@@ -68,6 +68,8 @@ const REACT_ATTRIBUTE_NAMES: Record<string, string> = {
   spellcheck: "spellCheck",
   autocomplete: "autoComplete",
   tabindex: "tabIndex",
+  colspan: "colSpan",
+  rowspan: "rowSpan",
 };
 
 function withReactAttributeNames(spec: unknown): unknown {

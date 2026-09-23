@@ -1,4 +1,10 @@
-import { RRule, rrulestr } from "rrule";
+import * as rruleModule from "rrule";
+
+const rrule = (rruleModule as unknown as { default?: typeof rruleModule })
+  .default ?? rruleModule;
+
+const { RRule, rrulestr } = rrule;
+type RRule = InstanceType<typeof RRule>;
 
 export class RecurrenceError extends Error {}
 

@@ -329,6 +329,7 @@ function toSummary(row: SummaryRow, extras: ThreadExtras): ThreadSummary {
 
 export interface ChannelThread extends ThreadSummary {
   lastReadAt: Date | null;
+  muted: boolean;
 }
 
 export async function listChannelThreads(args: {
@@ -339,6 +340,7 @@ export async function listChannelThreads(args: {
     .select({
       ...summaryColumns,
       lastReadAt: threadSubscriptions.lastReadAt,
+      muted: isNotNull(threadSubscriptions.mutedAt),
     })
     .from(threads)
     .leftJoin(messages, eq(threads.rootMessageId, messages.id))
@@ -360,6 +362,7 @@ export async function listChannelThreads(args: {
   return rows.map((row) => ({
     ...toSummary(row, extras),
     lastReadAt: asDate(row.lastReadAt),
+    muted: Boolean(row.muted),
   }));
 }
 

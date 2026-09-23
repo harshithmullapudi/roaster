@@ -9,9 +9,10 @@ export type ThreadItem = Omit<
   completedAt: Date | null;
   completedByMemberId: string | null;
   lastReadAt: Date | null;
+  muted: boolean;
 };
 
-export type ThreadUpdate = Omit<ThreadItem, "lastReadAt">;
+export type ThreadUpdate = Omit<ThreadItem, "lastReadAt" | "muted">;
 
 export function threadsKey(projectId: string) {
   return ["threads", projectId] as const;
@@ -44,9 +45,10 @@ export function turnFinished(status: string): boolean {
 export function turnUnseen(
   thread: Pick<
     ThreadItem,
-    "status" | "endedAt" | "lastReadAt" | "completedAt"
+    "status" | "endedAt" | "lastReadAt" | "completedAt" | "muted"
   >,
 ): boolean {
+  if (thread.muted) return false;
   if (thread.completedAt) return false;
   if (!turnFinished(thread.status)) return false;
   if (!thread.endedAt || !thread.lastReadAt) return false;
@@ -206,12 +208,15 @@ export function mergeThread(
   incoming: ThreadUpdate,
 ): ThreadItem[] {
   const index = list.findIndex((thread) => thread.id === incoming.id);
-  if (index === -1) return [{ ...incoming, lastReadAt: null }, ...list];
+  if (index === -1) {
+    return [{ ...incoming, lastReadAt: null, muted: false }, ...list];
+  }
 
   const previous = list[index];
   const merged: ThreadItem = {
     ...incoming,
     lastReadAt: previous?.lastReadAt ?? null,
+    muted: previous?.muted ?? false,
     rootText: incoming.rootText || (previous?.rootText ?? ""),
     authorName: incoming.authorName ?? previous?.authorName ?? null,
     authorEmail: incoming.authorEmail ?? previous?.authorEmail ?? null,

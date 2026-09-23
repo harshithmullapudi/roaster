@@ -167,6 +167,7 @@ const row = (thread: Partial<ThreadItem> = {}): ThreadItem => ({
   completedAt: null,
   completedByMemberId: null,
   lastReadAt: READ_AT,
+  muted: false,
   ...thread,
 });
 
@@ -202,9 +203,24 @@ describe("turnUnseen", () => {
   it("is false for a thread you do not follow — it is not yours to open", () => {
     expect(turnUnseen(row({ lastReadAt: null }))).toBe(false);
   });
+
+  it("is false for a thread you muted, as the inbox already reads mute", () => {
+    expect(turnUnseen(row({ muted: true }))).toBe(false);
+  });
 });
 
 describe("mergeThread", () => {
+  it("keeps the mute you set, which the broadcast payload cannot carry", () => {
+    const list = [row({ status: "running", endedAt: null, muted: true })];
+    const parsed = parsePublishedThread(
+      published({ status: "idle", endedAt: ENDED_AT.toISOString() }),
+    );
+    const merged = mergeThread(list, parsed!);
+
+    expect(merged[0]?.muted).toBe(true);
+    expect(turnUnseen(merged[0]!)).toBe(false);
+  });
+
   it("keeps your read mark, which the broadcast payload cannot carry", () => {
     const list = [row({ status: "running", endedAt: null })];
     const parsed = parsePublishedThread(

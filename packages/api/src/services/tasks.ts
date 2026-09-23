@@ -1,4 +1,4 @@
-import { db, projects, tasks } from "@roster/db";
+import { db, members, projects, tasks, users } from "@roster/db";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { normalizeTaskStatus, type TaskStatus } from "../lib/task-status";
@@ -8,6 +8,11 @@ import {
   requireOrgProject,
   type ChannelScope,
 } from "./channels";
+
+export interface TaskCreator {
+  memberId: string;
+  name: string;
+}
 
 export interface Task {
   id: string;
@@ -19,6 +24,7 @@ export interface Task {
   completedAt: Date | null;
   channelSlug: string | null;
   channelName: string | null;
+  createdBy: TaskCreator | null;
 }
 
 const taskColumns = {
@@ -31,7 +37,19 @@ const taskColumns = {
   completedAt: tasks.completedAt,
   channelSlug: projects.slug,
   channelName: projects.name,
+  createdByMemberId: tasks.createdByMemberId,
+  createdByName: users.name,
+  createdByEmail: users.email,
 };
+
+function selectTasks() {
+  return db
+    .select(taskColumns)
+    .from(tasks)
+    .leftJoin(projects, eq(tasks.projectId, projects.id))
+    .leftJoin(members, eq(tasks.createdByMemberId, members.id))
+    .leftJoin(users, eq(members.userId, users.id));
+}
 
 function toTask(row: {
   id: string;
@@ -43,8 +61,25 @@ function toTask(row: {
   completedAt: Date | null;
   channelSlug: string | null;
   channelName: string | null;
+  createdByMemberId: string | null;
+  createdByName: string | null;
+  createdByEmail: string | null;
 }): Task {
-  return { ...row, status: normalizeTaskStatus(row.status) };
+  const {
+    createdByMemberId,
+    createdByName,
+    createdByEmail,
+    ...rest
+  } = row;
+
+  const name = createdByName || createdByEmail;
+
+  return {
+    ...rest,
+    status: normalizeTaskStatus(row.status),
+    createdBy:
+      createdByMemberId && name ? { memberId: createdByMemberId, name } : null,
+  };
 }
 
 export async function listTasks(
@@ -59,10 +94,7 @@ export async function listTasks(
     });
     if (!project) return [];
 
-    const rows = await db
-      .select(taskColumns)
-      .from(tasks)
-      .leftJoin(projects, eq(tasks.projectId, projects.id))
+    const rows = await selectTasks()
       .where(eq(tasks.projectId, project.id))
       .orderBy(desc(tasks.createdAt));
 
@@ -81,10 +113,7 @@ export async function listTasks(
       ? or(isNull(tasks.projectId), inArray(tasks.projectId, visibleIds))
       : isNull(tasks.projectId);
 
-  const rows = await db
-    .select(taskColumns)
-    .from(tasks)
-    .leftJoin(projects, eq(tasks.projectId, projects.id))
+  const rows = await selectTasks()
     .where(and(eq(tasks.organizationId, scope.organizationId), reachable))
     .orderBy(desc(tasks.createdAt));
 
@@ -133,10 +162,7 @@ export async function setTaskStatus(
 export async function reachableTask(
   args: ChannelScope & { taskId: string },
 ): Promise<Task | null> {
-  const [row] = await db
-    .select(taskColumns)
-    .from(tasks)
-    .leftJoin(projects, eq(tasks.projectId, projects.id))
+  const [row] = await selectTasks()
     .where(
       and(
         eq(tasks.id, args.taskId),
@@ -179,10 +205,7 @@ export async function linkTaskThread(args: {
 }
 
 export async function taskForThread(threadId: string): Promise<Task | null> {
-  const [row] = await db
-    .select(taskColumns)
-    .from(tasks)
-    .leftJoin(projects, eq(tasks.projectId, projects.id))
+  const [row] = await selectTasks()
     .where(eq(tasks.threadId, threadId))
     .limit(1);
 
@@ -190,12 +213,7 @@ export async function taskForThread(threadId: string): Promise<Task | null> {
 }
 
 export async function findById(id: string): Promise<Task | null> {
-  const [row] = await db
-    .select(taskColumns)
-    .from(tasks)
-    .leftJoin(projects, eq(tasks.projectId, projects.id))
-    .where(eq(tasks.id, id))
-    .limit(1);
+  const [row] = await selectTasks().where(eq(tasks.id, id)).limit(1);
 
   return row ? toTask(row) : null;
 }

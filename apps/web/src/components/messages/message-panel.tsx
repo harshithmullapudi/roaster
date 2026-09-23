@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useChannelRealtime } from "~/hooks/use-channel-realtime";
 import { useCollapseCompleted } from "~/hooks/use-collapse-completed";
@@ -106,13 +106,16 @@ export function MessagePanel({
     [messages, threadsByRootMessage, collapse, expanded],
   );
 
-  const anchorRef = useRef<string | undefined>(undefined);
-  if (anchorRef.current === undefined) anchorRef.current = messages[0]?.id;
+  const [anchorId, setAnchorId] = useState<string | undefined>(
+    () => initialMessages[0]?.id,
+  );
 
-  const aboveAnchorRef = useRef(0);
-  const above = anchorRowIndex(rows, anchorRef.current);
-  if (above !== null) aboveAnchorRef.current = above;
-  const firstItemIndex = START_INDEX - aboveAnchorRef.current;
+  const above = anchorRowIndex(rows, anchorId);
+  const firstItemIndex = START_INDEX - (above ?? 0);
+
+  useEffect(() => {
+    if (above === null) setAnchorId(messages[0]?.id);
+  }, [above, messages]);
 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const loadingRef = useRef(false);

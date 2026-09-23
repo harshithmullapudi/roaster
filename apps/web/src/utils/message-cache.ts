@@ -10,11 +10,32 @@ export function channelMessagesKey(projectId: string) {
   return ["messages", projectId] as const;
 }
 
+function inOrder(a: MessageItem, b: MessageItem): number {
+  if (a.seq !== b.seq) return a.seq - b.seq;
+  return a.createdAt.getTime() - b.createdAt.getTime();
+}
+
 export function sortMessages(list: MessageItem[]): MessageItem[] {
-  return [...list].sort((a, b) => {
-    if (a.seq !== b.seq) return a.seq - b.seq;
-    return a.createdAt.getTime() - b.createdAt.getTime();
-  });
+  return [...list].sort(inOrder);
+}
+
+function insertInOrder(
+  sorted: MessageItem[],
+  message: MessageItem,
+): MessageItem[] {
+  let low = 0;
+  let high = sorted.length;
+
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    const at = sorted[middle];
+    if (at && inOrder(at, message) <= 0) low = middle + 1;
+    else high = middle;
+  }
+
+  const next = sorted.slice();
+  next.splice(low, 0, message);
+  return next;
 }
 
 function sameReactions(a: ReactionRef[], b: ReactionRef[]): boolean {
@@ -70,10 +91,10 @@ export function mergeMessage(
     (message) => !message.pending && message.seq === merged.seq,
   );
   if (alreadyStored) {
-    return kept.length === list.length ? list : sortMessages(kept);
+    return kept.length === list.length ? list : kept;
   }
 
-  return sortMessages([...kept, merged]);
+  return insertInOrder(kept, merged);
 }
 
 export function mergeMessages(

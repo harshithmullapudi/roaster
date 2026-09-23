@@ -26,14 +26,13 @@ import {
 } from "~/utils/thread-rows";
 import { trpc } from "~/utils/trpc";
 
-const countedReplies = new Set<string>();
-
 export function useChannelRealtime(projectId: string): void {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     let disposed = false;
     let centrifuge: Centrifuge | null = null;
+    const countedReplies = new Set<string>();
     const queryKey = channelMessagesKey(projectId);
 
     async function backfill(reason: string) {

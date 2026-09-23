@@ -45,7 +45,7 @@ export interface MessagePanelProps {
 const START_INDEX = 1_000_000;
 
 const INITIAL_PAGE = 50;
-const OLDER_PAGE = 25;
+const OLDER_PAGE = 100;
 
 export function MessagePanel({
   projectId,

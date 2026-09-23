@@ -29,7 +29,7 @@ export function textToTiptap(text: string): TiptapDoc {
 }
 
 export function markdownToTiptap(markdown: string): TiptapDoc {
-  const tokens = Lexer.lex(markdown.replace(/\r\n/g, "\n"), {
+  const tokens = Lexer.lex(withDelimiterRows(markdown.replace(/\r\n/g, "\n")), {
     gfm: true,
     breaks: true,
   });
@@ -40,6 +40,50 @@ export function markdownToTiptap(markdown: string): TiptapDoc {
     type: "doc",
     content: content.length > 0 ? content : [{ type: "paragraph" }],
   };
+}
+
+const FENCE = /^\s*(?:```|~~~)/;
+const DELIMITER_CELL = /^:?-+:?$/;
+
+function pipeCells(line: string): string[] {
+  return line
+    .trim()
+    .slice(1, -1)
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim());
+}
+
+function isPipeRow(line: string | undefined): boolean {
+  if (line === undefined) return false;
+  const trimmed = line.trim();
+  return trimmed.length > 1 && trimmed.startsWith("|") && trimmed.endsWith("|");
+}
+
+function isDelimiterRow(line: string): boolean {
+  return pipeCells(line).every((cell) => DELIMITER_CELL.test(cell));
+}
+
+function withDelimiterRows(markdown: string): string {
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  let fenced = false;
+
+  lines.forEach((line, index) => {
+    if (FENCE.test(line)) fenced = !fenced;
+    out.push(line);
+    if (fenced) return;
+
+    const next = lines[index + 1];
+    const startsTable =
+      isPipeRow(line) &&
+      !isPipeRow(lines[index - 1]) &&
+      isPipeRow(next) &&
+      !isDelimiterRow(next as string);
+
+    if (startsTable) out.push(`|${" --- |".repeat(pipeCells(line).length)}`);
+  });
+
+  return out.join("\n");
 }
 
 function blockNodes(token: Token): TiptapNode[] {
@@ -111,14 +155,18 @@ function blockNodes(token: Token): TiptapNode[] {
     case "hr":
       return [{ type: "horizontalRule" }];
 
-    case "table":
+    case "table": {
+      const table = token as Tokens.Table;
       return [
         {
-          type: "codeBlock",
-          attrs: { language: null },
-          ...withContent(textNodes(token.raw.trim())),
+          type: "table",
+          content: [
+            tableRow(table.header, "tableHeader"),
+            ...table.rows.map((row) => tableRow(row, "tableCell")),
+          ],
         },
       ];
+    }
 
     default: {
       const generic = token as Tokens.Generic;
@@ -127,6 +175,17 @@ function blockNodes(token: Token): TiptapNode[] {
       return raw.length > 0 ? [paragraph(textNodes(raw))] : [];
     }
   }
+}
+
+function tableRow(cells: Tokens.TableCell[], cell: string): TiptapNode {
+  return {
+    type: "tableRow",
+    content: cells.map((column) => ({
+      type: cell,
+      attrs: { colspan: 1, rowspan: 1, colwidth: null },
+      content: [paragraph(inlineNodes(column.tokens))],
+    })),
+  };
 }
 
 function listItem(item: Tokens.ListItem): TiptapNode {

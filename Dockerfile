@@ -101,7 +101,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/packages/db/drizzle ./packages/db
 
 # The worker. One bundled file with nothing to resolve at runtime, so the
 # background tier runs from this image either as its own service:
-#   node apps/worker/dist/worker.js
+#   node apps/worker/dist/worker.mjs
 # or alongside the web server in this container, with ROSTER_RUN_WORKER=1.
 COPY --from=builder --chown=nextjs:nodejs /app/apps/worker/dist ./apps/worker/dist
 COPY --chown=nextjs:nodejs docker/start.mjs ./docker/start.mjs

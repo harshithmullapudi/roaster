@@ -34,12 +34,12 @@ or restart on its own:
 
 ```bash
 docker run -p 3000:3000 --env-file .env roster
-docker run --env-file .env roster node apps/worker/dist/worker.js
+docker run --env-file .env roster node apps/worker/dist/worker.mjs
 ```
 
 | | Web | Worker |
 | --- | --- | --- |
-| Start command | the image default | `node apps/worker/dist/worker.js` |
+| Start command | the image default | `node apps/worker/dist/worker.mjs` |
 | Serves HTTP | yes, on `$PORT` | no |
 | Uploads volume | **required** | **must not have one** |
 | Redis | required | required |
@@ -97,7 +97,7 @@ builder — then:
 
    Split it out when either tier needs to scale or restart independently.
    Add a second service on the same repo with:
-   - **Custom start command** `node apps/worker/dist/worker.js`. This is
+   - **Custom start command** `node apps/worker/dist/worker.mjs`. This is
      Railway's documented way to run a second tier out of a shared monorepo,
      and it is why there is no second Dockerfile: the builder can only pick a
      file, not a stage, so a worker stage would have become the default target

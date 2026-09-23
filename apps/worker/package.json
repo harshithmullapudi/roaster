@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/worker.js --external:pg-native --banner:js='import{createRequire as __cr}from \"node:module\";const require=__cr(import.meta.url);'",
-    "start": "node dist/worker.js",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/worker.mjs --external:pg-native --banner:js='import{createRequire as __cr}from \"node:module\";const require=__cr(import.meta.url);'",
+    "start": "node dist/worker.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

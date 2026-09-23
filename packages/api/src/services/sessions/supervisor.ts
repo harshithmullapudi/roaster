@@ -517,10 +517,7 @@ async function askForInput(sessionId: string): Promise<void> {
 
   const question = await captureReply(session, watch);
 
-  const row = await patch(sessionId, {
-    status,
-    lastProgress: question ?? session.lastProgress,
-  });
+  const row = await patch(sessionId, { status });
   if (!row) return;
 
   if (question && question.trim().length > 0) {

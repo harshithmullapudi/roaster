@@ -53,7 +53,7 @@ function pipeCells(line: string): string[] {
     .map((cell) => cell.trim());
 }
 
-function isPipeRow(line: string | undefined): boolean {
+function isPipeRow(line: string | undefined): line is string {
   if (line === undefined) return false;
   const trimmed = line.trim();
   return trimmed.length > 1 && trimmed.startsWith("|") && trimmed.endsWith("|");
@@ -78,7 +78,7 @@ function withDelimiterRows(markdown: string): string {
       isPipeRow(line) &&
       !isPipeRow(lines[index - 1]) &&
       isPipeRow(next) &&
-      !isDelimiterRow(next as string);
+      !isDelimiterRow(next);
 
     if (startsTable) out.push(`|${" --- |".repeat(pipeCells(line).length)}`);
   });

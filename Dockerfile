@@ -58,6 +58,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
 COPY --from=deps /app/packages/auth/node_modules ./packages/auth/node_modules
 COPY --from=deps /app/packages/cli/node_modules ./packages/cli/node_modules

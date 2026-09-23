@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useChannelRealtime } from "~/hooks/use-channel-realtime";
+import { useCollapseCompleted } from "~/hooks/use-collapse-completed";
 import type { MessageItem } from "~/types";
+import { anchorRowIndex, buildChannelRows } from "~/utils/channel-rows";
 import {
   removeThread,
   type ThreadItem,
@@ -85,7 +87,33 @@ export function MessagePanel({
     [threads],
   );
 
-  const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
+  const { collapse } = useCollapseCompleted(projectId);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const toggleBand = useCallback((bandId: string) => {
+    setExpanded((previous) => {
+      const next = new Set(previous);
+      if (!next.delete(bandId)) next.add(bandId);
+      return next;
+    });
+  }, []);
+
+  const rows = useMemo(
+    () =>
+      buildChannelRows(messages, threadsByRootMessage, { collapse, expanded }),
+    [messages, threadsByRootMessage, collapse, expanded],
+  );
+
+  const anchorRef = useRef<string | undefined>(undefined);
+  if (anchorRef.current === undefined) anchorRef.current = messages[0]?.id;
+
+  const aboveAnchorRef = useRef(0);
+  const above = anchorRowIndex(rows, anchorRef.current);
+  if (above !== null) aboveAnchorRef.current = above;
+  const firstItemIndex = START_INDEX - aboveAnchorRef.current;
+
   const [loadingOlder, setLoadingOlder] = useState(false);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(initialMessages.length >= INITIAL_PAGE);
@@ -107,13 +135,9 @@ export function MessagePanel({
       });
       if (older.length < OLDER_PAGE) hasMoreRef.current = false;
 
-      let added = 0;
-      queryClient.setQueryData<MessageItem[]>(queryKey, (previous) => {
-        const next = prependMessages(previous ?? [], older as MessageItem[]);
-        added = next.length - (previous?.length ?? 0);
-        return next;
-      });
-      if (added > 0) setFirstItemIndex((index) => index - added);
+      queryClient.setQueryData<MessageItem[]>(queryKey, (previous) =>
+        prependMessages(previous ?? [], older as MessageItem[]),
+      );
     } catch {
       console.warn("[messages] could not load older messages");
     } finally {
@@ -193,7 +217,8 @@ export function MessagePanel({
       <div className="flex min-h-0 flex-1 flex-col">
         <MessageList
           channelName={channelName}
-          messages={messages}
+          rows={rows}
+          empty={messages.length === 0}
           threadsByRootMessage={threadsByRootMessage}
           basePath={basePath}
           memberId={memberId}
@@ -201,6 +226,7 @@ export function MessagePanel({
           loadingOlder={loadingOlder}
           onLoadOlder={loadOlder}
           onDelete={remove}
+          onToggleBand={toggleBand}
           onSentRef={stickToBottom}
         />
       </div>

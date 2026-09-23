@@ -21,7 +21,7 @@ export const CompletedBand = memo(function CompletedBand({
   onToggle,
 }: CompletedBandProps) {
   return (
-    <div className="group/band relative px-3 py-1.5 sm:px-5">
+    <div className="relative px-3 py-2 sm:px-5">
       <span
         aria-hidden
         className="border-border/60 absolute inset-x-3 top-1/2 border-t sm:inset-x-5"
@@ -31,14 +31,14 @@ export const CompletedBand = memo(function CompletedBand({
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="bg-background-2 text-muted-foreground/70 group-hover/band:text-muted-foreground flex items-center gap-1 px-2 text-[11px]"
+          className="bg-background-2 border-border/70 text-muted-foreground hover:border-border hover:text-foreground flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px]"
         >
           <span suppressHydrationWarning>
             {`${bandLabel(count)} · ${relativeTime(lastAt)}`}
           </span>
           <ChevronDown
             size={11}
-            className={cn("shrink-0 opacity-40", expanded && "rotate-180")}
+            className={cn("shrink-0 opacity-60", expanded && "rotate-180")}
           />
         </button>
       </span>

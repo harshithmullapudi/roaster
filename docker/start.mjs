@@ -49,5 +49,5 @@ start("web", ["apps/web/server.js"]);
 
 if (process.env.ROSTER_RUN_WORKER === "1") {
   console.log("[start] ROSTER_RUN_WORKER=1 — running the worker in this container too");
-  start("worker", ["apps/worker/dist/worker.js"]);
+  start("worker", ["apps/worker/dist/worker.mjs"]);
 }

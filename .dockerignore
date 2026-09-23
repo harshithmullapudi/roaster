@@ -36,7 +36,6 @@ coverage
 
 docker-compose.dev.yaml
 Dockerfile
-Dockerfile.worker
 README.md
 docs
 design

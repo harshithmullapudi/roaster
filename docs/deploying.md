@@ -9,17 +9,23 @@ live inside the Next process. A deploy dropped every live watch, nothing
 recurring could be scheduled, and the process could never be replicated. The
 worker owns all of that now, and the web tier only reads and enqueues.
 
+**One image, two start commands.** The build bundles the worker into a single
+self-contained file, so the same image runs either tier and the only difference
+is what the service starts.
+
 | | Web | Worker |
 | --- | --- | --- |
-| Dockerfile | `Dockerfile` | `Dockerfile.worker` |
+| Start command | `node apps/web/server.js` (the image default) | `node apps/worker/dist/worker.js` |
 | Serves HTTP | yes, on `$PORT` | no |
 | Uploads volume | **required** | **must not have one** |
 | Redis | required | required |
 | Runs migrations | yes, on boot | no |
 
 ```bash
-docker build -t roster-web --build-arg NEXT_PUBLIC_APP_URL=https://roster.example.com .
-docker build -t roster-worker -f Dockerfile.worker .
+docker build -t roster --build-arg NEXT_PUBLIC_APP_URL=https://roster.example.com .
+
+docker run -p 3000:3000 --env-file .env roster
+docker run --env-file .env roster node apps/worker/dist/worker.js
 ```
 
 ## On Railway
@@ -58,8 +64,11 @@ builder — then:
    object storage; `packages/api/src/services/attachments.ts` is the only
    module touching disk.
 6. **Add the worker as a second service** on the same repo:
-   - **Dockerfile path** `Dockerfile.worker`. Railway's builder cannot select
-     a Docker build target, only a file, which is why the worker has its own.
+   - **Custom start command** `node apps/worker/dist/worker.js`. This is
+     Railway's documented way to run a second tier out of a shared monorepo,
+     and it is why there is no second Dockerfile: the builder can only pick a
+     file, not a stage, so a worker stage would have become the default target
+     and quietly replaced the web image.
    - **No volume, no domain.** It serves no HTTP.
    - The same variables as web, minus the web-only ones:
      `DATABASE_URL`, `REDIS_URL`, `SUPERSET_KEY_SECRET`, `SUPERSET_API_URL`,
@@ -118,8 +127,16 @@ moving to Infrastructure as Code before that date rather than after.
 ## The Railway template
 
 The template is defined in Railway's dashboard, not in this repository, so it
-has to be edited there. To match this layout it needs four services — web with
-a volume, worker with none, Postgres, and Redis with `maxmemory-policy` set to
-`noeviction` — plus the shared variables above, with `SUPERSET_KEY_SECRET`
-generated once and referenced by both app services rather than generated per
-service.
+has to be edited there. To match this layout it needs four services:
+
+| Service | Notes |
+| --- | --- |
+| Web | This repo's Dockerfile, a volume at `/app/uploads`, a domain |
+| Worker | The same image and repo, start command `node apps/worker/dist/worker.js`, no volume, no domain |
+| Postgres | |
+| Redis | `maxmemory-policy` set to `noeviction`, persistence on |
+
+Both app services take the same variables. `SUPERSET_KEY_SECRET` has to be
+generated **once** and referenced by both rather than generated per service —
+two different values means the worker cannot decrypt the key the web service
+stored, and every session start fails with an unreadable-key error.

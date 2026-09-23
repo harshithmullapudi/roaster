@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Where Redis moves Roster's ceiling</title>
+    <style>
+      :root {
+        --sp-measure: 72ch;
+        --rule: 1px solid var(--sp-border);
+      }
+
+      body {
+        padding: 0;
+      }
+
+      .wrap {
+        max-width: 80rem;
+        margin: 0 auto;
+        padding: clamp(2rem, 5vw, 4rem) clamp(1.25rem, 4vw, 3rem) 6rem;
+      }
+
+      .eyebrow {
+        font-family: var(--sp-font-mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        margin: 0 0 0.6rem;
+      }
+
+      h1 {
+        margin: 0 0 1rem;
+        line-height: 1.1;
+      }
+
+      .lead {
+        max-width: var(--sp-measure);
+        font-size: 1.1rem;
+        color: var(--sp-text);
+      }
+
+      .prose {
+        max-width: var(--sp-measure);
+      }
+
+      h2 {
+        margin: 3.5rem 0 0.25rem;
+        padding-top: 1.25rem;
+        border-top: var(--rule);
+      }
+
+      h2 + .sub {
+        color: var(--sp-muted);
+        margin: 0 0 1.75rem;
+        max-width: var(--sp-measure);
+      }
+
+      .scroll {
+        overflow-x: auto;
+        margin: 1.5rem 0;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th {
+        text-align: left;
+        font-family: var(--sp-font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        font-weight: 400;
+        padding: 0 1rem 0.5rem 0;
+        border-bottom: var(--rule);
+        white-space: nowrap;
+      }
+
+      td {
+        padding: 0.7rem 1rem 0.7rem 0;
+        border-bottom: var(--rule);
+        vertical-align: top;
+      }
+
+      td:last-child,
+      th:last-child {
+        padding-right: 0;
+      }
+
+      .rank {
+        font-family: var(--sp-font-mono);
+        color: var(--sp-muted);
+        font-size: 0.85rem;
+        white-space: nowrap;
+      }
+
+      .item {
+        margin: 2.5rem 0;
+        padding-left: 1.25rem;
+        border-left: 2px solid var(--sp-border);
+      }
+
+      .item > h3 {
+        margin: 0 0 1rem;
+        font-size: 1.05rem;
+      }
+
+      .item > h3 .n {
+        font-family: var(--sp-font-mono);
+        color: var(--sp-muted);
+        font-weight: 400;
+        margin-right: 0.6rem;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: 7.5rem 1fr;
+        gap: 0.5rem 1.25rem;
+        margin: 0;
+        max-width: 68rem;
+      }
+
+      dt {
+        font-family: var(--sp-font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        padding-top: 0.2rem;
+      }
+
+      dd {
+        margin: 0;
+      }
+
+      dd code,
+      td code {
+        font-size: 0.86em;
+      }
+
+      .cost dd {
+        color: var(--sp-muted);
+      }
+
+      .no {
+        margin: 2rem 0;
+      }
+
+      .no h3 {
+        margin: 0 0 0.4rem;
+        font-size: 1rem;
+      }
+
+      .no p {
+        margin: 0;
+        max-width: var(--sp-measure);
+        color: var(--sp-muted);
+      }
+
+      footer {
+        margin-top: 4rem;
+        padding-top: 1.25rem;
+        border-top: var(--rule);
+        color: var(--sp-muted);
+        font-size: 0.9rem;
+        max-width: var(--sp-measure);
+      }
+
+      @media (max-width: 34rem) {
+        dl {
+          grid-template-columns: 1fr;
+          gap: 0.15rem;
+        }
+        dt {
+          padding-top: 0.6rem;
+        }
+      }
+    </style>
+  </head>
+  <body class="auto">
+    <div class="wrap">
+      <p class="eyebrow">Roster &middot; scaling</p>
+      <h1>Where Redis moves Roster's ceiling</h1>
+      <p class="lead">
+        Ten places Redis buys real headroom, ranked by payoff, each measured
+        against what the code does today. Plus five places it would be the
+        wrong answer &mdash; which matters more, because the tempting misuses
+        here are the ones that quietly trade correctness for throughput.
+      </p>
+
+      <h2>The shape of the problem</h2>
+      <p class="sub">
+        Roster is one process by construction, and three separate things hold
+        it there.
+      </p>
+      <div class="prose">
+        <p>
+          All background work lives inside the Next.js server. The supervisor
+          keeps five <code>Map</code>s and a <code>Set</code> in module scope
+          (<code>supervisor.ts:145&ndash;157</code>), holds one WebSocket per
+          <code>memberId@hostKey</code>, and runs one
+          <code>setInterval</code> per live session
+          (<code>supervisor.ts:687</code>). A page render boots it:
+          <code>page.tsx:55</code> calls <code>void ensureStarted()</code>.
+        </p>
+        <p>
+          So a deploy drops every live watch until something re-adopts it,
+          nothing recurring can be scheduled because no timer outlives a
+          request, and a second copy of the process would be actively harmful
+          &mdash; a steer queued in one copy's <code>pendingSteers</code> is
+          invisible to the other, and both would race to finish the same
+          session.
+        </p>
+        <p>
+          Worth separating the three constraints, because only one of them is
+          Redis's to solve. <strong>Coordination state</strong> is the
+          supervisor's in-memory maps &mdash; Redis's job, and most of this
+          page. <strong>Durable truth</strong> is Postgres, and it should stay
+          there; the last section explains why that is a correctness
+          requirement rather than a preference. <strong>Large bytes</strong>
+          are attachments on a local volume
+          (<code>attachments.ts:38</code>), which is what
+          <code>docs/deploying.md:30</code> means by &ldquo;it rules out
+          replicas&rdquo; &mdash; object storage, not Redis, and the one
+          ceiling nothing here lifts.
+        </p>
+      </div>
+
+      <h2>Ranked</h2>
+      <p class="sub">Payoff against effort, highest first.</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Opportunity</th>
+              <th>What it unlocks</th>
+              <th>Effort</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rank">1</td>
+              <td>Session ownership leases</td>
+              <td>More than one worker; deploys stop dropping watches</td>
+              <td>High</td>
+            </tr>
+            <tr>
+              <td class="rank">2</td>
+              <td>A scheduler that outlives a request</td>
+              <td>Scheduled tasks, and continuous crash recovery</td>
+              <td>Medium</td>
+            </tr>
+            <tr>
+              <td class="rank">3</td>
+              <td>Durable command and steer queues</td>
+              <td>A steer survives a deploy instead of vanishing</td>
+              <td>Medium</td>
+            </tr>
+            <tr>
+              <td class="rank">4</td>
+              <td>Terminal fan-out</td>
+              <td>One relay socket per terminal, not per viewer</td>
+              <td>Medium</td>
+            </tr>
+            <tr>
+              <td class="rank">5</td>
+              <td>Centrifugo's Redis engine</td>
+              <td>More than one Centrifugo node; history survives restart</td>
+              <td>Low</td>
+            </tr>
+            <tr>
+              <td class="rank">6</td>
+              <td>API-key last-used writes</td>
+              <td>Removes one Postgres write per agent CLI call</td>
+              <td>Low</td>
+            </tr>
+            <tr>
+              <td class="rank">7</td>
+              <td>Channel-visibility cache</td>
+              <td>Cuts the fan-out query off three hot paths</td>
+              <td>Low</td>
+            </tr>
+            <tr>
+              <td class="rank">8</td>
+              <td>Cross-process cache invalidation</td>
+              <td>Closes a ~50-minute revoked-credential window</td>
+              <td>Low</td>
+            </tr>
+            <tr>
+              <td class="rank">9</td>
+              <td>Unread counters</td>
+              <td>Removes an aggregate query per inbox poll</td>
+              <td>Low</td>
+            </tr>
+            <tr>
+              <td class="rank">10</td>
+              <td>Backpressure toward hosts</td>
+              <td>Retry pressure stops multiplying by worker count</td>
+              <td>Medium</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>1 &mdash; 4 &nbsp;The ceiling itself</h2>
+      <p class="sub">
+        These four are the difference between one process and several.
+      </p>
+
+      <div class="item">
+        <h3><span class="n">01</span>Session ownership leases</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            <code>watches</code>, <code>hosts</code> and
+            <code>byTerminal</code> are process-local maps. Only the process
+            holding a machine's events socket can route the
+            <code>Start</code>, <code>Stop</code>, <code>Failed</code> and
+            <code>PermissionRequest</code> events that arrive on it
+            (<code>supervisor.ts:411</code>).
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            A lease per <code>memberId@hostKey</code> &mdash; the existing
+            <code>linkKey</code> &mdash; held with <code>SET NX PX</code> and
+            renewed on a heartbeat. Sessions inherit their owner from their
+            link, so one lease covers every session on a machine and lifecycle
+            routing stays a local map lookup.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            A worker tier that can run more than one instance, and crash
+            recovery that is continuous rather than boot-only: lease expiry
+            <em>is</em> the crash signal, so a sweep can adopt orphaned
+            sessions instead of waiting for someone to load a page.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            The lease has a documented failure window &mdash; see
+            <a href="#not">the last section</a>. It must be treated as
+            coordination, never as the thing that makes concurrency safe.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">02</span>A scheduler that outlives a request</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            There is no scheduler. The only recurring timers are the
+            supervisor's per-session poll and its reconnect backoff, and both
+            die with the process.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            BullMQ job schedulers hold cron state in Redis, so a schedule
+            survives a deploy and only one occurrence of a slot can ever be
+            produced.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            Scheduled tasks &mdash; a cron expression that posts a message into
+            a channel so the agent opens a thread on it &mdash; plus every
+            maintenance sweep Roster currently has nowhere to put: adopting
+            orphaned sessions, reaping stale worktrees, expiring invite links.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            A slot that passes with no worker running fires once, late, and
+            intermediate slots are dropped silently. That is observed
+            behaviour rather than a documented contract, so the version wants
+            pinning and firings want recording in Postgres.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">03</span>Durable command and steer queues</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            <code>pendingSteers</code> (<code>supervisor.ts:154</code>) holds
+            steer text in memory. Restart the process and queued steers are
+            gone; the user is told only because the code remembers to say so.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            A list per session for steers, and a list per link for commands,
+            with a pub/sub channel used purely as a low-latency doorbell. The
+            list is the source of truth, so a dropped notification costs
+            latency and never a command.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            Commands addressed to a machine whose owner is mid-restart simply
+            wait. It also gives the blocking operations &mdash; cancel, retry,
+            reap &mdash; a reply channel, which they need because their callers
+            render the result rather than fire and forget.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            Redis pub/sub is at-most-once, so the periodic drain is the
+            correctness mechanism and the doorbell is the optimization. Getting
+            that backwards produces a system that works until it doesn't.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">04</span>Terminal fan-out</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            <code>api/terminals/stream/route.ts:39</code> opens a relay
+            WebSocket <em>per viewer</em>. Three people watching one agent work
+            is three sockets to the same terminal, each with its own SSE
+            stream, all pinned to the web process.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            One holder per terminal, discovered through the same lease
+            primitive as session links, publishing frames to a Redis channel
+            that every viewer's SSE stream subscribes to.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            Socket count scales with active terminals rather than with
+            viewers &mdash; the difference between a demo and a standup where
+            everyone opens the same thread.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            Terminal output is high-frequency, so this is the one use here with
+            real throughput considerations. Worth measuring before assuming the
+            fan-out is cheaper than the duplicate sockets.
+          </dd>
+        </dl>
+      </div>
+
+      <h2>5 &mdash; 10 &nbsp;Work taken off the hot path</h2>
+      <p class="sub">
+        Individually small. Together they are most of what a request currently
+        spends its time on.
+      </p>
+
+      <div class="item">
+        <h3><span class="n">05</span>Centrifugo's Redis engine</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            <code>docker/centrifugo/config.json</code> declares no engine, so
+            Centrifugo runs the in-memory one, holding 300 messages and 30
+            minutes of history per namespace in process memory.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            The Redis engine, which is a configuration change rather than
+            application code.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            More than one Centrifugo node, and history that survives a
+            restart. Note the three namespaces set
+            <code>force_recovery: true</code> &mdash; a promise of recovery
+            that the in-memory engine silently cannot keep across a restart
+            today.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            Lowest-effort item on this page, and the only one that needs no
+            application change at all.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">06</span>API-key last-used writes</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            <code>api-keys.ts:79</code> writes <code>lastUsedAt</code> on every
+            successful key verification. Every <code>roster</code> invocation
+            by every agent &mdash; each channel read, each task status change
+            &mdash; is one Postgres <code>UPDATE</code> whose only purpose is a
+            timestamp nobody reads in real time.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            Record last-used in Redis on the hot path and flush to Postgres
+            periodically, or on a scheduled sweep.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            Removes a write from the single most frequent authenticated path in
+            the system, which is also the path that scales with agent activity
+            rather than human activity.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            Last-used becomes approximate, by the flush interval. For a
+            &ldquo;when was this key last seen&rdquo; column in settings, that
+            is the right trade.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">07</span>Channel-visibility cache</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            <code>listChannels</code> runs on three hot paths: the channel list
+            itself, channel visibility (<code>channels.ts:95</code>), and
+            <code>listTasks</code> (<code>tasks.ts:72</code>), which needs it
+            to work out which channels a member may see before it can filter
+            tasks at all.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            Cache the visible-channel-id set per organization, member and role,
+            with a short TTL and explicit invalidation on membership and
+            channel changes.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            Task and channel listing stop paying for the same fan-out query
+            repeatedly, and the saving grows with channel count rather than
+            staying flat.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            This one is an authorization input, so staleness is a security
+            property, not just a freshness one. Invalidate on write and keep
+            the TTL short enough that a missed invalidation self-heals fast.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">08</span>Cross-process cache invalidation</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            The Superset JWT cache is a process-local map
+            (<code>jwt-cache.ts:30</code>), and
+            <code>forgetSupersetCredentials()</code>
+            (<code>connection.ts:18</code>) clears only the one in the process
+            that called it. Its trigger lives in the web process.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            A pub/sub invalidation channel. Each process keeps its fast local
+            cache and drops entries when told to.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            Closes a real gap rather than a slow one: once a worker exists, a
+            member who reconnects Superset leaves that worker holding a JWT
+            minted from the old key for as long as its lifetime allows. If the
+            old key was revoked, that is a window of failing sessions nobody
+            asked for.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            Invalidate, don't centralize. Moving the JWTs themselves into Redis
+            would put bearer credentials at rest in a cache to save a round
+            trip that is already cheap.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">09</span>Unread counters</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            <code>unreadNotificationCount</code>
+            (<code>notifications.ts:495</code>) is an aggregate
+            <code>count()</code> behind the inbox badge, run per member per
+            poll.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            A counter per member, incremented where notifications are already
+            written and cleared on read.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            A badge that costs a <code>GET</code> instead of an aggregate, on
+            one of the few queries every open tab runs regardless of what the
+            user is doing.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            Must be rebuildable from Postgres on a miss, and must be treated as
+            a cache rather than the count. A drifted counter should be
+            self-correcting, not a support ticket.
+          </dd>
+        </dl>
+      </div>
+
+      <div class="item">
+        <h3><span class="n">10</span>Backpressure toward hosts</h3>
+        <dl>
+          <dt>Today</dt>
+          <dd>
+            Host reconnect backoff is per-process state:
+            <code>attempts</code> on a <code>HostLink</code>, capped by
+            <code>MAX_ATTEMPTS</code> (<code>supervisor.ts:390</code>). There
+            is no rate limit toward the Superset API or the relay.
+          </dd>
+          <dt>With Redis</dt>
+          <dd>
+            A shared token bucket per host and per member, so backoff and rate
+            limits are properties of the fleet rather than of one process.
+          </dd>
+          <dt>Unlocks</dt>
+          <dd>
+            Retry pressure on an offline machine stops multiplying by worker
+            count. This is the item whose absence only hurts <em>after</em>
+            item 1 succeeds, which is exactly the kind of thing worth writing
+            down before it bites.
+          </dd>
+          <dt>Cost</dt>
+          <dd>
+            Adds a Redis round trip to a path that currently has none. Applies
+            to reconnects and mint calls, not to steady-state polling.
+          </dd>
+        </dl>
+      </div>
+
+      <h2 id="not">Where Redis is the wrong answer</h2>
+      <p class="sub">
+        The tempting misuses, and what breaks. This section matters more than
+        the ranked list.
+      </p>
+
+      <div class="no">
+        <h3>Not as the arbiter of session state</h3>
+        <p>
+          A <code>SET NX PX</code> lease loses mutual exclusion on failover, and
+          on any pause longer than its TTL two holders both believe they own
+          it. Redis's own documentation says so and prescribes fencing tokens.
+          So every state transition that matters needs a conditional
+          <code>UPDATE &hellip; WHERE &lt;expected state&gt; RETURNING</code> in
+          Postgres, and the lease is only there to stop duplicate sockets and
+          duplicate polling. Build it the other way round and the failure mode
+          is not a slow page &mdash; it is two workers finishing the same
+          session, a <code>canceled</code> overwritten by a
+          <code>completed</code>, and duplicate agent messages in a thread.
+        </p>
+      </div>
+
+      <div class="no">
+        <h3>Not for message sequence numbers</h3>
+        <p>
+          <code>allocateSeq</code> (<code>channels.ts:335</code>) is a single
+          atomic <code>UPDATE &hellip; SET last_seq = last_seq + 1
+          RETURNING</code>, which does serialize inserts per channel on one row
+          lock. A Redis <code>INCR</code> would be faster and would be a bad
+          trade: <code>messages_project_seq_idx</code> is unique, so a counter
+          that is ever lost or rolled back produces hard insert failures rather
+          than a slow path. The contention is per channel, and a channel is a
+          conversation. This is not the bottleneck it looks like.
+        </p>
+      </div>
+
+      <div class="no">
+        <h3>Not for the poll loop</h3>
+        <p>
+          Turning each watch tick into a queued job spreads polling across
+          workers, which sounds like the point. But lifecycle events only
+          arrive on whoever holds the machine's socket, so ownership is
+          required anyway, and a queue round trip per session per tick buys
+          nothing for it. The <code>setInterval</code> belongs on the owning
+          worker.
+        </p>
+      </div>
+
+      <div class="no">
+        <h3>Not for attachment bytes</h3>
+        <p>
+          Attachments are the one thing genuinely pinning the web tier to a
+          single instance, and they are a job for object storage. Blobs in
+          Redis would trade a disk problem for a memory problem and would still
+          need <code>noeviction</code> to be safe. Good news for the worker
+          tier: <code>attachmentsForMessages</code>
+          (<code>attachments.ts:245</code>) returns rows and URLs rather than
+          bytes, so background work needs no volume at all.
+        </p>
+      </div>
+
+      <div class="no">
+        <h3>Not as a second copy of the truth</h3>
+        <p>
+          Every cache above is reconstructible from Postgres, and that is the
+          property to hold onto. The moment something exists only in Redis,
+          its persistence configuration becomes a correctness dependency
+          rather than an operational one &mdash; and a cache nobody can rebuild
+          is a database with no backups.
+        </p>
+      </div>
+
+      <h2>What it costs to run</h2>
+      <p class="sub">Requirements, not preferences.</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Value</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>maxmemory-policy</code></td>
+              <td><code>noeviction</code></td>
+              <td>
+                Arbitrary eviction breaks queues and command lists. Not a
+                tuning choice.
+              </td>
+            </tr>
+            <tr>
+              <td>Persistence</td>
+              <td>AOF</td>
+              <td>
+                A restart that loses a lease key can hand the same link to two
+                owners.
+              </td>
+            </tr>
+            <tr>
+              <td>Connections</td>
+              <td>~4 per worker</td>
+              <td>
+                Two for a queue worker, one dedicated subscriber, one producer.
+                A subscribed connection cannot issue other commands.
+              </td>
+            </tr>
+            <tr>
+              <td>Producer behaviour</td>
+              <td>Fail fast</td>
+              <td>
+                Request-path producers should error rather than buffer while
+                Redis is unreachable; workers should wait out the reconnect.
+              </td>
+            </tr>
+            <tr>
+              <td>Availability</td>
+              <td>Hard dependency</td>
+              <td>
+                Once ownership lives here, Redis down means no sessions start.
+                It joins Postgres in the critical path.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <footer>
+        <p>
+          Every claim above is anchored to a file and line in the Roster
+          repository as of this writing. Items 1&ndash;3 are specified in
+          <code>docs/superpowers/specs/2026-09-23-redis-bullmq-and-scheduled-tasks-design.md</code>;
+          items 4&ndash;10 are not scheduled and are listed here as headroom
+          rather than as plans.
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

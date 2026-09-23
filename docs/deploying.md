@@ -162,17 +162,34 @@ moving to Infrastructure as Code before that date rather than after.
 
 ## The Railway template
 
-The template is defined in Railway's dashboard, not in this repository, so it
-has to be edited there. To match this layout it needs four services:
+The template lives in Railway's dashboard, not in this repository, and there is
+no CLI for it — `railway deploy` provisions a template, it does not publish
+one. So it has to be edited there by hand, and it does **not** update itself
+when this repo changes.
+
+Three services, matching what the production project runs:
 
 | Service | Notes |
 | --- | --- |
-| Web | This repo's Dockerfile, a volume at `/app/uploads`, a domain |
-| Worker | Either `ROSTER_RUN_WORKER=1` on the web service, or a second service on the same image with start command `node apps/worker/dist/worker.js`, no volume, no domain |
+| Web | This repo's Dockerfile, a volume at `/app/uploads`, a domain, and `ROSTER_RUN_WORKER=1` |
 | Postgres | |
-| Redis | `maxmemory-policy` set to `noeviction`, persistence on |
+| Redis | The stock plugin is fine; add `--appendonly yes` to its start command if losing a minute of queued work on a hard crash matters |
 
-Both app services take the same variables. `SUPERSET_KEY_SECRET` has to be
-generated **once** and referenced by both rather than generated per service —
-two different values means the worker cannot decrypt the key the web service
-stored, and every session start fails with an unreadable-key error.
+Centrifugo is a fourth service if realtime is wanted; leave `CENTRIFUGO_*`
+empty and the app falls back to plain tRPC.
+
+`ROSTER_RUN_WORKER=1` is the line that matters most. Without it the template
+produces a deployment where threads open and no agent ever runs, which looks
+like a broken app rather than a missing setting.
+
+Variables the template must set, beyond the database URLs:
+`BETTER_AUTH_SECRET`, `SUPERSET_KEY_SECRET`, `EMAIL_FROM`, and — once the
+service has a domain — `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL`. Both
+secrets should be generated per deployment rather than copied from this
+project.
+
+If the worker is later split into its own service, that service needs
+`SUPERSET_KEY_SECRET` **referenced from** the web service rather than
+generated again: two different values mean the worker cannot decrypt the key
+the web service stored, and every session start fails with an unreadable-key
+error that does not name the cause.

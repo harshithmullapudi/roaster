@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { QueryProvider } from "~/components/providers/query-provider";
+import { Toaster } from "~/components/providers/toaster";
 import { ThemeProvider } from "~/components/theme/theme-provider";
 
 import "./theme.css";
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body className="bg-background-2 text-foreground min-h-dvh antialiased">
         <ThemeProvider>
           <QueryProvider>{children}</QueryProvider>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

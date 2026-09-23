@@ -49,7 +49,7 @@ export function ThreadLiveBar({
   return (
     <div className={cn(SHELL, asking && "bg-warning/10")}>
       <span className="flex items-center gap-2">
-        <ThreadStatus status={thread.status} />
+        <ThreadStatus status={thread.status} strong />
         <span
           className="text-muted-foreground text-xs"
           suppressHydrationWarning

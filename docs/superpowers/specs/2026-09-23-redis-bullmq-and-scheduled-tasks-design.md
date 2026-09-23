@@ -14,8 +14,9 @@ cannot be replicated, because a steer queued in one copy's `pendingSteers` is
 invisible to the other.
 
 This design moves background work into a worker process, puts the coordination
-it needs in Redis, and adds scheduled tasks — a cron expression that posts a
-message into a channel so that channel's agent opens a thread and handles it.
+it needs in Redis, and adds scheduled tasks — a recurrence rule that posts a
+message into a channel, where the channel's own rules decide whether an agent
+opens a thread on it.
 
 Object storage is explicitly out of scope. It remains the last thing pinning
 the **web** tier to one instance; it does not pin the worker tier.
@@ -29,8 +30,8 @@ the **web** tier to one instance; it does not pin the worker tier.
 2. **Redis and the worker process.** `apps/worker`, the connection module, the
    link lease, the command inbox, and the RPC reply channel. At the end of
    this step the web process no longer calls `ensureStarted()`.
-3. **Scheduled tasks.** `scheduled_tasks`, `scheduled_task_runs`, the BullMQ
-   job scheduler, and the *Schedules* section in channel settings.
+3. **Scheduled tasks.** `scheduled_tasks`, `scheduled_task_runs`, the leased
+   sweep, and the *Schedules* section in channel settings.
 
 ## Background: what is actually coupled
 
@@ -176,11 +177,13 @@ API is:
 queue.upsertJobScheduler(schedulerId, { pattern, tz }, { name, data })
 ```
 
-Re-upserting the same `schedulerId` atomically replaces the pending occurrence,
-which is how a cron edit is applied; `removeJobScheduler(id)` is idempotent.
+Re-upserting the same `schedulerId` atomically replaces the pending occurrence;
+`removeJobScheduler(id)` is idempotent.
 
-Used for: scheduled tasks, one-shot host work with backoff (`startSession`,
-`reapThread`), and the `adopt-orphans` sweep. **Not** for the poll loop — each
+Used for: the step 3 sweep tick, one-shot host work with backoff
+(`startSession`, `reapThread`), and the `adopt-orphans` sweep. Note that no
+scheduler is created *per schedule* — step 3 keeps one tick for the whole
+system and owns its own occurrence math. **Not** for the poll loop — each
 watch's `setInterval` stays on the owning worker. A queue round-trip every
 `POLL_INTERVAL_MS` per session buys nothing when lifecycle events are pinned to
 the socket anyway.
@@ -256,11 +259,43 @@ v6's `worker.cancelJob`.
 
 ## Step 3: scheduled tasks
 
-A firing is `createTask` + `assignTask`. `assignTask` (`task-assignment.ts:12`)
-already posts a message with `clientId = task:<taskId>`, opens the thread on
-it, links the task, and starts the session. So this adds no posting code — and
-every firing lands in the existing task list with real `todo → in_progress →
-done` status, so `roster tasks status` works on it unchanged.
+> **Revised.** This step was first specced around a cron string driven by
+> BullMQ's job scheduler. Both were replaced — see *Why RRule replaced cron*.
+> Steps 1 and 2 shipped as written and are unaffected.
+
+A firing creates a task row and posts a message into the channel. It does
+**not** start a session itself, which is the second revision: the original
+step reused `assignTask` (`task-assignment.ts:12`), and `assignTask` calls
+`startSession` unconditionally at `:80`.
+
+That was wrong for a schedule. An ordinary message only wakes an agent when the
+channel is watching or an agent is `@`-mentioned (`messages.ts:285`), so
+`assignTask`'s unconditional start is a special case that lets a schedule
+reach into a channel which has deliberately stopped watching. A firing now
+posts through the ordinary path and lets the channel's own rules decide. In a
+watching channel the outcome is identical to before; in a quiet one the work
+becomes a visible, unclaimed message instead of a surprise session.
+
+### Why RRule replaced cron
+
+Cron cannot say "every other Tuesday", "last Friday of the month", or "the
+first Monday after the 15th". Those are ordinary things to want from a
+schedule, and the surface here is channel settings — a person choosing when
+their agent does something, not an operator editing a crontab. `rrule`'s
+`.toText()` reads a stored rule back as "every 2 weeks on Tuesday", which is
+what makes a schedule list reviewable at a glance.
+
+BullMQ has no RRule support, so this means owning the occurrence math. That
+cost buys back something the cron design was uneasy about: nothing parses
+BullMQ's undocumented `repeat:<schedulerId>:<millis>` job-id format any more.
+The exact `bullmq@6.3.8` pin keeps its *other* justifications — the v6 API
+removals and the `maxRetriesPerRequest` behaviour documented above are still
+version-sensitive — but it no longer rests on behaviour observed rather than
+promised.
+
+The cost is timezones, and it is real. See *DST* below.
+
+### The tables
 
 ```
 roster.scheduled_tasks
@@ -268,15 +303,17 @@ roster.scheduled_tasks
   organization_id       uuid not null → organizations (cascade)
   project_id            uuid not null → projects (cascade)
   title                 text not null
-  cron                  text not null
+  rrule                 text not null        -- FREQ=WEEKLY;INTERVAL=2;BYDAY=TU
   timezone              text not null default 'UTC'
+  next_run_at           timestamptz          -- null once the rule is exhausted
   enabled               boolean not null default true
   run_as_member_id      uuid → members (set null)
   created_by_member_id  uuid → members (set null)
   last_run_at           timestamptz
   disabled_reason       text
   created_at, updated_at
-  index (project_id), index (organization_id, enabled)
+  index (enabled, next_run_at)               -- the sweep's only query
+  index (project_id)
 
 roster.scheduled_task_runs
   id                 uuid pk
@@ -290,44 +327,90 @@ roster.scheduled_task_runs
   index (scheduled_task_id, created_at desc)
 ```
 
-`project_id` is `not null`: a schedule whose whole job is to post in a channel
-has no meaning in the backlog. `next_run_at` is deliberately **not** stored —
-BullMQ owns that truth and `cron-parser`, already a BullMQ dependency, computes
-it for display. Storing it would be a second source of truth to drift.
+`project_id` stays `not null`: a schedule whose whole job is to post in a
+channel has no meaning in the backlog.
+
+**`next_run_at` is now stored, reversing the original decision.** That decision
+— "BullMQ owns that truth, storing it would be a second source of truth to
+drift" — was right while BullMQ held the schedule. Once we own the occurrence
+math there is no other copy to drift from, and it is what makes the sweep an
+indexed lookup rather than a full scan that deserializes every rule each
+minute.
 
 `outcome` is one of `fired`, `skipped_late`, `skipped_no_access`, `failed`. The
-unique index on `(scheduled_task_id, slot_at)` is what makes at-least-once
-redelivery harmless, and it is also the "did this slot run?" ledger BullMQ does
-not keep.
+unique index on `(scheduled_task_id, slot_at)` is still what makes at-least-once
+redelivery harmless, and still the "did this slot run?" ledger Redis does not
+keep.
+
+### The sweep
+
+One BullMQ job scheduler for the whole system — `every: 60_000` — not one per
+schedule. `every` is documented API, unlike the job-id format the previous
+design read.
+
+The sweep body takes the existing lease (`acquireLease`, `lib/redis.ts:77`) so
+exactly one worker runs it, then for each row where `enabled AND next_run_at <=
+now()`:
+
+1. Insert the `scheduled_task_runs` row for `slot_at = next_run_at` with
+   `onConflictDoNothing`. **No rows back means another sweep already took this
+   slot — stop.** This is the idempotency boundary; everything after it is
+   allowed to be at-least-once.
+2. Fire, unless the slot is stale (below).
+3. Recompute `next_run_at` from the rule and write it with `last_run_at`.
+
+Step 3 must run even when step 2 skips, or a stale schedule never advances.
 
 ### Late firings
 
-A scheduler holds exactly one job in `delayed`. If no worker runs when a slot
-passes, that job fires once — arbitrarily late — and the next occurrence is
-computed from `Date.now()`, so **every intermediate slot is silently dropped**.
-This is observed behaviour on 6.3.8, not a documented contract, which is why
-the version is pinned.
-
-`slot_at` is parsed from the occurrence job id, which BullMQ forms
-deterministically as `repeat:<schedulerId>:<millis>`. A firing more than a
-**15-minute grace window** past its slot records `skipped_late` and posts
+`slot_at` is simply the `next_run_at` that was stored, so the original design's
+reverse-engineering of a BullMQ job id disappears. The rule is unchanged: a slot
+fired more than **15 minutes** past its time records `skipped_late` and posts
 nothing. A 3am cleanup should not wake an agent at 11am on Monday, and the runs
-table keeps the honest record. The window is global, not per-schedule; make it
-per-schedule only if someone asks.
+table keeps the honest record.
+
+Unlike the BullMQ scheduler — which held one delayed job and silently dropped
+every intermediate slot — the sweep can see that several slots elapsed. It still
+fires at most one: catching up on eight missed 3am cleanups at once is worse
+than skipping seven. The skipped ones are recorded.
+
+### What a firing does
+
+Post via `postMessage` (`messages.ts`), not `postTask`, with
+`clientId = task:<taskId>`. `postMessage` already carries the same
+`onConflictDoNothing` on `(projectId, clientId)` that `postTask` relies on, so a
+redelivered firing is harmless at the message layer too.
+
+The firing runs as `run_as_member_id`, so `requireOrgProject`'s real access
+checks apply and a schedule cannot become a way to post into a channel its owner
+cannot reach.
+
+**Thread linking moves.** The sweep cannot link `tasks.thread_id` after posting:
+`driveSession` is fire-and-forget (`messages.ts:345`) and returns no thread, and
+in a non-watching channel there is no thread to link at all. Instead
+`driveSession` links it — it already builds the thread with
+`rootMessageId: message.id`, so when that root message carries a `task:<uuid>`
+client id it calls `linkTaskThread`. One place owns the linking, the web assign
+path and a firing behave identically, and the unclaimed case resolves itself:
+no thread, `thread_id` stays null, and the task reads as filed-but-unstarted.
+
+**A firing never joins an open thread.** `postMessage` folds a message into a
+thread opened in the last 10 seconds by the same author (`JOIN_WINDOW_MS`,
+`messages.ts:295`). Two schedules landing on the same minute as the same
+`run_as` member would then link two tasks to one thread and violate
+`tasks_thread_idx`. The firing path opts out of joining explicitly, which also
+preserves the rule below.
 
 ### When a schedule's identity breaks
 
-A firing runs as `run_as_member_id`, so `assignTask`'s real access checks
-apply and a schedule cannot become a way to post into a channel its owner
-cannot reach. Three failures — the member was removed, the member lost access
+Three failures — the member was removed, the member lost access
 (`requireOrgProject` returns null), or `run_as_member_id` is null — all resolve
 the same way: record `skipped_no_access`, set `enabled = false` and
 `disabled_reason`, and **post a plain message in the channel saying so**. That
 needs no new `NOTIFICATION_TYPES` entry, it is visible to everyone who cares,
 and it matches how the rest of Roster surfaces state. A dead schedule is loud.
 
-A deleted channel cascades the schedule away; the worker removes the orphaned
-job scheduler on its next `adopt-orphans` sweep.
+A deleted channel cascades the schedule away.
 
 ### Overlap
 
@@ -335,16 +418,46 @@ Each firing opens a new thread, even if the previous one is still running. No
 suppression: silently skipping work is worse than two threads. `skip_if_running`
 is a one-column follow-up if it turns out to be annoying.
 
+### DST
+
+`rrule` computes in UTC. "Every weekday at 9am in Asia/Kolkata" therefore has to
+be generated against local wall-clock time and mapped back, which needs a date
+library beside it. Get this wrong and a schedule drifts by an hour twice a year,
+silently, in exactly the half of the year nobody is looking.
+
+Kolkata has no DST, so the first users will not surface this. That is precisely
+why it is written down: the bug ships green and appears in October. Occurrence
+math across a spring-forward and a fall-back boundary is the one part of this
+step that must have tests before it has users.
+
 ### Surfaces
 
-A *Schedules* section in `channel-settings.tsx` — list, create, edit cron,
-toggle, delete, with next run computed from `cron` + `timezone` and the last
-few `scheduled_task_runs` shown inline so a `skipped_late` is visible rather
-than mysterious. Invalid cron is rejected at the tRPC boundary by parsing it,
-not by regex.
+**The new-task dialog** gains a schedule control beside status and channel —
+Now / Once at… / Repeating…. **Now** is today's behaviour untouched. **Once
+at…** is a rule with `COUNT=1`, so one-shots and recurrences share one code
+path instead of growing a second. **Repeating…** opens the rule picker and
+displays it back through `.toText()`.
 
-The CLI is out of scope. Agents creating their own recurring jobs is a
-different question and deserves its own thought.
+Channel becomes **required in this dialog** — the picker loses `clearable` and
+the "Waits in the backlog" hint. The consequence, stated plainly because it is
+asymmetric: a person can no longer file to the backlog; only an agent can. That
+is deliberate. Someone filing a task from the UI knows where the work belongs,
+while an agent calling `roster tasks create` frequently does not, which is the
+reason the backlog exists. The backlog stays fully visible in the task list.
+
+**`roster tasks create` is unchanged**, and `--channel-id` stays optional.
+Agents creating their own *recurring* jobs remains out of scope — a different
+question that deserves its own thought.
+
+**Channel settings** gets a *Schedules* section — list, create, edit, toggle,
+delete — with next run read straight off `next_run_at` and the last few
+`scheduled_task_runs` inline, so a `skipped_late` is visible rather than
+mysterious. An invalid rule is rejected at the tRPC boundary by parsing it,
+never by regex.
+
+**Attribution.** Tasks already carry `createdBy` through to an avatar on the
+row. Schedules show the same, plus *who it runs as* — `run_as_member_id` is
+whose access every firing borrows, so it belongs on screen next to the rule.
 
 ## Structure
 
@@ -354,14 +467,18 @@ different question and deserves its own thought.
 | `packages/api/src/services/queues.ts` | new — queue definitions, `upsertJobScheduler` wrappers |
 | `packages/api/src/services/sessions/links.ts` | new — lease, inbox drain, doorbell, RPC |
 | `packages/api/src/services/sessions/supervisor.ts` | `finishing` and `pendingSteers` removed, conditional `finish`, commands arrive via the inbox |
-| `packages/api/src/services/scheduled-tasks.ts` | new — CRUD plus the firing function |
+| `packages/api/src/services/scheduled-tasks.ts` | new — CRUD, the leased sweep, and the firing function |
+| `packages/api/src/lib/recurrence.ts` | new — rule parsing, `.toText()`, and next-occurrence in a timezone. The only place `rrule` is imported |
 | `packages/api/src/routers/scheduled-tasks.ts` | new |
+| `packages/api/src/services/messages.ts` | firing path opts out of `joinableThread`; `driveSession` links a `task:<uuid>` root message to its task |
+| `packages/api/src/services/task-assignment.ts` | `startSession` no longer forced; posting goes through `postMessage` |
 | `packages/api/src/services/delegations.ts` | conditional settle, `clientId` on `postRequest` |
 | `packages/api/src/services/notifications.ts` | dedupe keys for the two `messageId: null` paths |
 | `packages/db/src/schema/roster.ts` | `scheduled_tasks` and `scheduled_task_runs`; `notifications.dedupe_key` plus its partial unique index for step 1 |
 | `apps/worker/` | new — entry, BullMQ workers, shutdown |
 | `apps/web/src/app/[slug]/[channelSlug]/page.tsx` | `ensureStarted()` removed |
 | `apps/web/src/components/channels/channel-settings.tsx` | Schedules section |
+| `apps/web/src/components/tasks/new-task-dialog.tsx` | schedule control; channel picker loses `clearable` |
 | `docker-compose.dev.yaml`, `Dockerfile`, `.env.example`, `turbo.json`, `docs/deploying.md` | Redis, worker stage, env |
 
 `supervisor.ts` is 1622 lines before this change. The lease, inbox and RPC go in
@@ -371,17 +488,23 @@ different question and deserves its own thought.
 
 ### Unit
 
-Cron validation and next-run computation. Grace-window arithmetic, including a
-firing exactly on the boundary. `slot_at` parsing from a `repeat:<id>:<millis>`
-job id, including a malformed id. Lease Lua release: the holder releases, a
-non-holder does not.
+Rule validation and next-occurrence computation, **including a spring-forward
+and a fall-back boundary in a DST zone** — the one part of step 3 that must have
+tests before it has users. An exhausted `COUNT`/`UNTIL` rule yields a null
+`next_run_at` rather than looping. Grace-window arithmetic, including a firing
+exactly on the boundary. Lease Lua release: the holder releases, a non-holder
+does not.
 
 ### Database
 
-A firing produces exactly one task, one message, one thread. A **second firing
-of the same slot produces nothing** — the real assertion for at-least-once
-delivery. `skipped_no_access` when the run-as member lost the channel, with the
-schedule disabled and the notice posted. Conditional `finish` rejects a second
+A firing in a **watching** channel produces exactly one task, one message, one
+thread. The same firing in a **quiet** channel produces one task and one message
+and **no thread** — the assertion that the channel's rules, not the schedule,
+decide whether an agent runs. A **second firing of the same slot produces
+nothing** — the real assertion for at-least-once delivery. Two schedules firing
+into one channel within the join window produce two threads, not one violated
+`tasks_thread_idx`. `skipped_no_access` when the run-as member lost the channel,
+with the schedule disabled and the notice posted. Conditional `finish` rejects a second
 terminal transition. `completeThread` twice leaves the ✅ present — this one
 fails today. `settleDelegationFor` twice writes one reply and steers once.
 
@@ -406,10 +529,17 @@ step 1 makes every state transition conditional. This is only true if step 1
 ships first; skipping it converts the same window into duplicate agent
 messages, double steers, and a missing ✅.
 
-**The missed-slot behaviour is undocumented.** It was established by reading
-6.3.8's `defaultRepeatStrategy` and by probing a live Redis. A BullMQ upgrade
-could change it, which is why the version is pinned and why `scheduled_task_runs`
-records outcomes rather than trusting the scheduler.
+**DST is the sharp edge of choosing RRule.** Owning the occurrence math means
+owning timezone correctness, and a rule that drifts an hour at a DST boundary
+fails silently, in one direction, six months after it ships green. No current
+user is in a DST zone, which removes the pressure to get it right and is exactly
+why it is called out as a risk rather than left to implementation.
+
+**A minute tick is a standing cost.** The sweep runs every 60 seconds forever,
+whether or not any schedule exists. It is one indexed query against
+`(enabled, next_run_at)` and should stay negligible, but it is a floor that the
+per-schedule BullMQ design did not have — and if it ever stops being negligible,
+the query, not the interval, is what to look at first.
 
 **A second service is a real operational step.** Web and worker must share
 `SUPERSET_KEY_SECRET` byte-for-byte, and a worker running without

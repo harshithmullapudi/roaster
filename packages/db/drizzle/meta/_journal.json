@@ -57,6 +57,13 @@
       "when": 1789909910343,
       "tag": "0007_thread_org_index",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790142330607,
+      "tag": "0008_kind_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

@@ -506,6 +506,8 @@ export const notifications = rosterSchema.table(
 
     messageId: uuid("message_id"),
 
+    dedupeKey: text("dedupe_key"),
+
     type: text("type").$type<NotificationType>().notNull(),
 
     actorMemberId: uuid("actor_member_id").references(() => members.id, {
@@ -529,6 +531,9 @@ export const notifications = rosterSchema.table(
     uniqueIndex("notifications_member_message_idx")
       .on(table.memberId, table.messageId)
       .where(sql`message_id is not null`),
+    uniqueIndex("notifications_member_dedupe_idx")
+      .on(table.memberId, table.dedupeKey)
+      .where(sql`dedupe_key is not null`),
   ],
 );
 

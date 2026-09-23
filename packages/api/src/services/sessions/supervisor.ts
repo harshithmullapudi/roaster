@@ -1,10 +1,11 @@
+import { createHash } from "node:crypto";
+
 import {
   db,
   delegations,
   members,
   messages,
   projects,
-  reactions,
   type SelectThread,
   type SelectThreadSession,
   threadSessions,
@@ -23,7 +24,7 @@ import {
   runAgent,
   sendToAgent,
 } from "@roster/superset";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 
 import {
   humanSessionError,
@@ -52,7 +53,7 @@ import { allocateSeq, channelAgentIdentity } from "../channels";
 import { channelName, publish, threadChannelName } from "../centrifugo";
 import { emitMessageById } from "../message-events";
 import { notifyThreadFailed, subscribeThreadAuthor } from "../notifications";
-import { toggleReaction } from "../reactions";
+import { addReaction } from "../reactions";
 import { taskForThread } from "../tasks";
 import { hostConnection, jwtForMember, NO_MEMBER } from "./connection";
 import { threadPublishState } from "./queries";
@@ -234,6 +235,24 @@ async function patch(
     .update(threadSessions)
     .set(values)
     .where(eq(threadSessions.id, sessionId))
+    .returning({ id: threadSessions.id });
+  if (!row) return null;
+  return sessionById(row.id);
+}
+
+export async function patchLive(
+  sessionId: string,
+  values: Partial<SelectThreadSession>,
+): Promise<SessionView | null> {
+  const [row] = await db
+    .update(threadSessions)
+    .set(values)
+    .where(
+      and(
+        eq(threadSessions.id, sessionId),
+        notInArray(threadSessions.status, [...TERMINAL_STATUSES]),
+      ),
+    )
     .returning({ id: threadSessions.id });
   if (!row) return null;
   return sessionById(row.id);
@@ -506,6 +525,7 @@ async function askForInput(sessionId: string): Promise<void> {
 
   if (question && question.trim().length > 0) {
     await persistAgentMessage({
+      sessionId,
       thread: threadIdentity(row),
       text: question,
       agentChannelId: row.projectId,
@@ -767,6 +787,7 @@ async function finishOnce(args: {
   if (isParked(session.status)) {
     if (finalText && finalText.trim().length > 0) {
       await persistAgentMessage({
+        sessionId: args.sessionId,
         thread: threadIdentity(session),
         text: finalText,
         agentChannelId: session.projectId,
@@ -781,7 +802,7 @@ async function finishOnce(args: {
   };
   if (args.error !== undefined) values.error = args.error;
 
-  const row = await patch(args.sessionId, values);
+  const row = await patchLive(args.sessionId, values);
   if (!row) {
     await reportUndelivered(args.sessionId, "that session is gone.", queued);
     return NOTHING_TO_RESUME;
@@ -790,6 +811,7 @@ async function finishOnce(args: {
   const spoke =
     finalText !== null && finalText.trim().length > 0
       ? await persistAgentMessage({
+          sessionId: args.sessionId,
           thread: threadIdentity(row),
           text: finalText,
           agentChannelId: row.projectId,
@@ -801,6 +823,7 @@ async function finishOnce(args: {
   if (args.status === "failed" && !spoke) {
     await notifyThreadFailed({
       threadId: row.threadId,
+      sessionId: args.sessionId,
       reason: args.error ?? null,
     });
   }
@@ -875,6 +898,7 @@ async function settleIfDelegated(args: {
 }
 
 export async function persistAgentMessage(args: {
+  sessionId: string;
   thread: {
     id: string;
     organizationId: string;
@@ -896,6 +920,14 @@ export async function persistAgentMessage(args: {
     if (existing?.text === text) return false;
   }
 
+  const clientId =
+    args.dedupe === false
+      ? null
+      : `agent:${args.sessionId}:${createHash("sha256")
+          .update(text)
+          .digest("base64url")
+          .slice(0, 22)}`;
+
   const seq = await allocateSeq(thread.projectId);
   const [row] = await db
     .insert(messages)
@@ -910,7 +942,9 @@ export async function persistAgentMessage(args: {
       text,
       threadId: thread.id,
       parentMessageId: thread.rootMessageId,
+      clientId,
     })
+    .onConflictDoNothing({ target: [messages.projectId, messages.clientId] })
     .returning();
 
   if (!row) return false;
@@ -1482,25 +1516,11 @@ export async function completeThread(args: {
 
   if (!thread) return;
 
-  const already = await db
-    .select({ id: reactions.id })
-    .from(reactions)
-    .where(
-      and(
-        eq(reactions.messageId, thread.rootMessageId),
-        eq(reactions.memberId, args.memberId),
-        eq(reactions.emoji, COMPLETE_EMOJI),
-      ),
-    )
-    .limit(1);
-
-  if (already.length === 0) {
-    await toggleReaction({
-      messageId: thread.rootMessageId,
-      memberId: args.memberId,
-      emoji: COMPLETE_EMOJI,
-    });
-  }
+  await addReaction({
+    messageId: thread.rootMessageId,
+    memberId: args.memberId,
+    emoji: COMPLETE_EMOJI,
+  });
 
   await publishThread(args.threadId);
 }

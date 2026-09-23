@@ -154,6 +154,7 @@ interface Delivery {
   channelSlug: string;
   threadId: string;
   messageId: string | null;
+  dedupeKey: string | null;
   actorMemberId: string | null;
   actorChannelId: string | null;
   actorDisplay: string | null;
@@ -166,29 +167,42 @@ async function deliver(
 ): Promise<void> {
   if (planned.length === 0) return;
 
-  const created = await db
-    .insert(notifications)
-    .values(
-      planned.map((entry) => ({
-        organizationId: delivery.organizationId,
-        memberId: entry.memberId,
-        threadId: delivery.threadId,
-        messageId: delivery.messageId,
-        type: entry.type,
-        actorMemberId: delivery.actorMemberId,
-        actorChannelId: delivery.actorChannelId,
-      })),
-    )
-    .onConflictDoNothing({
-      target: [notifications.memberId, notifications.messageId],
-      where: sql`message_id is not null`,
-    })
-    .returning({
-      id: notifications.id,
-      memberId: notifications.memberId,
-      type: notifications.type,
-      createdAt: notifications.createdAt,
-    });
+  const values = planned.map((entry) => ({
+    organizationId: delivery.organizationId,
+    memberId: entry.memberId,
+    threadId: delivery.threadId,
+    messageId: delivery.messageId,
+    dedupeKey: delivery.dedupeKey,
+    type: entry.type,
+    actorMemberId: delivery.actorMemberId,
+    actorChannelId: delivery.actorChannelId,
+  }));
+
+  const returning = {
+    id: notifications.id,
+    memberId: notifications.memberId,
+    type: notifications.type,
+    createdAt: notifications.createdAt,
+  };
+
+  const created =
+    delivery.messageId === null
+      ? await db
+          .insert(notifications)
+          .values(values)
+          .onConflictDoNothing({
+            target: [notifications.memberId, notifications.dedupeKey],
+            where: sql`dedupe_key is not null`,
+          })
+          .returning(returning)
+      : await db
+          .insert(notifications)
+          .values(values)
+          .onConflictDoNothing({
+            target: [notifications.memberId, notifications.messageId],
+            where: sql`message_id is not null`,
+          })
+          .returning(returning);
 
   if (created.length === 0) return;
 
@@ -274,6 +288,7 @@ export async function notifyForMessage(
       channelSlug: thread.channelSlug,
       threadId: thread.id,
       messageId: message.id,
+      dedupeKey: null,
       actorMemberId: message.authorMemberId,
       actorChannelId: message.authorMemberId ? null : message.agentChannelId,
       actorDisplay: actorDisplayOf(message),
@@ -285,6 +300,7 @@ export async function notifyForMessage(
 
 export async function notifyThreadFailed(args: {
   threadId: string;
+  sessionId: string;
   reason: string | null;
 }): Promise<void> {
   const thread = await threadContext(args.threadId);
@@ -305,6 +321,7 @@ export async function notifyThreadFailed(args: {
       channelSlug: thread.channelSlug,
       threadId: thread.id,
       messageId: null,
+      dedupeKey: `failed:${args.sessionId}`,
       actorMemberId: null,
       actorChannelId: thread.projectId,
       actorDisplay: null,
@@ -317,6 +334,7 @@ export async function notifyThreadFailed(args: {
 export async function notifyDelegationReceived(args: {
   childThreadId: string;
   originChannelId: string;
+  delegationId: string;
   task: string;
 }): Promise<void> {
   const thread = await threadContext(args.childThreadId);
@@ -352,6 +370,7 @@ export async function notifyDelegationReceived(args: {
       channelSlug: thread.channelSlug,
       threadId: thread.id,
       messageId: null,
+      dedupeKey: `delegation:${args.delegationId}`,
       actorMemberId: null,
       actorChannelId: args.originChannelId,
       actorDisplay: asker

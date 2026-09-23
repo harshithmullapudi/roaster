@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   db,
   delegations,
@@ -145,6 +147,10 @@ export async function delegate(
     askerHandle: asker?.agentHandle ?? "an agent",
     agentChannelId: parent.projectId,
     task,
+    dedupeKey: `delegation-request:${parent.id}:${createHash("sha256")
+      .update(task)
+      .digest("base64url")
+      .slice(0, 22)}`,
   });
 
   const childThread = await createThread({
@@ -154,8 +160,9 @@ export async function delegate(
   });
   if (!childThread) {
     throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Could not open a session in that channel.",
+      code: "CONFLICT",
+      message:
+        "This thread is already waiting on an answer. Wait for it before asking again.",
     });
   }
 
@@ -182,6 +189,7 @@ export async function delegate(
   await notifyDelegationReceived({
     childThreadId: childThread.id,
     originChannelId: parent.projectId,
+    delegationId: row.id,
     task,
   });
 
@@ -211,6 +219,7 @@ async function postRequest(args: {
   askerHandle: string;
   agentChannelId: string;
   task: string;
+  dedupeKey: string;
 }): Promise<string> {
   const text = `@${args.askerHandle} asked: ${args.task}`;
   const seq = await allocateSeq(args.targetChannelId);
@@ -226,12 +235,27 @@ async function postRequest(args: {
       agentChannelId: args.agentChannelId,
       body: textToTiptap(text),
       text,
+      clientId: args.dedupeKey,
     })
+    .onConflictDoNothing({ target: [messages.projectId, messages.clientId] })
     .returning();
 
-  if (!row) throw new Error("Could not post the request.");
+  if (row) return row.id;
 
-  return row.id;
+  const [existing] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.projectId, args.targetChannelId),
+        eq(messages.clientId, args.dedupeKey),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) throw new Error("Could not post the request.");
+
+  return existing.id;
 }
 
 async function ancestorDepth(threadId: string): Promise<number> {
@@ -278,21 +302,20 @@ export async function settleDelegationFor(args: {
   reply: string;
   failed?: boolean;
 }): Promise<void> {
-  const row = await db.query.delegations.findFirst({
-    where: and(
-      eq(delegations.childThreadId, args.childThreadId),
-      eq(delegations.status, "open"),
-    ),
-  });
-  if (!row) return;
-
-  await db
+  const [row] = await db
     .update(delegations)
     .set({
       status: args.failed ? "failed" : "answered",
       answeredAt: new Date(),
     })
-    .where(eq(delegations.id, row.id));
+    .where(
+      and(
+        eq(delegations.childThreadId, args.childThreadId),
+        eq(delegations.status, "open"),
+      ),
+    )
+    .returning();
+  if (!row) return;
 
   const answering = await channelAgentIdentity(row.targetChannelId);
   const handle = answering?.agentHandle ?? "the other agent";
@@ -308,6 +331,7 @@ export async function settleDelegationFor(args: {
   if (!parent) return;
 
   await writeReplyIntoParent({
+    delegationId: row.id,
     thread: parent,
     text: spoken.length > 0 ? spoken : `@${handle} finished without a reply.`,
     agentChannelId: row.targetChannelId,
@@ -322,6 +346,7 @@ export async function settleDelegationFor(args: {
 }
 
 async function writeReplyIntoParent(args: {
+  delegationId: string;
   thread: { id: string; organizationId: string; projectId: string; rootMessageId: string };
   text: string;
   agentChannelId: string;
@@ -341,7 +366,9 @@ async function writeReplyIntoParent(args: {
       text: args.text,
       threadId: args.thread.id,
       parentMessageId: args.thread.rootMessageId,
+      clientId: `delegation-reply:${args.delegationId}`,
     })
+    .onConflictDoNothing({ target: [messages.projectId, messages.clientId] })
     .returning();
 
   if (!row) return;

@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1
+
+# The Roster worker, as one image. It owns the Superset host sockets, the
+# session watches and the work queues; the web tier runs none of them.
+#
+# This is a second file rather than a stage in the root Dockerfile because
+# Railway's builder cannot select a Docker build target — it builds a file's
+# final stage. It can be pointed at a different file, which is what the worker
+# service does.
+#
+# The build runs from the repository root, for the same reason the web build
+# does: workspace packages are consumed as TypeScript source.
+
+FROM node:22-alpine AS base
+ENV PNPM_HOME="/pnpm" \
+    PATH="/pnpm:$PATH"
+RUN corepack enable
+WORKDIR /app
+
+
+# ---------------------------------------------------------------- dependencies
+FROM base AS deps
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# --frozen-lockfile compares the lockfile against every workspace member, so
+# each manifest has to be present even when this image builds none of them.
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+COPY apps/tauri/package.json apps/tauri/
+COPY packages/api/package.json packages/api/
+COPY packages/auth/package.json packages/auth/
+COPY packages/cli/package.json packages/cli/
+COPY packages/db/package.json packages/db/
+COPY packages/superset/package.json packages/superset/
+COPY packages/ui/package.json packages/ui/
+
+RUN pnpm install --frozen-lockfile
+
+
+# ---------------------------------------------------------------------- runner
+# tsx runs the TypeScript directly. tsc is not an option: the workspace
+# packages are `noEmit` with `moduleResolution: "Bundler"` and extensionless
+# relative imports, so they do not compile to runnable JavaScript on their own.
+# `packages/api`'s own scripts already run this way.
+FROM base AS runner
+
+ENV NODE_ENV=production
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
+COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
+COPY --from=deps /app/packages/auth/node_modules ./packages/auth/node_modules
+COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
+COPY --from=deps /app/packages/superset/node_modules ./packages/superset/node_modules
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/worker apps/worker
+COPY packages/api packages/api
+COPY packages/auth packages/auth
+COPY packages/db packages/db
+COPY packages/superset packages/superset
+
+# No uploads volume and no entrypoint that re-owns one: background work hands
+# agents attachment URLs rather than bytes, so nothing here touches disk. That
+# is also why this tier can run replicas when the web tier cannot.
+RUN addgroup -g 1001 -S nodejs \
+    && adduser -u 1001 -S worker -G nodejs \
+    && chown -R worker:nodejs /app
+USER worker
+
+CMD ["pnpm", "--filter", "@roster/worker", "start"]

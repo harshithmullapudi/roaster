@@ -66,8 +66,8 @@ cp .env.example .env
 #   openssl rand -base64 32
 
 pnpm install
-pnpm dev:db      # Postgres 16 and Centrifugo in Docker, on 5442 and 8010
-pnpm dev         # http://localhost:3000
+pnpm dev:db      # Postgres 16, Redis 7 and Centrifugo, on 5442, 6389 and 8010
+pnpm dev         # http://localhost:3000, plus the worker
 ```
 
 The schema creates itself — the server applies pending migrations before its
@@ -122,11 +122,12 @@ Three of those behave in ways worth knowing:
 | Path | What lives there |
 | --- | --- |
 | `apps/web` | Next 15 App Router — pages, plus the two handlers that mount better-auth and tRPC |
+| `apps/worker` | The background tier: owns every agent session, the host sockets and the work queues |
 | `apps/tauri` | The Mac app: a native window on the deployment, plus the `roster://` sign-in handoff |
 | `packages/ui` | shadcn/Radix components, forked from `core/packages/ui` |
 | `packages/db` | Drizzle schema (better-auth's seven tables, in an `auth` Postgres schema) and the client |
 | `packages/auth` | better-auth server + React client, magic-link and invitation emails |
-| `packages/api` | tRPC router, context, the organization access checks, and the supervisor that drives a thread's agent session |
+| `packages/api` | tRPC router, context, the organization access checks, and the supervisor that drives a thread's agent session — which now runs in `apps/worker` |
 | `packages/superset` | The client for Superset itself — minting a JWT from a member's key, reaching their host through the relay, and running an agent on a workspace |
 | `packages/cli` | The `roster` CLI agents use, published to npm as [`@redplanethq/roster-cli`](https://www.npmjs.com/package/@redplanethq/roster-cli) |
 
@@ -138,7 +139,7 @@ pnpm test         # vitest
 pnpm db:generate  # write a migration for a schema change
 pnpm db:push      # apply a schema change without a migration (local only)
 pnpm db:studio    # drizzle studio
-pnpm dev:db:stop  # stop Postgres
+pnpm dev:db:stop  # stop Postgres, Redis and Centrifugo
 ```
 
 ## Docs

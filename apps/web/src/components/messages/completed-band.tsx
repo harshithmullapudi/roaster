@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@roster/ui";
-import { ChevronDown, ChevronRight, CircleCheck } from "lucide-react";
+import { ChevronDown, CircleCheck } from "lucide-react";
 import { memo } from "react";
 
 import { bandLabel } from "~/utils/channel-rows";
@@ -20,23 +20,29 @@ export const CompletedBand = memo(function CompletedBand({
   expanded,
   onToggle,
 }: CompletedBandProps) {
-  const Chevron = expanded ? ChevronDown : ChevronRight;
-
   return (
-    <div className={cn("px-3 sm:px-5", expanded ? "pt-3 pb-1" : "py-1.5")}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="text-muted-foreground hover:bg-grayAlpha-50 hover:text-foreground hover:border-border flex w-full items-center gap-2 rounded-md border border-transparent px-1 py-1 text-left"
-      >
-        <Chevron size={14} className="shrink-0" />
-        <CircleCheck size={14} className="shrink-0" />
-        <span className="text-xs font-medium">{bandLabel(count)}</span>
-        <span className="truncate text-xs" suppressHydrationWarning>
-          {relativeTime(lastAt)}
-        </span>
-      </button>
+    <div className="relative px-3 py-2.5 sm:px-5">
+      <span
+        aria-hidden
+        className="border-border absolute inset-x-3 top-1/2 border-t sm:inset-x-5"
+      />
+      <span className="relative flex justify-center">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="bg-background-2 border-border text-muted-foreground hover:bg-background-3 hover:text-foreground flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
+        >
+          <CircleCheck size={13} className="shrink-0" />
+          <span suppressHydrationWarning>
+            {`${bandLabel(count)} · ${relativeTime(lastAt)}`}
+          </span>
+          <ChevronDown
+            size={13}
+            className={cn("shrink-0", expanded && "rotate-180")}
+          />
+        </button>
+      </span>
     </div>
   );
 });

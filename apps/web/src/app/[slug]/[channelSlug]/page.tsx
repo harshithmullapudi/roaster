@@ -1,5 +1,4 @@
 import {
-  ensureStarted,
   getChannelBySlug,
   listChannelThreads,
   listMessages,
@@ -52,8 +51,6 @@ export default async function ChannelPage({
     slug: channelSlug,
   });
   if (!channel) notFound();
-
-  void ensureStarted();
 
   const activeTab: ChannelTab = TABS.includes(tab as ChannelTab)
     ? (tab as ChannelTab)

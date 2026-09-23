@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
-    "./attachments": "./src/lib/attachments.ts"
+    "./attachments": "./src/lib/attachments.ts",
+    "./sessions": "./src/services/sessions/index.ts",
+    "./redis": "./src/lib/redis.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -18,7 +20,9 @@
     "@roster/db": "workspace:*",
     "@roster/superset": "workspace:*",
     "@trpc/server": "^11.0.0",
+    "bullmq": "6.3.8",
     "drizzle-orm": "^0.38.3",
+    "ioredis": "^6.0.0",
     "marked": "^18.0.13",
     "superjson": "^2.2.2",
     "zod": "^3.24.1"

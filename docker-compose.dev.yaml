@@ -19,6 +19,29 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: roster-redis
+    restart: unless-stopped
+    # noeviction and AOF are not tuning. BullMQ and the command lists break if
+    # Redis drops keys under pressure, and a lease key lost across a restart
+    # can hand one host link to two workers.
+    command: >
+      redis-server
+      --maxmemory-policy noeviction
+      --appendonly yes
+    # 6389 rather than 6379: this machine already runs several Redis
+    # containers for other projects.
+    ports:
+      - "6389:6379"
+    volumes:
+      - roster-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   centrifugo:
     image: centrifugo/centrifugo:v6.9.6
     container_name: roster-centrifugo
@@ -40,3 +63,4 @@ services:
 
 volumes:
   roster-pgdata:
+  roster-redisdata:

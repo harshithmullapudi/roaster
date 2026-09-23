@@ -68,6 +68,11 @@ COPY . .
 
 RUN pnpm --filter @roster/web build
 
+# The worker, bundled to one self-contained file. It ships in this same image
+# and the worker service just starts it instead of the web server — no second
+# Dockerfile, and no node_modules needed at runtime.
+RUN pnpm --filter @roster/worker build
+
 
 # ---------------------------------------------------------------------- runner
 FROM base AS runner
@@ -92,6 +97,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 # The generated SQL, which the server applies on boot. Next traces JavaScript
 # imports; `.sql` files are data and have to be carried across by hand.
 COPY --from=builder --chown=nextjs:nodejs /app/packages/db/drizzle ./packages/db/drizzle
+
+# The worker. One bundled file with nothing to resolve at runtime, so the
+# background service runs from this image with a different start command:
+#   node apps/worker/dist/worker.js
+COPY --from=builder --chown=nextjs:nodejs /app/apps/worker/dist ./apps/worker/dist
 
 # Message attachments. Ephemeral unless a volume is mounted here — see the
 # deployment notes in the README.

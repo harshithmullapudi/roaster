@@ -45,9 +45,24 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
   process.on(signal, () => stop(0));
 }
 
+// A template deploy asks a person to type this, so accept what a person
+// would reasonably type rather than one exact string. Getting it wrong is
+// silent and severe: the app comes up and no agent session ever runs.
+function wantsWorker() {
+  const raw = (process.env.ROSTER_RUN_WORKER ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "y", "on"].includes(raw);
+}
+
 start("web", ["apps/web/server.js"]);
 
-if (process.env.ROSTER_RUN_WORKER === "1") {
-  console.log("[start] ROSTER_RUN_WORKER=1 — running the worker in this container too");
+if (wantsWorker()) {
+  console.log(
+    "[start] ROSTER_RUN_WORKER is set — running the worker in this container too",
+  );
   start("worker", ["apps/worker/dist/worker.mjs"]);
+} else {
+  console.warn(
+    "[start] ROSTER_RUN_WORKER is not set. No agent session will run in this " +
+      "container — something else must run the worker, or set it to 1.",
+  );
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "roster"."notifications" ADD COLUMN "dedupe_key" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "notifications_member_dedupe_idx" ON "roster"."notifications" USING btree ("member_id","dedupe_key") WHERE dedupe_key is not null;

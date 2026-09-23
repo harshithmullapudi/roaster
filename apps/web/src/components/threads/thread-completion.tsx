@@ -18,6 +18,7 @@ import { useState } from "react";
 
 import { liveThreadsKey } from "~/utils/live-threads";
 import { channelMessagesKey } from "~/utils/message-cache";
+import { toast } from "~/utils/toast-store";
 import {
   isActive,
   mergeThread,
@@ -39,11 +40,9 @@ export interface ThreadCompletion {
   live: boolean;
   pending: boolean;
   confirming: boolean;
-  error: string | null;
   start: () => void;
-  complete: () => Promise<boolean>;
+  confirm: () => void;
   setConfirming: (open: boolean) => void;
-  setError: (message: string | null) => void;
 }
 
 export function useThreadCompletion({
@@ -55,50 +54,58 @@ export function useThreadCompletion({
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const completed = completedAt !== null || done;
   const live = isActive(status, completedAt);
 
-  async function complete() {
+  function complete() {
+    if (pending) return;
+    setConfirming(false);
     setPending(true);
-    try {
-      const fresh = await trpc.threads.complete.mutate({ projectId, threadId });
-      if (fresh) {
-        queryClient.setQueryData<ThreadDetail>(
-          threadDetailKey(threadId),
-          (previous) => (previous ? { ...previous, thread: fresh } : previous),
+    const note = toast.loading("Completing thread…");
+
+    void (async () => {
+      try {
+        const fresh = await trpc.threads.complete.mutate({
+          projectId,
+          threadId,
+        });
+        if (fresh) {
+          queryClient.setQueryData<ThreadDetail>(
+            threadDetailKey(threadId),
+            (previous) => (previous ? { ...previous, thread: fresh } : previous),
+          );
+          queryClient.setQueryData<ThreadItem[]>(
+            threadsKey(projectId),
+            (previous) => (previous ? mergeThread(previous, fresh) : previous),
+          );
+        }
+        setDone(true);
+        note.success("Thread completed");
+        // The mutation already handed back the completed thread, so the tick
+        // lands now and the other views catch up in the background.
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: liveThreadsKey() }),
+          queryClient.invalidateQueries({
+            queryKey: channelMessagesKey(projectId),
+          }),
+          queryClient.invalidateQueries({ queryKey: threadDetailKey(threadId) }),
+        ]).catch(() => undefined);
+      } catch (cause) {
+        note.error(
+          "Could not complete that thread",
+          errorMessage(cause, "That thread is still open."),
         );
-        queryClient.setQueryData<ThreadItem[]>(
-          threadsKey(projectId),
-          (previous) => (previous ? mergeThread(previous, fresh) : previous),
-        );
+      } finally {
+        setPending(false);
       }
-      setDone(true);
-      setConfirming(false);
-      // The mutation already handed back the completed thread, so the tick
-      // lands now and the other views catch up in the background.
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: liveThreadsKey() }),
-        queryClient.invalidateQueries({
-          queryKey: channelMessagesKey(projectId),
-        }),
-        queryClient.invalidateQueries({ queryKey: threadDetailKey(threadId) }),
-      ]).catch(() => undefined);
-      return true;
-    } catch (cause) {
-      setConfirming(false);
-      setError(errorMessage(cause, "Could not complete that thread."));
-      return false;
-    } finally {
-      setPending(false);
-    }
+    })();
   }
 
   function start() {
     if (live) setConfirming(true);
-    else void complete();
+    else complete();
   }
 
   return {
@@ -106,11 +113,9 @@ export function useThreadCompletion({
     live,
     pending,
     confirming,
-    error,
     start,
-    complete,
+    confirm: complete,
     setConfirming,
-    setError,
   };
 }
 
@@ -130,36 +135,26 @@ export function ThreadCompleteMenuItem({
     );
   }
 
+  if (completion.pending) {
+    return (
+      <DropdownMenuItem disabled className="gap-2">
+        <Loader2 size={14} className="animate-spin" />
+        Completing…
+      </DropdownMenuItem>
+    );
+  }
+
   return (
     <DropdownMenuItem
       className="gap-2"
-      disabled={completion.pending}
       onSelect={(event) => {
         event.preventDefault();
-        // A live thread asks first — the dialog carries its own pending state.
-        if (completion.live) {
-          closeMenu();
-          completion.start();
-          return;
-        }
-        // Stay open on success so the spinner turns into the tick in place.
-        // On failure the error dialog takes over, so get out of its way.
-        void completion.complete().then((ok) => {
-          if (!ok) closeMenu();
-        });
+        closeMenu();
+        completion.start();
       }}
     >
-      {completion.pending ? (
-        <>
-          <Loader2 size={14} className="animate-spin" />
-          Completing…
-        </>
-      ) : (
-        <>
-          <CircleCheck size={14} />
-          Mark as complete
-        </>
-      )}
+      <CircleCheck size={14} />
+      Mark as complete
     </DropdownMenuItem>
   );
 }
@@ -170,56 +165,32 @@ export function ThreadCompleteDialogs({
   completion: ThreadCompletion;
 }) {
   return (
-    <>
-      <AlertDialog
-        open={completion.confirming}
-        onOpenChange={completion.setConfirming}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Mark this thread complete?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The agent is still running. Completing the thread stops it and
-              deletes its worktree from the machine — any work in there that has
-              not been pushed is gone. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={completion.pending}>
-              Leave it running
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-100 text-red-500 hover:bg-red-200"
-              disabled={completion.pending}
-              onClick={(event) => {
-                event.preventDefault();
-                void completion.complete();
-              }}
-            >
-              {completion.pending ? "Completing…" : "Stop it and complete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={completion.error !== null}
-        onOpenChange={(open) => {
-          if (!open) completion.setError(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>That thread is still open</AlertDialogTitle>
-            <AlertDialogDescription>{completion.error}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={() => completion.setError(null)}>
-              Close
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <AlertDialog
+      open={completion.confirming}
+      onOpenChange={completion.setConfirming}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Mark this thread complete?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The agent is still running. Completing the thread stops it and
+            deletes its worktree from the machine — any work in there that has
+            not been pushed is gone. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Leave it running</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-red-100 text-red-500 hover:bg-red-200"
+            onClick={(event) => {
+              event.preventDefault();
+              completion.confirm();
+            }}
+          >
+            Stop it and complete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

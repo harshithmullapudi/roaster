@@ -1,5 +1,9 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { runSessionsInThisProcess } from "./sessions/dispatch";
+
+runSessionsInThisProcess();
+
 const prompts: string[] = [];
 const steers: string[] = [];
 

@@ -1,5 +1,9 @@
 import { vi } from "vitest";
 
+import { runSessionsInThisProcess } from "../services/sessions/dispatch";
+
+runSessionsInThisProcess();
+
 vi.mock("@roster/superset", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@roster/superset")>();
 

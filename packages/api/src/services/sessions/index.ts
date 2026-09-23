@@ -1,19 +1,32 @@
 export {
   assertReaped,
-  cancelThread,
   completeThread,
   createThread,
-  ensureStarted,
   markWaiting,
   persistAgentMessage,
-  reapThread,
-  retryThread,
-  startSession,
-  steer,
   THREAD_STATUSES,
   type ThreadStatus,
   threadChannelName,
 } from "./supervisor";
+export {
+  cancelThread,
+  ensureStarted,
+  reapThread,
+  retryThread,
+  runSessionsInThisProcess,
+  sessionsRunHere,
+  startSession,
+  steer,
+} from "./dispatch";
+export {
+  ask,
+  closeSessionQueue,
+  SESSION_QUEUE,
+  type SessionCommand,
+  type SessionCommands,
+  sessionQueue,
+  tell,
+} from "./commands";
 export {
   type ChannelThread,
   type InboxThread,

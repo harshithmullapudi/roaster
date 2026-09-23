@@ -1,7 +1,8 @@
 # Deploying
 
-Roster deploys as **two services off one repository**: the web app, and a
-worker that owns every session. They share Postgres and Redis.
+Roster runs as **two tiers**: the web app, and a worker that owns every agent
+session. They share Postgres and Redis, and they ship in the same image — so
+they can run in one container or as two services.
 
 The split exists because the supervisor — the thing that holds a WebSocket to
 each machine, watches every running session, and drives the agent — used to
@@ -9,24 +10,44 @@ live inside the Next process. A deploy dropped every live watch, nothing
 recurring could be scheduled, and the process could never be replicated. The
 worker owns all of that now, and the web tier only reads and enqueues.
 
-**One image, two start commands.** The build bundles the worker into a single
-self-contained file, so the same image runs either tier and the only difference
-is what the service starts.
+**One image, two tiers.** The build bundles the worker into a single
+self-contained file that ships in the same image, so the topology is a
+deployment choice rather than a build one.
+
+```bash
+docker build -t roster --build-arg NEXT_PUBLIC_APP_URL=https://roster.example.com .
+```
+
+**Together, in one container** — the simplest thing that works:
+
+```bash
+docker run -p 3000:3000 -e ROSTER_RUN_WORKER=1 --env-file .env roster
+```
+
+`ROSTER_RUN_WORKER=1` makes the container run the worker beside the web
+server. They share a restart: a deploy bounces both, and if the worker dies
+the container exits non-zero so the platform restarts it rather than leaving
+a web server with no agent sessions.
+
+**Apart, as two services** — what to move to when either tier needs to scale
+or restart on its own:
+
+```bash
+docker run -p 3000:3000 --env-file .env roster
+docker run --env-file .env roster node apps/worker/dist/worker.js
+```
 
 | | Web | Worker |
 | --- | --- | --- |
-| Start command | `node apps/web/server.js` (the image default) | `node apps/worker/dist/worker.js` |
+| Start command | the image default | `node apps/worker/dist/worker.js` |
 | Serves HTTP | yes, on `$PORT` | no |
 | Uploads volume | **required** | **must not have one** |
 | Redis | required | required |
 | Runs migrations | yes, on boot | no |
 
-```bash
-docker build -t roster --build-arg NEXT_PUBLIC_APP_URL=https://roster.example.com .
-
-docker run -p 3000:3000 --env-file .env roster
-docker run --env-file .env roster node apps/worker/dist/worker.js
-```
+Either way something has to run the worker. It is what starts agent sessions,
+holds the socket to each machine, watches every running session and writes its
+progress into the thread. Without it, threads open and nothing happens.
 
 ## On Railway
 
@@ -39,10 +60,17 @@ builder — then:
    Centrifugo is: Redis carries the queues the worker runs on and the lease
    that decides which worker is active, so without it no session starts.
 
-   Railway's Redis does **not** default to the settings Roster needs. Set
-   `maxmemory-policy` to `noeviction` and leave persistence on. Eviction here
-   does not mean a slow cache — it means silently dropped jobs and a lease key
-   two workers can both acquire.
+   Railway's Redis plugin is close to what Roster needs but not exactly it. It
+   runs `redis-server --save 60 1` on a volume and sets no `maxmemory`, so
+   eviction is already off — Redis defaults to `noeviction` — which is the
+   part that matters, since eviction here means silently dropped jobs and a
+   lease key two workers can both acquire.
+
+   What it does *not* do is append-only persistence. `--save 60 1` snapshots
+   at most once a minute, so a hard crash can lose up to a minute of queue
+   state: a queued steer could vanish. Lease keys do not matter, they expire
+   anyway. To close that, add `--appendonly yes` to the Redis service's start
+   command.
 3. **Set the rest** from `.env.example`: `BETTER_AUTH_SECRET`,
    `SUPERSET_KEY_SECRET`, and, once the service has a domain,
    `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL`. The first of those is baked
@@ -63,13 +91,21 @@ builder — then:
    one — 0.5 GB on Free, 5 GB on Hobby, 50 GB on Pro. Outgrowing that means
    object storage; `packages/api/src/services/attachments.ts` is the only
    module touching disk.
-6. **Add the worker as a second service** on the same repo:
+6. **Run the worker.** Start with it in the web service — set
+   `ROSTER_RUN_WORKER=1` on that service and nothing else changes. One
+   service, one bill, and agent sessions work.
+
+   Split it out when either tier needs to scale or restart independently.
+   Add a second service on the same repo with:
    - **Custom start command** `node apps/worker/dist/worker.js`. This is
      Railway's documented way to run a second tier out of a shared monorepo,
      and it is why there is no second Dockerfile: the builder can only pick a
      file, not a stage, so a worker stage would have become the default target
      and quietly replaced the web image.
    - **No volume, no domain.** It serves no HTTP.
+   - Then remove `ROSTER_RUN_WORKER` from the web service, or both will run
+     one — harmless, since only the lease holder does any work, but it wastes
+     a process and muddies the logs.
    - The same variables as web, minus the web-only ones:
      `DATABASE_URL`, `REDIS_URL`, `SUPERSET_KEY_SECRET`, `SUPERSET_API_URL`,
      `SUPERSET_RELAY_URL`, `CENTRIFUGO_*`, and `NEXT_PUBLIC_APP_URL`.
@@ -132,7 +168,7 @@ has to be edited there. To match this layout it needs four services:
 | Service | Notes |
 | --- | --- |
 | Web | This repo's Dockerfile, a volume at `/app/uploads`, a domain |
-| Worker | The same image and repo, start command `node apps/worker/dist/worker.js`, no volume, no domain |
+| Worker | Either `ROSTER_RUN_WORKER=1` on the web service, or a second service on the same image with start command `node apps/worker/dist/worker.js`, no volume, no domain |
 | Postgres | |
 | Redis | `maxmemory-policy` set to `noeviction`, persistence on |
 

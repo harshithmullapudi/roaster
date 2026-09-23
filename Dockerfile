@@ -99,9 +99,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 COPY --from=builder --chown=nextjs:nodejs /app/packages/db/drizzle ./packages/db/drizzle
 
 # The worker. One bundled file with nothing to resolve at runtime, so the
-# background service runs from this image with a different start command:
+# background tier runs from this image either as its own service:
 #   node apps/worker/dist/worker.js
+# or alongside the web server in this container, with ROSTER_RUN_WORKER=1.
 COPY --from=builder --chown=nextjs:nodejs /app/apps/worker/dist ./apps/worker/dist
+COPY --chown=nextjs:nodejs docker/start.mjs ./docker/start.mjs
 
 # Message attachments. Ephemeral unless a volume is mounted here — see the
 # deployment notes in the README.
@@ -116,4 +118,4 @@ COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 EXPOSE 3000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "docker/start.mjs"]

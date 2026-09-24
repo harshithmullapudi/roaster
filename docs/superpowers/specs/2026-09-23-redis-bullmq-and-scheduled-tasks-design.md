@@ -418,9 +418,9 @@ appears in October.
 | `packages/api/src/lib/recurrence.ts` | new — rule parsing, `.toText()`, and next-occurrence in a timezone. The only place `rrule` is imported |
 | `packages/api/src/services/messages.ts` | firing path opts out of `joinableThread`; `driveSession` links a `task:<uuid>[:<slot>]` root message to its task |
 | `packages/api/src/services/task-assignment.ts` | `startSession` no longer forced; `postTask` becomes a wrapper over `sendMessage`; `setTaskProject` records the channel so a quiet channel still assigns |
-| `packages/api/src/services/schedule-queue.ts` | new — the one `every: 60_000` scheduler and its queue |
+| `packages/api/src/services/sweep-queue.ts` | new — the one `every: 60_000` job scheduler and its queue. The queue *name* stays `roster-schedules`: renaming the string would orphan the scheduler already live in Redis, which would keep enqueueing into a queue nobody consumes |
 | `packages/api/src/services/recurrence.ts` | new — the `@roster/api/recurrence` entry the worker imports |
-| `apps/worker/src/schedule-worker.ts` | new — runs the sweep, started and stopped with the supervisor lease |
+| `apps/worker/src/sweep-worker.ts` | new — runs the sweep, started and stopped with the supervisor lease |
 | `apps/web/src/components/tasks/task-list.tsx` | the recurrence line on a task row; no create button |
 | `packages/cli/src/recurrence.ts` | new — builds `DTSTART` from `--at` in the target zone, with no dependencies |
 | `packages/api/src/services/delegations.ts` | conditional settle, `clientId` on `postRequest` |

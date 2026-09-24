@@ -1,12 +1,12 @@
 export {
-  closeScheduleQueue,
+  closeSweepQueue,
   ensureSweepScheduled,
-  SCHEDULE_QUEUE,
-  scheduleQueue,
+  SWEEP_QUEUE,
+  sweepQueue,
   SWEEP_INTERVAL_MS,
   SWEEP_JOB,
   SWEEP_SCHEDULER_ID,
-} from "./schedule-queue";
+} from "./sweep-queue";
 
 export {
   LATE_GRACE_MS,

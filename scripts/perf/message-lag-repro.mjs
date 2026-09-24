@@ -16,6 +16,8 @@ const options = {
   burst: Number(arg("--burst", "400")),
   bursts: Number(arg("--bursts", "6")),
   rate: Number(arg("--rate", "25")),
+  threadsPerRound: Number(arg("--threads-per-round", "0")),
+  liveShare: Number(arg("--live-share", "0.1")),
   keepServer: process.argv.includes("--keep-server"),
   prod: process.argv.includes("--prod"),
   profile: process.argv.includes("--profile"),
@@ -259,6 +261,32 @@ function syntheticMessage(projectId, seq) {
   };
 }
 
+function syntheticThread(projectId, index, rootMessageId, live) {
+  const started = new Date(Date.UTC(2030, 0, 1) + index * 1000).toISOString();
+  return {
+    type: "thread",
+    thread: {
+      id: `repro-thread-${index}`,
+      projectId,
+      rootMessageId,
+      status: live ? "running" : "completed",
+      lastProgress: live ? "working on it" : null,
+      error: null,
+      startedAt: started,
+      endedAt: live ? null : started,
+      rootText: `repro thread ${index}`,
+      authorName: "Repro Bot",
+      authorEmail: "repro@example.test",
+      replyCount: 2,
+      lastReplyAt: started,
+      replierNames: ["Repro Bot"],
+      waitingOn: null,
+      completedAt: live ? null : started,
+      completedByMemberId: null,
+    },
+  };
+}
+
 function topFrames(profile, limit = 25) {
   const byFrame = new Map();
 
@@ -360,8 +388,8 @@ async function main() {
     };
 
     console.log("");
-    console.log("retained  sent  received  script ms  per message  worst frame  blocked ms");
-    console.log("--------  ----  --------  ---------  -----------  -----------  ----------");
+    console.log("retained  threads  sent  received  script ms  per message  worst frame  blocked ms");
+    console.log("--------  -------  ----  --------  ---------  -----------  -----------  ----------");
 
     if (options.profile) {
       await cdp.send("Profiler.enable");
@@ -369,7 +397,25 @@ async function main() {
     }
 
     let deliveredSoFar = 0;
+    let threads = 0;
     for (let round = 1; round <= options.bursts; round += 1) {
+      for (let made = 0; made < options.threadsPerRound; made += 1) {
+        const live = made < options.threadsPerRound * options.liveShare;
+        await publish(
+          centrifugo,
+          channel,
+          syntheticThread(
+            options.projectId,
+            threads,
+            `repro-${Math.max(1_000_000, seq - 1 - made)}`,
+            live,
+          ),
+        );
+        threads += 1;
+        await sleep(15);
+      }
+      if (options.threadsPerRound > 0) await sleep(2000);
+
       await cdp.send("HeapProfiler.collectGarbage");
       await page.evaluate(() => window.__resetFrames());
       if (options.profile) await cdp.send("Profiler.start");
@@ -389,7 +435,8 @@ async function main() {
       retained += received;
 
       console.log(
-        `${String(retained).padStart(8)}  ${String(options.burst).padStart(4)}  ` +
+        `${String(retained).padStart(8)}  ${String(threads).padStart(7)}  ` +
+          `${String(options.burst).padStart(4)}  ` +
           `${String(received).padStart(8)}  ${String(scriptMs).padStart(9)}  ` +
           `${(scriptMs / Math.max(1, received)).toFixed(2).padStart(11)}  ` +
           `${String(measured.worstFrameMs).padStart(11)}  ${String(measured.blockedMs).padStart(10)}`,

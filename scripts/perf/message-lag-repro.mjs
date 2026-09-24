@@ -18,6 +18,7 @@ const options = {
   rate: Number(arg("--rate", "25")),
   keepServer: process.argv.includes("--keep-server"),
   prod: process.argv.includes("--prod"),
+  profile: process.argv.includes("--profile"),
 };
 
 function arg(flag, fallback) {
@@ -258,6 +259,30 @@ function syntheticMessage(projectId, seq) {
   };
 }
 
+function topFrames(profile, limit = 25) {
+  const byFrame = new Map();
+
+  for (const node of profile.nodes) {
+    if (!node.hitCount) continue;
+    const { functionName, url, lineNumber } = node.callFrame;
+    const where = url ? `${url.split("/").pop()}:${lineNumber + 1}` : "native";
+    const key = `${functionName || "(anonymous)"}  ${where}`;
+    byFrame.set(key, (byFrame.get(key) ?? 0) + node.hitCount);
+  }
+
+  const totalHits = [...byFrame.values()].reduce((sum, hits) => sum + hits, 0);
+  const wallMs = (profile.endTime - profile.startTime) / 1000;
+
+  return [...byFrame]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([frame, hits]) => ({
+      frame,
+      selfMs: Math.round((hits / totalHits) * wallMs),
+      share: `${((hits / totalHits) * 100).toFixed(1)}%`,
+    }));
+}
+
 async function publish(centrifugo, channel, data) {
   const response = await fetch(`${centrifugo.url}/api/publish`, {
     method: "POST",
@@ -338,10 +363,16 @@ async function main() {
     console.log("retained  sent  received  script ms  per message  worst frame  blocked ms");
     console.log("--------  ----  --------  ---------  -----------  -----------  ----------");
 
+    if (options.profile) {
+      await cdp.send("Profiler.enable");
+      await cdp.send("Profiler.setSamplingInterval", { interval: 200 });
+    }
+
     let deliveredSoFar = 0;
     for (let round = 1; round <= options.bursts; round += 1) {
       await cdp.send("HeapProfiler.collectGarbage");
       await page.evaluate(() => window.__resetFrames());
+      if (options.profile) await cdp.send("Profiler.start");
       const before = await scriptSeconds();
 
       for (let sent = 0; sent < options.burst; sent += 1) {
@@ -363,6 +394,15 @@ async function main() {
           `${(scriptMs / Math.max(1, received)).toFixed(2).padStart(11)}  ` +
           `${String(measured.worstFrameMs).padStart(11)}  ${String(measured.blockedMs).padStart(10)}`,
       );
+
+      if (options.profile) {
+        const { profile } = await cdp.send("Profiler.stop");
+        console.log(`  where that round's time went (self time, ${retained} retained):`);
+        for (const { frame, selfMs, share } of topFrames(profile)) {
+          console.log(`    ${String(selfMs).padStart(6)} ms  ${share.padStart(6)}  ${frame}`);
+        }
+        console.log("");
+      }
 
       if (round === 1 && received === 0) {
         throw new Error(

@@ -16,8 +16,11 @@ const options = {
   burst: Number(arg("--burst", "400")),
   bursts: Number(arg("--bursts", "6")),
   rate: Number(arg("--rate", "25")),
+  threadsPerRound: Number(arg("--threads-per-round", "0")),
+  liveShare: Number(arg("--live-share", "0.1")),
   keepServer: process.argv.includes("--keep-server"),
   prod: process.argv.includes("--prod"),
+  profile: process.argv.includes("--profile"),
 };
 
 function arg(flag, fallback) {
@@ -258,6 +261,56 @@ function syntheticMessage(projectId, seq) {
   };
 }
 
+function syntheticThread(projectId, index, rootMessageId, live) {
+  const started = new Date(Date.UTC(2030, 0, 1) + index * 1000).toISOString();
+  return {
+    type: "thread",
+    thread: {
+      id: `repro-thread-${index}`,
+      projectId,
+      rootMessageId,
+      status: live ? "running" : "completed",
+      lastProgress: live ? "working on it" : null,
+      error: null,
+      startedAt: started,
+      endedAt: live ? null : started,
+      rootText: `repro thread ${index}`,
+      authorName: "Repro Bot",
+      authorEmail: "repro@example.test",
+      replyCount: 2,
+      lastReplyAt: started,
+      replierNames: ["Repro Bot"],
+      waitingOn: null,
+      completedAt: live ? null : started,
+      completedByMemberId: null,
+    },
+  };
+}
+
+function topFrames(profile, limit = 25) {
+  const byFrame = new Map();
+
+  for (const node of profile.nodes) {
+    if (!node.hitCount) continue;
+    const { functionName, url, lineNumber } = node.callFrame;
+    const where = url ? `${url.split("/").pop()}:${lineNumber + 1}` : "native";
+    const key = `${functionName || "(anonymous)"}  ${where}`;
+    byFrame.set(key, (byFrame.get(key) ?? 0) + node.hitCount);
+  }
+
+  const totalHits = [...byFrame.values()].reduce((sum, hits) => sum + hits, 0);
+  const wallMs = (profile.endTime - profile.startTime) / 1000;
+
+  return [...byFrame]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([frame, hits]) => ({
+      frame,
+      selfMs: Math.round((hits / totalHits) * wallMs),
+      share: `${((hits / totalHits) * 100).toFixed(1)}%`,
+    }));
+}
+
 async function publish(centrifugo, channel, data) {
   const response = await fetch(`${centrifugo.url}/api/publish`, {
     method: "POST",
@@ -335,13 +388,37 @@ async function main() {
     };
 
     console.log("");
-    console.log("retained  sent  received  script ms  per message  worst frame  blocked ms");
-    console.log("--------  ----  --------  ---------  -----------  -----------  ----------");
+    console.log("retained  threads  sent  received  script ms  per message  worst frame  blocked ms");
+    console.log("--------  -------  ----  --------  ---------  -----------  -----------  ----------");
+
+    if (options.profile) {
+      await cdp.send("Profiler.enable");
+      await cdp.send("Profiler.setSamplingInterval", { interval: 200 });
+    }
 
     let deliveredSoFar = 0;
+    let threads = 0;
     for (let round = 1; round <= options.bursts; round += 1) {
+      for (let made = 0; made < options.threadsPerRound; made += 1) {
+        const live = made < options.threadsPerRound * options.liveShare;
+        await publish(
+          centrifugo,
+          channel,
+          syntheticThread(
+            options.projectId,
+            threads,
+            `repro-${Math.max(1_000_000, seq - 1 - made)}`,
+            live,
+          ),
+        );
+        threads += 1;
+        await sleep(15);
+      }
+      if (options.threadsPerRound > 0) await sleep(2000);
+
       await cdp.send("HeapProfiler.collectGarbage");
       await page.evaluate(() => window.__resetFrames());
+      if (options.profile) await cdp.send("Profiler.start");
       const before = await scriptSeconds();
 
       for (let sent = 0; sent < options.burst; sent += 1) {
@@ -358,11 +435,21 @@ async function main() {
       retained += received;
 
       console.log(
-        `${String(retained).padStart(8)}  ${String(options.burst).padStart(4)}  ` +
+        `${String(retained).padStart(8)}  ${String(threads).padStart(7)}  ` +
+          `${String(options.burst).padStart(4)}  ` +
           `${String(received).padStart(8)}  ${String(scriptMs).padStart(9)}  ` +
           `${(scriptMs / Math.max(1, received)).toFixed(2).padStart(11)}  ` +
           `${String(measured.worstFrameMs).padStart(11)}  ${String(measured.blockedMs).padStart(10)}`,
       );
+
+      if (options.profile) {
+        const { profile } = await cdp.send("Profiler.stop");
+        console.log(`  where that round's time went (self time, ${retained} retained):`);
+        for (const { frame, selfMs, share } of topFrames(profile)) {
+          console.log(`    ${String(selfMs).padStart(6)} ms  ${share.padStart(6)}  ${frame}`);
+        }
+        console.log("");
+      }
 
       if (round === 1 && received === 0) {
         throw new Error(

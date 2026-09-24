@@ -95,17 +95,3 @@ export function toSessionItems(
 
   return items;
 }
-
-export function groupByChannel(
-  threads: LiveThreadItem[],
-): Map<string, LiveThreadItem[]> {
-  const grouped = new Map<string, LiveThreadItem[]>();
-
-  for (const thread of threads) {
-    const existing = grouped.get(thread.projectId);
-    if (existing) existing.push(thread);
-    else grouped.set(thread.projectId, [thread]);
-  }
-
-  return grouped;
-}

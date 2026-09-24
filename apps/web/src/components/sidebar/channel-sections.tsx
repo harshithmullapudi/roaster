@@ -1,15 +1,9 @@
 "use client";
 
 import type { Channel, ChannelGroups } from "@roster/api";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import {
-  groupByChannel,
-  type LiveThreadItem,
-  liveThreadsKey,
-} from "~/utils/live-threads";
 import { readCollapsed, writeCollapsed } from "~/utils/sidebar-collapse";
 import { trpc } from "~/utils/trpc";
 
@@ -20,7 +14,6 @@ export interface ChannelSectionsProps {
   orgSlug: string;
   activeChannelSlug?: string;
   canManage: boolean;
-  initialLiveThreads: LiveThreadItem[];
 }
 
 const SECTIONS: { key: keyof ChannelGroups; label: string }[] = [
@@ -51,20 +44,10 @@ export function ChannelSections({
   orgSlug,
   activeChannelSlug,
   canManage,
-  initialLiveThreads,
 }: ChannelSectionsProps) {
   const router = useRouter();
   const [current, setCurrent] = useState(groups);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
-  const { data: live } = useQuery({
-    queryKey: liveThreadsKey(),
-    queryFn: () => trpc.threads.live.query(),
-    refetchInterval: 10_000,
-    initialData: initialLiveThreads,
-  });
-
-  const liveThreads = useMemo(() => groupByChannel(live ?? []), [live]);
 
   useEffect(() => setCurrent(groups), [groups]);
   useEffect(() => setCollapsed(readCollapsed()), []);
@@ -121,7 +104,6 @@ export function ChannelSections({
           orgSlug={orgSlug}
           activeChannelSlug={activeChannelSlug}
           canManage={canManage}
-          liveThreads={liveThreads}
           onOpenChange={(open) => setOpen(section.key, open)}
           onToggleStar={toggleStar}
           onChangeVisibility={changeVisibility}

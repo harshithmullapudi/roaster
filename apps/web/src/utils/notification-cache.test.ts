@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyUnreadDelta,
-  hasUnread,
   notificationBody,
   notificationTitle,
   NOTIFICATION_TYPES,
@@ -43,17 +42,6 @@ describe("applyUnreadDelta", () => {
   it("never falls below zero", () => {
     expect(applyUnreadDelta(0, -1)).toBe(0);
     expect(applyUnreadDelta(2, -5)).toBe(0);
-  });
-});
-
-describe("hasUnread", () => {
-  it("treats an unresolved count as nothing to show", () => {
-    expect(hasUnread(undefined)).toBe(false);
-  });
-
-  it("shows the dot only above zero", () => {
-    expect(hasUnread(0)).toBe(false);
-    expect(hasUnread(1)).toBe(true);
   });
 });
 

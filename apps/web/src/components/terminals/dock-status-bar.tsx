@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "@roster/ui";
 import { SquareTerminal } from "lucide-react";
 
+import { CountFlash } from "~/components/threads/count-flash";
 import { SessionCounts } from "~/components/threads/session-counts";
 import {
   type HoverCardThread,
@@ -70,7 +71,9 @@ function ThreadCounts({
       onClick={onOpen}
       className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-2.5 text-xs"
     >
-      {open > 0 ? <span>{open} open</span> : null}
+      <CountFlash value={open} className={cn(open <= 0 && "hidden")}>
+        {open} open
+      </CountFlash>
       <SessionCounts
         running={counts.running}
         needsInput={counts.needsInput}

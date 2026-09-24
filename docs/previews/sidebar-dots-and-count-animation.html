@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sidebar dots &amp; the counting status bar</title>
+    <style>
+      :root {
+        --sp-measure: 68ch;
+      }
+
+      /* Roster's own tokens, lifted from apps/web/src/app/globals.css so the
+         mockup below is the real palette, not an approximation. */
+      .app {
+        --background: oklch(94.28% 0 0);
+        --background-2: oklch(97.21% 0 0);
+        --foreground: oklch(30.87% 0 0);
+        --primary: oklch(60.21% 0.1823 252.59);
+        --muted-foreground: oklch(55.26% 0 0);
+        --accent: oklch(0% 0 0 / 9.02%);
+        --warning: oklch(70.43% 0.1439 87.96);
+        --success: oklch(64.93% 0.107 154.24);
+        --running: oklch(62.3% 0.214 259.8);
+        --border: oklch(90.67% 0 0);
+      }
+      .app[data-theme="dark"] {
+        --background: oklch(21.34% 0 0);
+        --background-2: oklch(25.2% 0 0);
+        --foreground: oklch(85.8% 0 0);
+        --primary: oklch(60.21% 0.1823 252.59);
+        --muted-foreground: oklch(76.99% 0 0);
+        --accent: oklch(100% 0 0 / 10.59%);
+        --warning: oklch(70.43% 0.1439 87.96);
+        --success: oklch(64.93% 0.107 154.24);
+        --running: oklch(62.3% 0.214 259.8);
+        --border: oklch(31.32% 0 0);
+      }
+
+      main {
+        max-width: 72rem;
+        margin: 0 auto;
+        padding: 3rem 1.5rem 6rem;
+      }
+      .lede {
+        max-width: var(--sp-measure);
+        color: var(--sp-muted);
+        font-size: 1.05rem;
+      }
+      section {
+        margin-top: 4rem;
+      }
+      section > p,
+      section > ul,
+      section > ol {
+        max-width: var(--sp-measure);
+      }
+      h2 {
+        margin-bottom: 0.35rem;
+        letter-spacing: -0.015em;
+      }
+      h2 + .sub {
+        margin-top: 0;
+        color: var(--sp-muted);
+        max-width: var(--sp-measure);
+      }
+
+      /* ---- the mockup shell ------------------------------------------- */
+      .app {
+        background: var(--background);
+        color: var(--foreground);
+        border: 1px solid var(--sp-border);
+        border-radius: var(--sp-radius, 8px);
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 14rem 1fr;
+        font-size: 0.875rem;
+        font-family: var(--sp-font-sans);
+      }
+      .app.solo {
+        grid-template-columns: 1fr;
+      }
+      .app.short .fill {
+        min-height: 7rem;
+      }
+      .side {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.5rem;
+      }
+      .ws {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0.4rem;
+        font-weight: 550;
+      }
+      .ws .sq {
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 5px;
+        background: var(--primary);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 0.65rem;
+        font-weight: 700;
+      }
+      .nav {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0.5rem;
+        border-radius: 6px;
+        min-height: 1.75rem;
+        color: var(--foreground);
+        cursor: default;
+      }
+      .row.active {
+        background: var(--accent);
+      }
+      .row .ico {
+        width: 14px;
+        height: 14px;
+        flex: none;
+        color: var(--muted-foreground);
+      }
+      .row .lbl {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row .tail {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex: none;
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+      }
+      .grp {
+        margin-top: 0.25rem;
+        padding: 0 0.5rem 0.25rem;
+        font-size: 0.7rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+      }
+      .pane {
+        display: flex;
+        flex-direction: column;
+        background: var(--background-2);
+      }
+      .pane .fill {
+        flex: 1;
+        display: grid;
+        place-items: center;
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+      }
+
+      /* ---- dots and counts -------------------------------------------- */
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        flex: none;
+        display: inline-block;
+      }
+      .dot.running {
+        background: var(--running);
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      .dot.needs {
+        background: var(--warning);
+      }
+      .dot.done {
+        background: var(--success);
+      }
+      .dot.unread {
+        background: var(--primary);
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.5;
+        }
+      }
+      .counts {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+      }
+      .count {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+      }
+
+      /* ---- bottom status bar ------------------------------------------ */
+      .bar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 0.375rem 0.5rem;
+        border-top: 1px solid var(--border);
+        background: var(--background);
+      }
+      .bar .grp-counts {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+        padding: 0.25rem;
+      }
+      .agent-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 6px;
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+      }
+
+      /* ---- the shipped flash ------------------------------------------ */
+      .count-flash {
+        border-radius: 5px;
+      }
+      @keyframes count-flash {
+        from {
+          background-color: color-mix(in oklch, currentColor 22%, transparent);
+          box-shadow: 0 0 0 3px
+            color-mix(in oklch, currentColor 22%, transparent);
+        }
+        to {
+          background-color: transparent;
+          box-shadow: 0 0 0 3px transparent;
+        }
+      }
+      .count-flash-rising {
+        animation: count-flash 700ms ease-out;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .count-flash-rising,
+        .dot.running {
+          animation: none;
+        }
+      }
+
+      /* ---- page furniture --------------------------------------------- */
+      .two {
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        margin-top: 1.5rem;
+        align-items: start;
+      }
+      @media (max-width: 52rem) {
+        .two {
+          grid-template-columns: 1fr;
+        }
+      }
+      .panel h3 {
+        margin: 0 0 0.15rem;
+        font-size: 0.95rem;
+      }
+      .panel .cap {
+        margin: 0 0 0.75rem;
+        color: var(--sp-muted);
+        font-size: 0.85rem;
+      }
+      .panel.gone h3::before {
+        content: "before";
+        display: block;
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--sp-muted);
+        font-weight: 400;
+        margin-bottom: 0.2rem;
+      }
+      .panel.now h3::before {
+        content: "now";
+        display: block;
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--sp-accent);
+        font-weight: 600;
+        margin-bottom: 0.2rem;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 1.25rem 0 0;
+      }
+      button.ui {
+        font: inherit;
+        font-size: 0.82rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        border: 1px solid var(--sp-border);
+        background: var(--sp-surface);
+        color: var(--sp-text);
+        cursor: pointer;
+      }
+      button.ui:hover {
+        border-color: var(--sp-accent);
+      }
+      button.ui[aria-pressed="true"] {
+        background: var(--sp-text);
+        color: var(--sp-bg);
+        border-color: var(--sp-text);
+      }
+      table {
+        width: 100%;
+      }
+      .scroll {
+        overflow-x: auto;
+      }
+      .callout {
+        border-left: 2px solid var(--sp-accent);
+        padding: 0.1rem 0 0.1rem 1rem;
+        margin: 1.5rem 0 0;
+        max-width: var(--sp-measure);
+      }
+      footer.note {
+        margin-top: 4rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--sp-border);
+        color: var(--sp-muted);
+        font-size: 0.85rem;
+        max-width: var(--sp-measure);
+      }
+    </style>
+  </head>
+  <body class="auto">
+    <main>
+      <h1>Sidebar dots &amp; the counting status bar</h1>
+      <p class="lede">
+        Both changes are built. The sidebar is down to names only, and the
+        status bar flashes a count when it rises. Everything below is live — the
+        flash on this page is the same CSS that shipped.
+      </p>
+
+      <div class="controls">
+        <span style="font-size: 0.82rem; color: var(--sp-muted)">Mockup theme</span>
+        <button class="ui" data-theme-set="light" aria-pressed="true">Light</button>
+        <button class="ui" data-theme-set="dark" aria-pressed="false">Dark</button>
+      </div>
+
+      <!-- ============================================================ -->
+      <section>
+        <h2>1 · The sidebar</h2>
+        <p class="sub">
+          Dots and numbers both gone: the unread dot on Threads, and the
+          coloured session counts on every channel row.
+        </p>
+
+        <div class="two">
+          <div class="panel gone">
+            <h3>Three signals competing</h3>
+            <p class="cap">
+              A blue unread dot, and up to three coloured counts per channel —
+              each row a different width depending on what was running.
+            </p>
+            <div class="app solo" data-theme="light">
+              <div class="side">
+                <div class="ws"><span class="sq">R</span><span>Roster</span></div>
+                <div class="nav">
+                  <div class="row" data-icon="msg">
+                    <span class="lbl">Threads</span>
+                    <span class="tail"><span class="dot unread"></span></span>
+                  </div>
+                  <div class="row" data-icon="check"><span class="lbl">Tasks</span></div>
+                  <div class="row" data-icon="users"><span class="lbl">Members</span></div>
+                </div>
+                <div>
+                  <div class="grp">Channels</div>
+                  <div class="nav">
+                    <div class="row active" data-icon="hash">
+                      <span class="lbl">product-eng</span>
+                      <span class="tail"><span class="counts"><span class="count"><span class="dot running"></span>2</span><span class="count"><span class="dot needs"></span>1</span></span></span>
+                    </div>
+                    <div class="row" data-icon="hash"><span class="lbl">design</span></div>
+                    <div class="row" data-icon="hash">
+                      <span class="lbl">support</span>
+                      <span class="tail"><span class="counts"><span class="count"><span class="dot done"></span>3</span></span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel now">
+            <h3>Just the names</h3>
+            <p class="cap">
+              Nothing trailing any row. The eye runs straight down the channel
+              list with nothing pulling sideways.
+            </p>
+            <div class="app solo" data-theme="light">
+              <div class="side">
+                <div class="ws"><span class="sq">R</span><span>Roster</span></div>
+                <div class="nav">
+                  <div class="row" data-icon="msg"><span class="lbl">Threads</span></div>
+                  <div class="row" data-icon="check"><span class="lbl">Tasks</span></div>
+                  <div class="row" data-icon="users"><span class="lbl">Members</span></div>
+                </div>
+                <div>
+                  <div class="grp">Channels</div>
+                  <div class="nav">
+                    <div class="row active" data-icon="hash"><span class="lbl">product-eng</span></div>
+                    <div class="row" data-icon="hash"><span class="lbl">design</span></div>
+                    <div class="row" data-icon="hash"><span class="lbl">support</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout">
+          <p style="margin: 0">
+            <strong>Two things went with them.</strong> The hover card that used
+            to hang off a channel's counts has no trigger any more, so live
+            session detail now lives in one place: the status bar, which keeps
+            its own hover card. And Threads has no unread indicator at all —
+            that is the one call I made past the literal ask, and it is a
+            four-line revert if you want the dot back.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section>
+        <h2>2 · The status bar</h2>
+        <p class="sub">
+          Flash, as picked. A count that rises lights up in place for 700ms and
+          fades. A count that falls lands silently — a session finishing on its
+          own is the one thing nobody needs pulled out of the corner of an eye.
+        </p>
+
+        <div class="app short" id="live-app" style="margin-top: 1.5rem">
+          <div class="side">
+            <div class="ws"><span class="sq">R</span><span>Roster</span></div>
+            <div class="nav">
+              <div class="row" data-icon="msg"><span class="lbl">Threads</span></div>
+              <div class="row" data-icon="check"><span class="lbl">Tasks</span></div>
+            </div>
+            <div>
+              <div class="grp">Channels</div>
+              <div class="nav">
+                <div class="row active" data-icon="hash"><span class="lbl">product-eng</span></div>
+                <div class="row" data-icon="hash"><span class="lbl">design</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="pane">
+            <div class="fill">channel</div>
+            <div class="bar">
+              <span class="grp-counts" id="live-counts">
+                <span class="count count-flash"><span class="n">2</span>open</span>
+                <span class="count count-flash"><span class="dot running"></span><span class="n">2</span>running</span>
+                <span class="count count-flash"><span class="dot needs"></span><span class="n">1</span>needs input</span>
+                <span class="count count-flash"><span class="dot done"></span><span class="n">1</span>done</span>
+              </span>
+              <span class="agent-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                Agent
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="ui" id="live-play">Replay a minute of activity</button>
+          <button class="ui" id="live-step">Single +1</button>
+          <button class="ui" id="live-down">Single −1 (silent)</button>
+        </div>
+
+        <p style="margin-top: 1.5rem">
+          The highlight is painted with a <code>box-shadow</code> spread rather
+          than padding, so a count lighting up never nudges its neighbours along
+          the bar. It is drawn from <code>currentColor</code>, which keeps it
+          legible in both themes without a second palette — try the dark toggle
+          and replay.
+        </p>
+        <p>
+          A state sitting at zero is hidden rather than unmounted, so the jump
+          from nothing to one still registers as a rise and gets its flash. That
+          was the one thing worth getting right: <em>0 → 1 needs input</em> is
+          the transition most worth catching.
+        </p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section>
+        <h2>3 · What changed</h2>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>sidebar/channel-live-sessions.tsx</code></td>
+                <td><em>deleted</em> — the per-channel dots and counts</td>
+              </tr>
+              <tr>
+                <td><code>sidebar/threads-link.tsx</code></td>
+                <td><em>deleted</em> — was only the unread dot plus its 60s poll; now a plain <code>SidebarLink</code></td>
+              </tr>
+              <tr>
+                <td><code>sidebar/channel-row.tsx</code></td>
+                <td>Dropped the indicator and the extra right padding it reserved</td>
+              </tr>
+              <tr>
+                <td><code>sidebar/channel-section{,s}.tsx</code></td>
+                <td>Dropped the <code>liveThreads</code> prop and the 10s poll that fed it</td>
+              </tr>
+              <tr>
+                <td><code>lib/shell.ts</code></td>
+                <td>Dropped <code>listLiveThreads</code> — one fewer query on every page load</td>
+              </tr>
+              <tr>
+                <td><code>threads/count-flash.tsx</code></td>
+                <td><em>new</em> — tracks the previous value, animates only on a rise</td>
+              </tr>
+              <tr>
+                <td><code>threads/session-counts.tsx</code></td>
+                <td>Each state wrapped in <code>CountFlash</code>; zero hides instead of unmounting</td>
+              </tr>
+              <tr>
+                <td><code>terminals/dock-status-bar.tsx</code></td>
+                <td><code>N open</code> wrapped too</td>
+              </tr>
+              <tr>
+                <td><code>app/theme.css</code></td>
+                <td>The keyframes and the reduced-motion guard. No motion library added</td>
+              </tr>
+              <tr>
+                <td><code>utils/live-threads.ts</code>, <code>utils/notification-cache.ts</code></td>
+                <td><code>groupByChannel</code> and <code>hasUnread</code> removed with their tests — nothing called them any more</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="margin-top: 1.5rem">
+          Typecheck clean, 269 tests passing, and the production build emits the
+          keyframes. It has not been driven in a running app — this worktree has
+          no <code>.env</code>, so the build stops at <code>DATABASE_URL</code>
+          right after compiling.
+        </p>
+      </section>
+
+      <footer class="note">
+        Reduced motion is honoured: with the OS setting on, the flash does not
+        play and the pulsing dot holds still. This page obeys it too, so if the
+        replay above looks inert, that is why.
+      </footer>
+    </main>
+
+    <script>
+      (function () {
+        var ICONS = {
+          hash: '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>',
+          msg: '<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>',
+          check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+          users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
+        };
+
+        Array.prototype.forEach.call(
+          document.querySelectorAll(".row[data-icon]"),
+          function (row) {
+            var svg = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "svg"
+            );
+            svg.setAttribute("class", "ico");
+            svg.setAttribute("viewBox", "0 0 24 24");
+            svg.setAttribute("fill", "none");
+            svg.setAttribute("stroke", "currentColor");
+            svg.setAttribute("stroke-width", "2");
+            svg.setAttribute("stroke-linecap", "round");
+            svg.setAttribute("stroke-linejoin", "round");
+            svg.innerHTML = ICONS[row.getAttribute("data-icon")] || "";
+            row.insertBefore(svg, row.firstChild);
+          }
+        );
+
+        var FLASH_MS = 700;
+
+        function setCount(count, value) {
+          var slot = count.querySelector(".n");
+          var previous = parseInt(slot.textContent, 10);
+          slot.textContent = String(value);
+          if (value <= previous) return;
+
+          count.classList.remove("count-flash-rising");
+          void count.offsetWidth;
+          count.classList.add("count-flash-rising");
+          window.setTimeout(function () {
+            count.classList.remove("count-flash-rising");
+          }, FLASH_MS);
+        }
+
+        var counts = document
+          .getElementById("live-counts")
+          .querySelectorAll(".count");
+
+        function valueOf(i) {
+          return parseInt(counts[i].querySelector(".n").textContent, 10);
+        }
+
+        document
+          .getElementById("live-step")
+          .addEventListener("click", function () {
+            var i = 1 + Math.floor(Math.random() * 3);
+            setCount(counts[i], valueOf(i) + 1);
+          });
+
+        document
+          .getElementById("live-down")
+          .addEventListener("click", function () {
+            var i = 1 + Math.floor(Math.random() * 3);
+            if (valueOf(i) > 0) setCount(counts[i], valueOf(i) - 1);
+          });
+
+        var playing = null;
+        document
+          .getElementById("live-play")
+          .addEventListener("click", function () {
+            if (playing) playing.forEach(clearTimeout);
+            var script = [
+              [0, 1, 1],
+              [900, 3, 1],
+              [1600, 1, 1],
+              [2700, 2, 1],
+              [3300, 1, -1],
+              [4400, 3, 1],
+              [5600, 0, 1],
+              [6400, 2, 1],
+            ];
+            playing = script.map(function (step) {
+              return window.setTimeout(function () {
+                setCount(
+                  counts[step[1]],
+                  Math.max(0, valueOf(step[1]) + step[2])
+                );
+              }, step[0]);
+            });
+          });
+
+        var themeBtns = document.querySelectorAll("[data-theme-set]");
+        Array.prototype.forEach.call(themeBtns, function (b) {
+          b.addEventListener("click", function () {
+            var t = b.getAttribute("data-theme-set");
+            Array.prototype.forEach.call(
+              document.querySelectorAll(".app"),
+              function (a) {
+                a.setAttribute("data-theme", t);
+              }
+            );
+            Array.prototype.forEach.call(themeBtns, function (x) {
+              x.setAttribute("aria-pressed", x === b ? "true" : "false");
+            });
+          });
+        });
+        Array.prototype.forEach.call(
+          document.querySelectorAll(".app"),
+          function (a) {
+            if (!a.hasAttribute("data-theme"))
+              a.setAttribute("data-theme", "light");
+          }
+        );
+      })();
+    </script>
+  </body>
+</html>

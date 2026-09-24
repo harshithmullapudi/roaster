@@ -11,3 +11,33 @@
  * unstyled.
  */
 @source "../../../../packages/ui/src";
+
+/*
+ * The status bar sits in the corner of the eye, so a count that rises lights
+ * up rather than moves: the box-shadow spread paints the highlight outside the
+ * text without a padding that would nudge its neighbours along the bar.
+ */
+@keyframes count-flash {
+  from {
+    background-color: color-mix(in oklch, currentColor 22%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, currentColor 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+.count-flash {
+  border-radius: 5px;
+}
+
+.count-flash-rising {
+  animation: count-flash 700ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-flash-rising {
+    animation: none;
+  }
+}

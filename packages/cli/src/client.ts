@@ -6,6 +6,47 @@ function serialize(input: unknown): string {
   return JSON.stringify({ json: input });
 }
 
+const FLAGS: Record<string, string> = {
+  channelId: "--channel-id",
+  threadId: "--thread",
+  apiUrl: "--api-url",
+  limit: "--limit",
+  out: "--out",
+};
+
+interface Issue {
+  message: string;
+  path?: unknown[];
+}
+
+function isIssue(value: unknown): value is Issue {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Issue).message === "string"
+  );
+}
+
+export function readableError(message: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return message;
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) return message;
+  if (!parsed.every(isIssue)) return message;
+
+  return parsed
+    .map((issue) => {
+      const field = (issue.path ?? []).join(".");
+      if (!field) return issue.message;
+      return `${FLAGS[field] ?? field}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
 function unwrap(raw: string, what: string): unknown {
   let parsed: {
     result?: { data?: { json?: unknown } | unknown };
@@ -21,7 +62,7 @@ function unwrap(raw: string, what: string): unknown {
   if (parsed.error) {
     const message =
       parsed.error.json?.message ?? parsed.error.message ?? "unknown error";
-    throw new RosterError(message);
+    throw new RosterError(readableError(message));
   }
 
   const data = parsed.result?.data;

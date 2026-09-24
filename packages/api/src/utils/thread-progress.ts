@@ -61,22 +61,43 @@ export function transcriptTail(transcript: string, maxLines = 40): string {
 }
 
 const ASSISTANT_TURN = /^Assistant:[ \t]*/gm;
+const TERMINAL_TURN = /^[ \t]*⏺[ \t]*/gm;
+const TERMINAL_STATUS = /^[·•*●✢✳✴✶✻✽✘⏵]/;
 
-export function agentReply(transcript: string): string {
-  const tail = transcriptTail(transcript, 200);
+function afterLastTurn(text: string, marker: RegExp): string | null {
+  let index = -1;
+  let length = 0;
+  marker.lastIndex = 0;
 
-  let lastIndex = -1;
-  let lastLength = 0;
-  ASSISTANT_TURN.lastIndex = 0;
   for (
-    let match = ASSISTANT_TURN.exec(tail);
+    let match = marker.exec(text);
     match !== null;
-    match = ASSISTANT_TURN.exec(tail)
+    match = marker.exec(text)
   ) {
-    lastIndex = match.index;
-    lastLength = match[0].length;
+    index = match.index;
+    length = match[0].length;
   }
 
-  if (lastIndex === -1) return tail;
-  return tail.slice(lastIndex + lastLength).trim();
+  return index === -1 ? null : text.slice(index + length);
+}
+
+function upToStatusLine(text: string): string {
+  const kept: string[] = [];
+  for (const line of text.split("\n")) {
+    if (TERMINAL_STATUS.test(line.trim())) break;
+    kept.push(line);
+  }
+  return kept.join("\n");
+}
+
+export function agentReply(transcript: string): string | null {
+  const tail = transcriptTail(transcript, 200);
+
+  const spoken = afterLastTurn(tail, ASSISTANT_TURN);
+  if (spoken !== null) return spoken.trim() || null;
+
+  const typed = afterLastTurn(tail, TERMINAL_TURN);
+  if (typed === null) return null;
+
+  return upToStatusLine(typed).trim() || null;
 }

@@ -157,6 +157,7 @@ export async function delegate(
     organizationId: args.organizationId,
     projectId: target.id,
     rootMessageId,
+    runAsMemberId: await channelOwner(target.id),
   });
   if (!childThread) {
     throw new TRPCError({
@@ -211,6 +212,23 @@ export async function delegate(
     childThreadId: childThread.id,
     depth,
   };
+}
+
+async function channelOwner(projectId: string): Promise<string> {
+  const [row] = await db
+    .select({ memberId: projects.addedByMemberId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  if (!row) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "That channel is no longer linked to a project.",
+    });
+  }
+
+  return row.memberId;
 }
 
 async function postRequest(args: {

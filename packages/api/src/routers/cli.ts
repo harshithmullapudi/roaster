@@ -11,8 +11,8 @@ import type { ChannelMessage } from "../services/messages";
 import { listMessages, replyCountsByThread } from "../services/messages";
 import { threadDetail, threadProjectId } from "../services/sessions";
 import { assignTask } from "../services/task-assignment";
-import { createTask, setTaskStatus } from "../services/tasks";
-import { setRecurrence } from "../services/task-recurrence";
+import { setTaskStatus } from "../services/tasks";
+import { fileTask, type FileTaskRefusal } from "../services/task-filing";
 import { RecurrenceError } from "../lib/recurrence";
 import { cliProcedure, createTRPCRouter } from "../trpc";
 
@@ -28,6 +28,30 @@ function toCliMessage(message: ChannelMessage) {
     text: message.text,
     createdAt: message.createdAt.toISOString(),
   };
+}
+
+const REFUSALS: Record<FileTaskRefusal["reason"], { code: "BAD_REQUEST" | "FORBIDDEN" | "INTERNAL_SERVER_ERROR"; message: string }> = {
+  "needs-channel": {
+    code: "BAD_REQUEST",
+    message: "A repeating task needs a channel to post into. Pass --channel-id.",
+  },
+  "no-access": {
+    code: "FORBIDDEN",
+    message:
+      "This key cannot put work in that channel. It is private to someone else, or does not exist.",
+  },
+  "not-created": {
+    code: "INTERNAL_SERVER_ERROR",
+    message: "Could not file that task.",
+  },
+  "not-recorded": {
+    code: "INTERNAL_SERVER_ERROR",
+    message: "Could not record when that task repeats.",
+  },
+};
+
+function refusal(reason: FileTaskRefusal["reason"]): TRPCError {
+  return new TRPCError(REFUSALS[reason]!);
 }
 
 export const cliRouter = createTRPCRouter({
@@ -182,54 +206,24 @@ export const cliRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const task = await createTask({
-        organizationId: ctx.organizationId,
-        memberId: ctx.member.id,
-        title: input.title,
-        status: "todo",
-      });
-
-      if (!task) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Could not file that task.",
-        });
-      }
-
-      if (!input.channelId) {
-        if (input.rrule) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "A repeating task needs a channel to post into. Pass --channel-id.",
-          });
-        }
-        return task;
-      }
-
-      const assigned = await assignTask({
-        organizationId: ctx.organizationId,
-        memberId: ctx.member.id,
-        role: ctx.member.role,
-        taskId: task.id,
-        projectId: input.channelId,
-      });
-
-      if (!input.rrule) return assigned;
-
+      let result;
       try {
-        const repeating = await setRecurrence({
-          taskId: task.id,
-          rrule: input.rrule,
-          timezone: input.timezone,
+        result = await fileTask({
+          organizationId: ctx.organizationId,
+          memberId: ctx.member.id,
+          role: ctx.member.role,
+          ...input,
         });
-        return repeating ?? assigned;
       } catch (cause) {
         if (cause instanceof RecurrenceError) {
           throw new TRPCError({ code: "BAD_REQUEST", message: cause.message });
         }
         throw cause;
       }
+
+      if ("task" in result) return result.task;
+
+      throw refusal(result.refused.reason);
     }),
 
   setTaskStatus: cliProcedure

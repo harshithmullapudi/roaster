@@ -1,16 +1,16 @@
 import { redis } from "@roster/api/redis";
 import {
   ensureSweepScheduled,
-  SCHEDULE_QUEUE,
+  SWEEP_QUEUE,
   sweepTasks,
 } from "@roster/api/recurrence";
 import { Worker } from "bullmq";
 
 const LOCK_DURATION_MS = 120_000;
 
-export async function scheduleWorker(): Promise<Worker> {
+export async function sweepWorker(): Promise<Worker> {
   const worker = new Worker(
-    SCHEDULE_QUEUE,
+    SWEEP_QUEUE,
     async () => {
       const summary = await sweepTasks();
 

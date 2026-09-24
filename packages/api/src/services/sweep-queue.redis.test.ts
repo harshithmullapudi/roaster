@@ -4,23 +4,23 @@ import { afterAll, describe, expect, it } from "vitest";
 import { hasRedis, redis } from "../lib/redis";
 
 import {
-  closeScheduleQueue,
+  closeSweepQueue,
   ensureSweepScheduled,
-  SCHEDULE_QUEUE,
-  scheduleQueue,
+  SWEEP_QUEUE,
+  sweepQueue,
   SWEEP_INTERVAL_MS,
   SWEEP_SCHEDULER_ID,
-} from "./schedule-queue";
+} from "./sweep-queue";
 
 let worker: Worker | null = null;
 
 afterAll(async () => {
   if (worker) await worker.close();
   if (hasRedis()) {
-    await scheduleQueue().removeJobScheduler(SWEEP_SCHEDULER_ID).catch(() => false);
-    await scheduleQueue().obliterate({ force: true });
+    await sweepQueue().removeJobScheduler(SWEEP_SCHEDULER_ID).catch(() => false);
+    await sweepQueue().obliterate({ force: true });
   }
-  await closeScheduleQueue();
+  await closeSweepQueue();
 });
 
 describe.skipIf(!hasRedis())("the sweep scheduler", () => {
@@ -29,7 +29,7 @@ describe.skipIf(!hasRedis())("the sweep scheduler", () => {
     await ensureSweepScheduled();
     await ensureSweepScheduled();
 
-    const schedulers = await scheduleQueue().getJobSchedulers();
+    const schedulers = await sweepQueue().getJobSchedulers();
     const ours = schedulers.filter((row) => row.key === SWEEP_SCHEDULER_ID);
 
     expect(ours).toHaveLength(1);
@@ -40,7 +40,7 @@ describe.skipIf(!hasRedis())("the sweep scheduler", () => {
     const ran: string[] = [];
 
     worker = new Worker(
-      SCHEDULE_QUEUE,
+      SWEEP_QUEUE,
       async (job) => {
         ran.push(job.name);
       },

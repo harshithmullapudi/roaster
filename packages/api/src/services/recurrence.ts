@@ -10,10 +10,9 @@ export {
 
 export {
   LATE_GRACE_MS,
-  SCHEDULE_OUTCOMES,
-  sweepSchedules,
-  type Schedule,
-  type ScheduleOutcome,
-  type ScheduleRun,
+  RUN_OUTCOMES,
+  sweepTasks,
+  type RunOutcome,
   type SweepSummary,
-} from "./scheduled-tasks";
+  type TaskRun,
+} from "./task-recurrence";

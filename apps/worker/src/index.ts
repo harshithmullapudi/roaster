@@ -7,7 +7,7 @@ import {
   releaseLease,
   renewLease,
 } from "@roster/api/redis";
-import { closeScheduleQueue } from "@roster/api/schedules";
+import { closeScheduleQueue } from "@roster/api/recurrence";
 import {
   cancelThread,
   closeSessionQueue,

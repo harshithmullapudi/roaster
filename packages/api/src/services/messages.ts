@@ -449,7 +449,7 @@ async function driveSession(message: ChannelMessage): Promise<void> {
   await startSession({ threadId: thread.id, text: agentText(message), context });
 }
 
-const TASK_CLIENT_ID = /^task:([0-9a-f-]{36})$/i;
+const TASK_CLIENT_ID = /^task:([0-9a-f-]{36})(?::\d+)?$/i;
 
 async function linkTaskFor(
   message: ChannelMessage,

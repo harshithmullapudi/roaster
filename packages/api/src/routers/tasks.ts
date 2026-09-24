@@ -3,7 +3,8 @@ import { z } from "zod";
 
 import { TASK_STATUSES } from "../lib/task-status";
 import { assignTask } from "../services/task-assignment";
-import { createTask, listTasks, setTaskStatus } from "../services/tasks";
+import { listRuns } from "../services/task-recurrence";
+import { listTasks, setTaskStatus } from "../services/tasks";
 import { createTRPCRouter, memberProcedure } from "../trpc";
 
 const statusSchema = z.enum(TASK_STATUSES);
@@ -19,34 +20,6 @@ export const tasksRouter = createTRPCRouter({
         projectId: input?.projectId,
       }),
     ),
-
-  create: memberProcedure
-    .input(
-      z.object({
-        projectId: z.string().uuid().optional(),
-        title: z.string().trim().min(1).max(500),
-        status: statusSchema.default("todo"),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const task = await createTask({
-        organizationId: ctx.organizationId,
-        memberId: ctx.member.id,
-        title: input.title,
-        status: input.status,
-      });
-      if (!task) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-
-      if (!input.projectId) return task;
-
-      return assignTask({
-        organizationId: ctx.organizationId,
-        memberId: ctx.member.id,
-        role: ctx.member.role,
-        taskId: task.id,
-        projectId: input.projectId,
-      });
-    }),
 
   assign: memberProcedure
     .input(
@@ -83,4 +56,21 @@ export const tasksRouter = createTRPCRouter({
       if (!task) throw new TRPCError({ code: "NOT_FOUND" });
       return task;
     }),
+
+  runs: memberProcedure
+    .input(
+      z.object({
+        taskId: z.string().uuid(),
+        limit: z.number().int().min(1).max(50).optional(),
+      }),
+    )
+    .query(({ ctx, input }) =>
+      listRuns({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        taskId: input.taskId,
+        limit: input.limit,
+      }),
+    ),
 });

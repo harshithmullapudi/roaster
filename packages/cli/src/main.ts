@@ -3,6 +3,7 @@ import { createInterface } from "node:readline/promises";
 import { flagNumber, flagString, parseArgs } from "./args.js";
 import { mutate, query, RosterError } from "./client.js";
 import { downloadAttachment } from "./files.js";
+import { systemTimezone, withStart } from "./recurrence.js";
 import {
   type ChannelPage,
   formatChannel,
@@ -24,6 +25,7 @@ const USAGE = `roster — talk to Roster from inside an agent session
   roster read messages --channel-id ID [--limit N]
   roster read messages --thread-id ID [--limit N]
   roster tasks create <title> [--channel-id ID]
+                             [--rrule RULE] [--at HH:MM] [--timezone TZ]
   roster tasks status <task-id> <todo|in_progress|done>
   roster ask <handle> <task> --thread THREAD_ID
   roster files download <url-or-id> [--out PATH]
@@ -31,6 +33,15 @@ const USAGE = `roster — talk to Roster from inside an agent session
 Pass --channel-id only when someone named the channel the work belongs to;
 that channel's agent starts on it right away. Without it the task waits in
 the backlog for a person to assign.
+
+A task repeats when you give it --rrule. The task itself comes back round:
+its status resets and it posts in the channel again on every occurrence.
+
+  roster tasks create "PR review check" --channel-id ID \\
+    --rrule "FREQ=WEEKLY;BYDAY=TH" --at 17:00 --timezone Asia/Kolkata
+
+--at sets the time of day the rule starts from, defaulting to now. A
+repeating task needs a channel, since its whole job is to post in one.
 
 Your thread id, channel id and task id are in the <roster> block at the top
 of your session. \`roster ask\` returns immediately — say what you asked for
@@ -129,11 +140,36 @@ async function createTask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
   if (!title) throw new RosterError("Give the task a title.");
 
   const channelId = flagString(parsed, "channel-id");
+  const rule = flagString(parsed, "rrule");
+  const at = flagString(parsed, "at");
+  const timezone = flagString(parsed, "timezone") ?? systemTimezone();
+
+  if (at && !rule) {
+    throw new RosterError("--at only means something with --rrule.");
+  }
+  if (rule && !channelId) {
+    throw new RosterError(
+      "A repeating task needs a channel to post into. Pass --channel-id.",
+    );
+  }
 
   const task = (await mutate(config, "cli.createTask", {
     title,
     ...(channelId ? { channelId } : {}),
-  })) as { id: string; title: string; channelSlug: string | null };
+    ...(rule ? { rrule: withStart(rule, at, timezone), timezone } : {}),
+  })) as {
+    id: string;
+    title: string;
+    channelSlug: string | null;
+    nextRunAt: string | null;
+  };
+
+  if (task.nextRunAt) {
+    console.log(
+      `Created repeating task "${task.title}" (${task.id}) in #${task.channelSlug}. Next run ${task.nextRunAt}.`,
+    );
+    return;
+  }
 
   console.log(
     task.channelSlug

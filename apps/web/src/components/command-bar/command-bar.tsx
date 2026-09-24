@@ -25,7 +25,6 @@ export interface CommandBarProps {
   onOpenChange: (open: boolean) => void;
   orgSlug: string;
   channels: ChannelGroups;
-  onNewTask: () => void;
 }
 
 export function CommandBar({
@@ -33,7 +32,6 @@ export function CommandBar({
   onOpenChange,
   orgSlug,
   channels,
-  onNewTask,
 }: CommandBarProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -142,21 +140,6 @@ export function CommandBar({
           >
             <Users size={14} className="text-muted-foreground" />
             <span>Members</span>
-          </CommandItem>
-        </CommandGroup>
-
-        <CommandSeparator />
-
-        <CommandGroup heading="Actions">
-          <CommandItem
-            value="new task create"
-            onSelect={() => {
-              onOpenChange(false);
-              onNewTask();
-            }}
-          >
-            <Plus size={14} className="text-muted-foreground" />
-            <span>New task</span>
           </CommandItem>
         </CommandGroup>
       </CommandList>

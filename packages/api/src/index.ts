@@ -79,15 +79,12 @@ export {
 } from "./services/sessions";
 export { listTasks, type Task, type TaskCreator } from "./services/tasks";
 export {
-  listSchedules,
   LATE_GRACE_MS,
-  SCHEDULE_OUTCOMES,
-  sweepSchedules,
-  type Schedule,
-  type ScheduleMember,
-  type ScheduleOutcome,
-  type ScheduleRun,
-} from "./services/scheduled-tasks";
+  RUN_OUTCOMES,
+  sweepTasks,
+  type RunOutcome,
+  type TaskRun,
+} from "./services/task-recurrence";
 export {
   describeRecurrence,
   nextOccurrence,

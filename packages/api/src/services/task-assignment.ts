@@ -12,8 +12,8 @@ import {
   type Task,
 } from "./tasks";
 
-export function taskClientId(taskId: string): string {
-  return `task:${taskId}`;
+export function taskClientId(taskId: string, slotAt?: Date): string {
+  return slotAt ? `task:${taskId}:${slotAt.getTime()}` : `task:${taskId}`;
 }
 
 export async function assignTask(
@@ -81,6 +81,7 @@ export async function postTask(args: {
   role: string;
   taskId: string;
   title: string;
+  slotAt?: Date;
 }): Promise<string> {
   const message = await sendMessage({
     organizationId: args.organizationId,
@@ -89,7 +90,7 @@ export async function postTask(args: {
     role: args.role,
     body: textToTiptap(args.title),
     text: args.title,
-    clientId: taskClientId(args.taskId),
+    clientId: taskClientId(args.taskId, args.slotAt),
     standalone: true,
   });
 

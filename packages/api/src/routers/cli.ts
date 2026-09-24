@@ -12,6 +12,8 @@ import { listMessages, replyCountsByThread } from "../services/messages";
 import { threadDetail, threadProjectId } from "../services/sessions";
 import { assignTask } from "../services/task-assignment";
 import { createTask, setTaskStatus } from "../services/tasks";
+import { setRecurrence } from "../services/task-recurrence";
+import { RecurrenceError } from "../lib/recurrence";
 import { cliProcedure, createTRPCRouter } from "../trpc";
 
 function toCliMessage(message: ChannelMessage) {
@@ -175,6 +177,8 @@ export const cliRouter = createTRPCRouter({
       z.object({
         channelId: z.string().uuid().optional(),
         title: z.string().min(1).max(200),
+        rrule: z.string().min(1).max(500).optional(),
+        timezone: z.string().min(1).max(100).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -192,15 +196,40 @@ export const cliRouter = createTRPCRouter({
         });
       }
 
-      if (!input.channelId) return task;
+      if (!input.channelId) {
+        if (input.rrule) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "A repeating task needs a channel to post into. Pass --channel-id.",
+          });
+        }
+        return task;
+      }
 
-      return assignTask({
+      const assigned = await assignTask({
         organizationId: ctx.organizationId,
         memberId: ctx.member.id,
         role: ctx.member.role,
         taskId: task.id,
         projectId: input.channelId,
       });
+
+      if (!input.rrule) return assigned;
+
+      try {
+        const repeating = await setRecurrence({
+          taskId: task.id,
+          rrule: input.rrule,
+          timezone: input.timezone,
+        });
+        return repeating ?? assigned;
+      } catch (cause) {
+        if (cause instanceof RecurrenceError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: cause.message });
+        }
+        throw cause;
+      }
     }),
 
   setTaskStatus: cliProcedure

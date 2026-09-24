@@ -66,7 +66,6 @@ export function AppShell({
     <CommandProvider
       orgSlug={shell.organization.slug}
       channels={shell.channels}
-      activeChannelSlug={activeChannelSlug}
     >
       <div className="bg-background px-safe flex h-full">
         <div className="hidden md:flex">{sidebar}</div>

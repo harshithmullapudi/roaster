@@ -354,6 +354,11 @@ export const tasks = rosterSchema.table(
 
     status: text("status").default("todo").notNull(),
 
+    rrule: text("rrule"),
+    timezone: text("timezone").default("UTC").notNull(),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    recurrenceDisabledReason: text("recurrence_disabled_reason"),
+
     createdByMemberId: uuid("created_by_member_id").references(
       () => members.id,
       { onDelete: "set null" },
@@ -374,6 +379,9 @@ export const tasks = rosterSchema.table(
       table.status,
     ),
     uniqueIndex("tasks_thread_idx").on(table.threadId),
+    index("tasks_due_idx")
+      .on(table.nextRunAt)
+      .where(sql`rrule is not null and next_run_at is not null`),
   ],
 );
 
@@ -540,62 +548,15 @@ export const notifications = rosterSchema.table(
 export type SelectNotification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
 
-export const scheduledTasks = rosterSchema.table(
-  "scheduled_tasks",
+export const taskRuns = rosterSchema.table(
+  "task_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id")
+    taskId: uuid("task_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-
-    title: text("title").notNull(),
-
-    rrule: text("rrule").notNull(),
-    timezone: text("timezone").default("UTC").notNull(),
-    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
-
-    enabled: boolean("enabled").default(true).notNull(),
-    disabledReason: text("disabled_reason"),
-
-    runAsMemberId: uuid("run_as_member_id").references(() => members.id, {
-      onDelete: "set null",
-    }),
-    createdByMemberId: uuid("created_by_member_id").references(
-      () => members.id,
-      { onDelete: "set null" },
-    ),
-
-    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
-
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("scheduled_tasks_due_idx")
-      .on(table.nextRunAt)
-      .where(sql`enabled and next_run_at is not null`),
-    index("scheduled_tasks_project_idx").on(table.projectId),
-    index("scheduled_tasks_organization_idx").on(table.organizationId),
-  ],
-);
-
-export type SelectScheduledTask = typeof scheduledTasks.$inferSelect;
-export type InsertScheduledTask = typeof scheduledTasks.$inferInsert;
-
-export const scheduledTaskRuns = rosterSchema.table(
-  "scheduled_task_runs",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    scheduledTaskId: uuid("scheduled_task_id")
-      .notNull()
-      .references(() => scheduledTasks.id, { onDelete: "cascade" }),
+      .references(() => tasks.id, { onDelete: "cascade" }),
 
     slotAt: timestamp("slot_at", { withTimezone: true }).notNull(),
-
-    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
 
     outcome: text("outcome").notNull(),
     detail: text("detail"),
@@ -603,16 +564,10 @@ export const scheduledTaskRuns = rosterSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("scheduled_task_runs_slot_idx").on(
-      table.scheduledTaskId,
-      table.slotAt,
-    ),
-    index("scheduled_task_runs_recent_idx").on(
-      table.scheduledTaskId,
-      table.createdAt.desc(),
-    ),
+    uniqueIndex("task_runs_slot_idx").on(table.taskId, table.slotAt),
+    index("task_runs_recent_idx").on(table.taskId, table.createdAt.desc()),
   ],
 );
 
-export type SelectScheduledTaskRun = typeof scheduledTaskRuns.$inferSelect;
-export type InsertScheduledTaskRun = typeof scheduledTaskRuns.$inferInsert;
+export type SelectTaskRun = typeof taskRuns.$inferSelect;
+export type InsertTaskRun = typeof taskRuns.$inferInsert;

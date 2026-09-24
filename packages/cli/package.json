@@ -1,6 +1,6 @@
 {
   "name": "@redplanethq/roster-cli",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Talk to Roster from inside an agent session — read channels, create tasks, and hand work to other agents.",
   "keywords": [
     "roster",

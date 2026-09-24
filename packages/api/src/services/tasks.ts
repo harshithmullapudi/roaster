@@ -25,6 +25,10 @@ export interface Task {
   channelSlug: string | null;
   channelName: string | null;
   createdBy: TaskCreator | null;
+  rrule: string | null;
+  timezone: string;
+  nextRunAt: Date | null;
+  recurrenceDisabledReason: string | null;
 }
 
 const taskColumns = {
@@ -40,6 +44,10 @@ const taskColumns = {
   createdByMemberId: tasks.createdByMemberId,
   createdByName: users.name,
   createdByEmail: users.email,
+  rrule: tasks.rrule,
+  timezone: tasks.timezone,
+  nextRunAt: tasks.nextRunAt,
+  recurrenceDisabledReason: tasks.recurrenceDisabledReason,
 };
 
 function selectTasks() {
@@ -64,6 +72,10 @@ function toTask(row: {
   createdByMemberId: string | null;
   createdByName: string | null;
   createdByEmail: string | null;
+  rrule: string | null;
+  timezone: string;
+  nextRunAt: Date | null;
+  recurrenceDisabledReason: string | null;
 }): Task {
   const {
     createdByMemberId,

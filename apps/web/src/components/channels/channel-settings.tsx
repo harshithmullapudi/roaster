@@ -8,8 +8,6 @@ import { useState } from "react";
 
 import { errorMessage, trpc } from "~/utils/trpc";
 
-import { ChannelSchedules } from "./channel-schedules";
-
 export interface ChannelSettingsProps {
   projectId: string;
   name: string;
@@ -129,8 +127,6 @@ export function ChannelSettings({
 
         {error ? <p className="text-destructive mt-2 text-sm">{error}</p> : null}
       </section>
-
-      <ChannelSchedules projectId={projectId} canManage={canManage} />
     </div>
   );
 }

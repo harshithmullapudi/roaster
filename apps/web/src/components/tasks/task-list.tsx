@@ -2,7 +2,7 @@
 
 import type { ChannelGroups, Task, TaskStatus } from "@roster/api";
 import { AvatarText, Button, cn } from "@roster/ui";
-import { CircleCheck, Hash, Inbox, Plus } from "lucide-react";
+import { CircleCheck, Hash, Inbox, Repeat } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,7 +15,8 @@ import {
   type ListRowProps,
 } from "react-virtualized";
 
-import { useCommands } from "~/components/providers/command-provider";
+import { describeRecurrence } from "@roster/api/client";
+
 import { relativeTime } from "~/utils/relative-time";
 import {
   buildRows,
@@ -41,11 +42,24 @@ function parseList(value: string | null): string[] {
   return value ? value.split(",").filter(Boolean) : [];
 }
 
+function recurrenceLabel(task: Task): string | null {
+  if (!task.rrule) return null;
+
+  let rule: string;
+  try {
+    rule = describeRecurrence(task.rrule);
+  } catch {
+    rule = task.rrule;
+  }
+
+  if (!task.nextRunAt) return rule;
+  return `${rule} · next ${new Date(task.nextRunAt).toLocaleString()}`;
+}
+
 export function TaskList({ tasks, channels, orgSlug }: TaskListProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { openNewTask } = useCommands();
 
   const [error, setError] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Record<string, TaskStatus>>({});
@@ -195,14 +209,27 @@ export function TaskList({ tasks, channels, orgSlug }: TaskListProps) {
                   onChange={(status) => void setStatus(row.task.id, status)}
                   variant="bare"
                 />
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-sm",
-                    row.task.status === "done" &&
-                      "text-muted-foreground line-through",
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span
+                    className={cn(
+                      "truncate text-sm",
+                      row.task.status === "done" &&
+                        "text-muted-foreground line-through",
+                    )}
+                  >
+                    {row.task.title}
+                  </span>
+                  {recurrenceLabel(row.task) && (
+                    <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                      <Repeat size={11} className="shrink-0" />
+                      {recurrenceLabel(row.task)}
+                    </span>
                   )}
-                >
-                  {row.task.title}
+                  {row.task.recurrenceDisabledReason && (
+                    <span className="text-warning truncate text-xs">
+                      {row.task.recurrenceDisabledReason}
+                    </span>
+                  )}
                 </span>
                 {row.task.channelSlug ? (
                   groupBy !== "channel" && (
@@ -283,10 +310,11 @@ export function TaskList({ tasks, channels, orgSlug }: TaskListProps) {
               : "No tasks match these filters"}
           </p>
           {tasks.length === 0 && (
-            <Button variant="secondary" onClick={openNewTask}>
-              <Plus size={14} className="mr-1" />
-              New task
-            </Button>
+            <p className="text-muted-foreground max-w-xs text-center text-xs">
+              An agent files these with{" "}
+              <code className="font-mono">roster tasks create</code> from inside
+              a channel.
+            </p>
           )}
         </div>
       ) : (

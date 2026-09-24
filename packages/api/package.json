@@ -8,7 +8,7 @@
     "./client": "./src/client.ts",
     "./attachments": "./src/lib/attachments.ts",
     "./sessions": "./src/services/sessions/index.ts",
-    "./schedules": "./src/services/schedules.ts",
+    "./recurrence": "./src/services/recurrence.ts",
     "./redis": "./src/lib/redis.ts"
   },
   "scripts": {

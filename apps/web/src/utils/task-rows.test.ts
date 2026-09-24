@@ -19,6 +19,10 @@ function task(
     channelSlug,
     channelName: channelSlug,
     createdBy: { memberId: `member-${id}`, name: `Author ${id}` },
+    rrule: null,
+    timezone: "UTC",
+    nextRunAt: null,
+    recurrenceDisabledReason: null,
   };
 }
 

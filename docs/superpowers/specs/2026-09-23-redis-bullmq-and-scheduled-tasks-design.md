@@ -14,9 +14,9 @@ cannot be replicated, because a steer queued in one copy's `pendingSteers` is
 invisible to the other.
 
 This design moves background work into a worker process, puts the coordination
-it needs in Redis, and adds scheduled tasks — a recurrence rule that posts a
-message into a channel, where the channel's own rules decide whether an agent
-opens a thread on it.
+it needs in Redis, and lets a task repeat — a recurrence rule that reopens the
+task and posts into its channel, where the channel's own rules decide whether an
+agent picks it up.
 
 Object storage is explicitly out of scope. It remains the last thing pinning
 the **web** tier to one instance; it does not pin the worker tier.
@@ -30,8 +30,8 @@ the **web** tier to one instance; it does not pin the worker tier.
 2. **Redis and the worker process.** `apps/worker`, the connection module, the
    link lease, the command inbox, and the RPC reply channel. At the end of
    this step the web process no longer calls `ensureStarted()`.
-3. **Scheduled tasks.** `scheduled_tasks`, `scheduled_task_runs`, the leased
-   sweep, and the *Schedules* section in channel settings.
+3. **Repeating tasks.** A recurrence rule on the task itself, `task_runs`, and
+   the leased sweep. No separate schedule and no new surface.
 
 ## Background: what is actually coupled
 
@@ -257,209 +257,154 @@ Graceful shutdown on `SIGTERM` and `SIGINT`: release held leases, then
 `worker.close()`. That call has no internal timeout, so bound the drain with
 v6's `worker.cancelJob`.
 
-## Step 3: scheduled tasks
+## Step 3: repeating tasks
 
-> **Revised.** This step was first specced around a cron string driven by
-> BullMQ's job scheduler. Both were replaced — see *Why RRule replaced cron*.
-> Steps 1 and 2 shipped as written and are unaffected.
+> **Revised twice.** First specced as a cron string driven by BullMQ's job
+> scheduler. Then as an RRule in a separate `scheduled_tasks` table with its own
+> *Schedules* surface. Both are gone: a schedule is not a second kind of thing,
+> it is a column on a task. Steps 1 and 2 shipped as written and are unaffected.
 
-A firing creates a task row and posts a message into the channel. It does
-**not** start a session itself, which is the second revision: the original
-step reused `assignTask` (`task-assignment.ts:12`), and `assignTask` calls
-`startSession` unconditionally at `:80`.
+A task carries an optional `rrule`. When its occurrence comes round the task
+**reopens** — status back to `todo`, `completed_at` and `thread_id` cleared —
+and posts into its channel again. There is one row, for ever. The task list has
+exactly one kind of thing in it.
 
-That was wrong for a schedule. An ordinary message only wakes an agent when the
-channel is watching or an agent is `@`-mentioned (`messages.ts:285`), so
-`assignTask`'s unconditional start is a special case that lets a schedule
-reach into a channel which has deliberately stopped watching. A firing now
-posts through the ordinary path and lets the channel's own rules decide. In a
-watching channel the outcome is identical to before; in a quiet one the work
-becomes a visible, unclaimed message instead of a surprise session.
+### Why there is no separate schedule
 
-### Why RRule replaced cron
+The previous design had `scheduled_tasks` and a *Schedules* section in channel
+settings, and it produced a seam you could feel: you created a repeating thing
+from the **New task** dialog, it vanished from Tasks, and it reappeared in a
+different screen. The creation path and the viewing path disagreed about what
+had just been made.
 
-Cron cannot say "every other Tuesday", "last Friday of the month", or "the
-first Monday after the 15th". Those are ordinary things to want from a
-schedule, and the surface here is channel settings — a person choosing when
-their agent does something, not an operator editing a crontab. `rrule`'s
-`.toText()` reads a stored rule back as "every 2 weeks on Tuesday", which is
-what makes a schedule list reviewable at a glance.
+Collapsing it removes the seam and a whole surface. The cost is stated plainly
+because it is real: **the previous occurrence's outcome is overwritten every
+time.** Last Thursday's "done" is gone when this Thursday fires, and a task
+still open from last Thursday is silently reset to `todo`. `task_runs` keeps the
+honest record of *firings*, but not of what anyone did about them. A design that
+wanted per-occurrence history would create a task per firing; this one
+deliberately does not.
 
-BullMQ has no RRule support, so this means owning the occurrence math. That
-cost buys back something the cron design was uneasy about: nothing parses
-BullMQ's undocumented `repeat:<schedulerId>:<millis>` job-id format any more.
-The exact `bullmq@6.3.8` pin keeps its *other* justifications — the v6 API
-removals and the `maxRetriesPerRequest` behaviour documented above are still
-version-sensitive — but it no longer rests on behaviour observed rather than
-promised.
+### Who creates tasks
 
-The cost is timezones, and it is real. See *DST* below.
+Only agents, through `roster tasks create`. The **New task dialog is deleted**,
+along with the command-bar entry and the empty-state button. A person can change
+a task's status, assign a backlog task to a channel, and delete one — they
+cannot create one. The reasoning: an agent runs inside a channel and files work
+as it finds it, which is where tasks actually come from; a human typing a task
+into a form was a surface nobody needed.
+
+That makes the CLI the only way to set a recurrence:
+
+```bash
+roster tasks create "PR review check" --channel-id ID \
+  --rrule "FREQ=WEEKLY;BYDAY=TH" --at 17:00 --timezone Asia/Kolkata
+```
+
+`--at` sets the time of day the rule starts from and defaults to now;
+`--timezone` defaults to the machine's zone. The CLI has no dependencies, so it
+builds the `DTSTART` itself out of `Intl` — the date is resolved *in the target
+zone*, so `--at 17:00 --timezone Pacific/Kiritimati` anchors to that zone's
+today, not the caller's.
+
+**A repeating task must have a channel.** Rejected at both the CLI and the tRPC
+boundary: a rule whose whole job is to post somewhere has no meaning in the
+backlog.
 
 ### The tables
 
 ```
-roster.scheduled_tasks
-  id                    uuid pk
-  organization_id       uuid not null → organizations (cascade)
-  project_id            uuid not null → projects (cascade)
-  title                 text not null
-  rrule                 text not null        -- FREQ=WEEKLY;INTERVAL=2;BYDAY=TU
-  timezone              text not null default 'UTC'
-  next_run_at           timestamptz          -- null once the rule is exhausted
-  enabled               boolean not null default true
-  run_as_member_id      uuid → members (set null)
-  created_by_member_id  uuid → members (set null)
-  last_run_at           timestamptz
-  disabled_reason       text
-  created_at, updated_at
-  index (enabled, next_run_at)               -- the sweep's only query
-  index (project_id)
+roster.tasks                                  (existing, four columns added)
+  rrule                        text           -- null means it does not repeat
+  timezone                     text not null default 'UTC'
+  next_run_at                  timestamptz
+  recurrence_disabled_reason   text
+  index (next_run_at) where rrule is not null and next_run_at is not null
 
-roster.scheduled_task_runs
-  id                 uuid pk
-  scheduled_task_id  uuid not null → scheduled_tasks (cascade)
-  slot_at            timestamptz not null
-  task_id            uuid → tasks (set null)
-  outcome            text not null
-  detail             text
-  created_at         timestamptz
-  unique (scheduled_task_id, slot_at)
-  index (scheduled_task_id, created_at desc)
+roster.task_runs                              (replaces scheduled_task_runs)
+  id           uuid pk
+  task_id      uuid not null → tasks (cascade)
+  slot_at      timestamptz not null
+  outcome      text not null
+  detail       text
+  created_at   timestamptz
+  unique (task_id, slot_at)
+  index (task_id, created_at desc)
 ```
 
-`project_id` stays `not null`: a schedule whose whole job is to post in a
-channel has no meaning in the backlog.
+`scheduled_tasks` is dropped. `task_runs` is not a second user-facing concept —
+it is the idempotency boundary and the ledger, and nothing in the UI reads it
+except a per-task run list.
 
-**`next_run_at` is now stored, reversing the original decision.** That decision
-— "BullMQ owns that truth, storing it would be a second source of truth to
-drift" — was right while BullMQ held the schedule. Once we own the occurrence
-math there is no other copy to drift from, and it is what makes the sweep an
-indexed lookup rather than a full scan that deserializes every rule each
-minute.
-
-`outcome` is one of `fired`, `skipped_late`, `skipped_no_access`, `failed`. The
-unique index on `(scheduled_task_id, slot_at)` is still what makes at-least-once
-redelivery harmless, and still the "did this slot run?" ledger Redis does not
-keep.
+`next_run_at` stays stored, for the same reason as before: we own the occurrence
+math, so there is no second copy to drift from, and it makes the sweep an
+indexed lookup rather than a scan that deserializes every rule each minute.
 
 ### The sweep
 
-One BullMQ job scheduler for the whole system — `every: 60_000` — not one per
-schedule. `every` is documented API, unlike the job-id format the previous
-design read.
+Unchanged in shape. One BullMQ job scheduler for the whole system, `every:
+60_000`, running on the worker that holds the supervisor lease so exactly one
+copy sweeps. For each task where `rrule is not null and next_run_at <= now()`:
 
-The sweep worker is started and stopped with the supervisor lease the worker
-process already holds, so exactly one worker runs it without a second lease of
-its own. For each row where `enabled AND next_run_at <= now()`:
+1. Insert the `task_runs` row for `slot_at = next_run_at` with
+   `onConflictDoNothing`. No rows back means another sweep took this slot — stop.
+2. Fire, unless the slot is stale.
+3. Recompute `next_run_at` and write it.
 
-1. Insert the `scheduled_task_runs` row for `slot_at = next_run_at` with
-   `onConflictDoNothing`. **No rows back means another sweep already took this
-   slot — stop.** This is the idempotency boundary; everything after it is
-   allowed to be at-least-once.
-2. Fire, unless the slot is stale (below).
-3. Recompute `next_run_at` from the rule and write it with `last_run_at`.
-
-Step 3 must run even when step 2 skips, or a stale schedule never advances.
+Step 3 must run even when step 2 skips, or a stale task never advances — **with
+one exception**. When a firing is refused for access, the recurrence is cleared;
+the loop has to return immediately rather than fall through to the `next_run_at`
+write, or it resurrects the rule it just switched off. That is a real bug the
+tests caught, not a hypothetical.
 
 ### Late firings
 
-`slot_at` is simply the `next_run_at` that was stored, so the original design's
-reverse-engineering of a BullMQ job id disappears. The rule is unchanged: a slot
-fired more than **15 minutes** past its time records `skipped_late` and posts
-nothing. A 3am cleanup should not wake an agent at 11am on Monday, and the runs
-table keeps the honest record.
-
-Unlike the BullMQ scheduler — which held one delayed job and silently dropped
-every intermediate slot — the sweep can see that several slots elapsed. It still
-fires at most one: catching up on eight missed 3am cleanups at once is worse
-than skipping seven. The skipped ones are recorded.
+Unchanged. `slot_at` is the `next_run_at` that was stored. A slot fired more
+than **15 minutes** past its time records `skipped_late` and posts nothing. The
+sweep can see several elapsed slots and still fires at most one — catching up on
+eight missed 3am checks at once is worse than skipping seven.
 
 ### What a firing does
 
-Post via `sendMessage` (`messages.ts`) with `clientId = task:<taskId>`.
-`postTask` survives as a thin wrapper over it rather than the direct insert it
-was, so the web assign path and a firing take the same route. `sendMessage`
-already returns an existing message for a `clientId` it has seen, and carries
-`onConflictDoNothing` on `(projectId, clientId)` besides, so a redelivered
-firing is harmless at the message layer too.
+Reset the task, then post via `sendMessage` as the member who created it, so
+`requireOrgProject`'s real access checks apply.
 
-The firing runs as `run_as_member_id`, so `requireOrgProject`'s real access
-checks apply and a schedule cannot become a way to post into a channel its owner
-cannot reach.
+**The client id has to carry the slot.** `postTask` used
+`clientId = task:<taskId>`, unique per `(projectId, clientId)`. With one
+reopening row that is fatal: week two's post collides with week one's,
+`onConflictDoNothing` swallows it, and the task never posts again after the
+first firing. It is now `task:<taskId>:<slotMillis>`, and `driveSession`'s
+parser accepts the suffix.
 
-**Thread linking moves.** The sweep cannot link `tasks.thread_id` after posting:
-`driveSession` is fire-and-forget (`messages.ts:345`) and returns no thread, and
-in a non-watching channel there is no thread to link at all. Instead
-`driveSession` links it — it already builds the thread with
-`rootMessageId: message.id`, so when that root message carries a `task:<uuid>`
-client id it calls `linkTaskThread`. One place owns the linking, the web assign
-path and a firing behave identically, and the unclaimed case resolves itself:
-no thread, `thread_id` stays null, and the task reads as filed-but-unstarted.
+**`tasks.thread_id` is uniquely indexed**, so reopening clears it to let the new
+thread link. That detaches the previous occurrence's thread from the task — a
+consequence of one-row-for-ever, named here rather than discovered later.
 
-**A firing never joins an open thread.** `sendMessage` folds a message into a
-thread opened in the last 10 seconds by the same author (`JOIN_WINDOW_MS`,
-`messages.ts:295`). Two schedules landing on the same minute as the same
-`run_as` member would then link two tasks to one thread and violate
-`tasks_thread_idx`. The firing path opts out of joining explicitly, which also
-preserves the rule below.
+The channel's own rules still decide whether an agent picks it up: watch mode or
+a mention, exactly as for a message a person typed.
 
-### When a schedule's identity breaks
+### When a task can no longer post
 
-Three failures — the member was removed, the member lost access
-(`requireOrgProject` returns null), or `run_as_member_id` is null — all resolve
-the same way: record `skipped_no_access`, set `enabled = false` and
-`disabled_reason`, and **post a plain message in the channel saying so**. That
-needs no new `NOTIFICATION_TYPES` entry, it is visible to everyone who cares,
-and it matches how the rest of Roster surfaces state. A dead schedule is loud.
-
-A deleted channel cascades the schedule away.
-
-### Overlap
-
-Each firing opens a new thread, even if the previous one is still running. No
-suppression: silently skipping work is worse than two threads. `skip_if_running`
-is a one-column follow-up if it turns out to be annoying.
-
-### DST
-
-`rrule` computes in UTC. "Every weekday at 9am in Asia/Kolkata" therefore has to
-be generated against local wall-clock time and mapped back, which needs a date
-library beside it. Get this wrong and a schedule drifts by an hour twice a year,
-silently, in exactly the half of the year nobody is looking.
-
-Kolkata has no DST, so the first users will not surface this. That is precisely
-why it is written down: the bug ships green and appears in October. Occurrence
-math across a spring-forward and a fall-back boundary is the one part of this
-step that must have tests before it has users.
+The member who created it was removed, lost access, or the task has no channel.
+All resolve the same way: record `skipped_no_access`, clear `rrule` and
+`next_run_at`, set `recurrence_disabled_reason`, and post a plain message in the
+channel saying so. The task itself survives — only its repetition stops. The
+reason renders on the task row, so a dead recurrence is loud.
 
 ### Surfaces
 
-**The new-task dialog** gains a schedule control beside status and channel —
-Now / Once at… / Repeating…. **Now** is today's behaviour untouched. **Once
-at…** is a rule with `COUNT=1`, so one-shots and recurrences share one code
-path instead of growing a second. **Repeating…** opens the rule picker and
-displays it back through `.toText()`.
+The task row grows a second line: `↻ every week on Thursday · next <date>`, and
+the disabled reason when there is one. That is the whole of it. No dialog, no
+Schedules section, no `schedules.*` router — `tasks.runs` is the only addition
+to the API, for the per-task firing history.
 
-Channel becomes **required in this dialog** — the picker loses `clearable` and
-the "Waits in the backlog" hint. The consequence, stated plainly because it is
-asymmetric: a person can no longer file to the backlog; only an agent can. That
-is deliberate. Someone filing a task from the UI knows where the work belongs,
-while an agent calling `roster tasks create` frequently does not, which is the
-reason the backlog exists. The backlog stays fully visible in the task list.
+### DST
 
-**`roster tasks create` is unchanged**, and `--channel-id` stays optional.
-Agents creating their own *recurring* jobs remains out of scope — a different
-question that deserves its own thought.
-
-**Channel settings** gets a *Schedules* section — list, create, edit, toggle,
-delete — with next run read straight off `next_run_at` and the last few
-`scheduled_task_runs` inline, so a `skipped_late` is visible rather than
-mysterious. An invalid rule is rejected at the tRPC boundary by parsing it,
-never by regex.
-
-**Attribution.** Tasks already carry `createdBy` through to an avatar on the
-row. Schedules show the same, plus *who it runs as* — `run_as_member_id` is
-whose access every firing borrows, so it belongs on screen next to the rule.
+Unchanged and still the sharp edge. `rrule` computes in UTC, so occurrences are
+generated against local wall-clock and mapped back through `Intl`. Kolkata has
+no DST, so the first users will not surface it; the tests cover both US
+boundaries at 23 and 25 real hours because the bug otherwise ships green and
+appears in October.
 
 ## Structure
 
@@ -469,23 +414,22 @@ whose access every firing borrows, so it belongs on screen next to the rule.
 | `packages/api/src/services/queues.ts` | new — queue definitions, `upsertJobScheduler` wrappers |
 | `packages/api/src/services/sessions/links.ts` | new — lease, inbox drain, doorbell, RPC |
 | `packages/api/src/services/sessions/supervisor.ts` | `finishing` and `pendingSteers` removed, conditional `finish`, commands arrive via the inbox |
-| `packages/api/src/services/scheduled-tasks.ts` | new — CRUD, the leased sweep, and the firing function |
+| `packages/api/src/services/task-recurrence.ts` | new — `setRecurrence`, the leased sweep, and the firing function |
 | `packages/api/src/lib/recurrence.ts` | new — rule parsing, `.toText()`, and next-occurrence in a timezone. The only place `rrule` is imported |
-| `packages/api/src/routers/scheduled-tasks.ts` | new |
-| `packages/api/src/services/messages.ts` | firing path opts out of `joinableThread`; `driveSession` links a `task:<uuid>` root message to its task |
+| `packages/api/src/services/messages.ts` | firing path opts out of `joinableThread`; `driveSession` links a `task:<uuid>[:<slot>]` root message to its task |
 | `packages/api/src/services/task-assignment.ts` | `startSession` no longer forced; `postTask` becomes a wrapper over `sendMessage`; `setTaskProject` records the channel so a quiet channel still assigns |
 | `packages/api/src/services/schedule-queue.ts` | new — the one `every: 60_000` scheduler and its queue |
-| `packages/api/src/services/schedules.ts` | new — the `@roster/api/schedules` entry the worker imports |
+| `packages/api/src/services/recurrence.ts` | new — the `@roster/api/recurrence` entry the worker imports |
 | `apps/worker/src/schedule-worker.ts` | new — runs the sweep, started and stopped with the supervisor lease |
-| `apps/web/src/components/tasks/schedule-picker.tsx` | new — Now / Once at / Repeating, and the rule it builds |
-| `apps/web/src/components/channels/channel-schedules.tsx` | new — the Schedules section |
+| `apps/web/src/components/tasks/task-list.tsx` | the recurrence line on a task row; no create button |
+| `packages/cli/src/recurrence.ts` | new — builds `DTSTART` from `--at` in the target zone, with no dependencies |
 | `packages/api/src/services/delegations.ts` | conditional settle, `clientId` on `postRequest` |
 | `packages/api/src/services/notifications.ts` | dedupe keys for the two `messageId: null` paths |
-| `packages/db/src/schema/roster.ts` | `scheduled_tasks` and `scheduled_task_runs`; `notifications.dedupe_key` plus its partial unique index for step 1 |
+| `packages/db/src/schema/roster.ts` | recurrence columns on `tasks` and the `task_runs` ledger; `notifications.dedupe_key` plus its partial unique index for step 1 |
 | `apps/worker/` | new — entry, BullMQ workers, shutdown |
 | `apps/web/src/app/[slug]/[channelSlug]/page.tsx` | `ensureStarted()` removed |
-| `apps/web/src/components/channels/channel-settings.tsx` | Schedules section |
-| `apps/web/src/components/tasks/new-task-dialog.tsx` | schedule control; channel picker loses `clearable` |
+| `apps/web/src/components/tasks/new-task-dialog.tsx` | **deleted**, with the command-bar entry and empty-state button |
+| `apps/web/src/components/providers/command-provider.tsx` | `openNewTask` removed |
 | `docker-compose.dev.yaml`, `Dockerfile`, `.env.example`, `turbo.json`, `docs/deploying.md` | Redis, worker stage, env |
 
 `supervisor.ts` is 1622 lines before this change. The lease, inbox and RPC go in
@@ -504,14 +448,15 @@ does not.
 
 ### Database
 
-A firing in a **watching** channel produces exactly one task, one message, one
-thread. The same firing in a **quiet** channel produces one task and one message
-and **no thread** — the assertion that the channel's rules, not the schedule,
+A firing in a **watching** channel opens a thread; in a **quiet** channel it
+posts and opens none — the assertion that the channel's rules, not the rule,
 decide whether an agent runs. A **second firing of the same slot produces
-nothing** — the real assertion for at-least-once delivery. Two schedules firing
-into one channel within the join window produce two threads, not one violated
-`tasks_thread_idx`. `skipped_no_access` when the run-as member lost the channel,
-with the schedule disabled and the notice posted. Conditional `finish` rejects a second
+nothing**, and a firing of the **next** slot produces a second message with a
+distinct client id — that pair is what proves the slot-suffixed client id, the
+bug that would otherwise stop a task after its first occurrence. Reopening
+leaves **one** task row, reset to `todo`. A task with no channel records
+`skipped_no_access`, has its rule cleared, and **stays** cleared rather than
+being resurrected by the advance that follows. Conditional `finish` rejects a second
 terminal transition. `completeThread` twice leaves the ✅ present — this one
 fails today. `settleDelegationFor` twice writes one reply and steers once.
 

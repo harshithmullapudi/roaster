@@ -236,3 +236,71 @@ describe.skipIf(!hasDatabase())("a task that repeats", () => {
     await fixture.cleanup();
   });
 });
+
+describe.skipIf(!hasDatabase())("filing a repeating task", () => {
+  it("waits for its first occurrence instead of posting straight away", async () => {
+    const fixture = await makeFixture("recurnoinstant");
+    await watching(fixture.projectId, true);
+
+    const { fileTask } = await import("./task-filing");
+    const result = await fileTask({
+      organizationId: fixture.orgId,
+      memberId: fixture.memberId,
+      role: "owner",
+      title: "PR review check",
+      channelId: fixture.projectId,
+      rrule: "FREQ=WEEKLY;BYDAY=TH",
+      timezone: "UTC",
+    });
+
+    await settle();
+
+    expect("task" in result).toBe(true);
+    const task = (result as { task: { id: string; rrule: string | null; nextRunAt: Date | null; projectId: string | null; threadId: string | null } }).task;
+
+    expect(task.rrule).toBeTruthy();
+    expect(task.nextRunAt).toBeTruthy();
+    expect(task.projectId).toBe(fixture.projectId);
+    expect(task.threadId).toBeNull();
+    expect(await messagesIn(fixture.projectId)).toHaveLength(0);
+    expect(await runsFor(task.id)).toHaveLength(0);
+
+    await fixture.cleanup();
+  }, 20_000);
+
+  it("still posts straight away when it does not repeat", async () => {
+    const fixture = await makeFixture("recurinstant");
+    await watching(fixture.projectId, true);
+
+    const { fileTask } = await import("./task-filing");
+    await fileTask({
+      organizationId: fixture.orgId,
+      memberId: fixture.memberId,
+      role: "owner",
+      title: "one off",
+      channelId: fixture.projectId,
+    });
+
+    await settle(async () => (await messagesIn(fixture.projectId)).length > 0);
+    expect(await messagesIn(fixture.projectId)).toHaveLength(1);
+
+    await fixture.cleanup();
+  }, 20_000);
+
+  it("refuses a repeating task with no channel", async () => {
+    const fixture = await makeFixture("recurnochan");
+
+    const { fileTask } = await import("./task-filing");
+    const result = await fileTask({
+      organizationId: fixture.orgId,
+      memberId: fixture.memberId,
+      role: "owner",
+      title: "nowhere to go",
+      rrule: "FREQ=WEEKLY;BYDAY=TH",
+    });
+
+    expect(result).toEqual({ refused: { reason: "needs-channel" } });
+
+    await fixture.cleanup();
+  });
+});

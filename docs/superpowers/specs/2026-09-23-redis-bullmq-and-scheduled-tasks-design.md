@@ -311,6 +311,12 @@ today, not the caller's.
 boundary: a rule whose whole job is to post somewhere has no meaning in the
 backlog.
 
+**Creating one does not fire it.** Filing a task with a channel normally posts
+and hands it to the channel immediately; a repeating task must not, or asking
+for "every Thursday at 5pm" starts an agent the moment you ask. The channel is
+recorded and the rule is set; the first post is the first occurrence. `fileTask`
+(`services/task-filing.ts`) owns that branch so the two paths cannot drift.
+
 ### The tables
 
 ```

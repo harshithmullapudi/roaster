@@ -13,21 +13,18 @@ import { MoreHorizontal, Star } from "lucide-react";
 import Link from "next/link";
 
 import { HashMark } from "~/components/logo/hash-mark";
-import type { LiveThreadItem } from "~/utils/live-threads";
 
 import {
   ChannelMenu,
   CONTEXT_MENU_SURFACE,
   DROPDOWN_MENU_SURFACE,
 } from "./channel-menu";
-import { ChannelLiveSessions } from "./channel-live-sessions";
 
 export interface ChannelRowProps {
   channel: Channel;
   href: string;
   active: boolean;
   canManage: boolean;
-  liveThreads: LiveThreadItem[];
   onToggleStar: (channel: Channel) => void;
   onChangeVisibility: (channel: Channel, visibility: string) => void;
 }
@@ -37,7 +34,6 @@ export function ChannelRow({
   href,
   active,
   canManage,
-  liveThreads,
   onToggleStar,
   onChangeVisibility,
 }: ChannelRowProps) {
@@ -59,8 +55,6 @@ export function ChannelRow({
             full
             className={cn(
               "text-foreground min-w-0 justify-start gap-2 !rounded-md pl-2 pr-[calc(2*var(--btn-h-xs)+0.75rem)] text-sm select-none",
-              liveThreads.length > 0 &&
-                "pr-[calc(3*var(--btn-h-xs)+0.75rem)]",
               active && "!bg-accent !text-accent-foreground",
             )}
             asChild
@@ -103,12 +97,6 @@ export function ChannelRow({
           </DropdownMenuTrigger>
           <ChannelMenu surface={DROPDOWN_MENU_SURFACE} {...menuProps} />
         </DropdownMenu>
-
-        <ChannelLiveSessions
-          channelSlug={channel.slug}
-          basePath={href}
-          threads={liveThreads}
-        />
       </div>
     </div>
   );

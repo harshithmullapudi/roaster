@@ -3,10 +3,8 @@ import "server-only";
 import {
   can,
   listChannels,
-  listLiveThreads,
   type Capability,
   type ChannelGroups,
-  type LiveThread,
 } from "@roster/api";
 
 import type { OrgSummary, UserSummary } from "~/types";
@@ -19,7 +17,6 @@ export interface Shell {
   user: UserSummary;
   member: { id: string; role: string };
   channels: ChannelGroups;
-  liveThreads: LiveThread[];
   can: (capability: Capability) => boolean;
 }
 
@@ -32,10 +29,9 @@ export async function loadShell(slug: string) {
     role: member.role,
   };
 
-  const [organizations, channels, liveThreads] = await Promise.all([
+  const [organizations, channels] = await Promise.all([
     myOrganizations(session.user.id),
     listChannels(scope),
-    listLiveThreads(scope),
   ]);
 
   const shell: Shell = {
@@ -44,7 +40,6 @@ export async function loadShell(slug: string) {
     user: session.user,
     member,
     channels,
-    liveThreads,
     can: (capability) => can(member.role, capability),
   };
 

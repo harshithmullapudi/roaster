@@ -30,10 +30,6 @@ export function applyUnreadDelta(
   return Math.max(0, (previous ?? 0) + delta);
 }
 
-export function hasUnread(count: number | undefined): boolean {
-  return (count ?? 0) > 0;
-}
-
 function asType(value: unknown): NotificationType | null {
   if (typeof value !== "string") return null;
   return (NOTIFICATION_TYPES as readonly string[]).includes(value)

@@ -94,6 +94,7 @@ pub fn run() {
                 .title("Roster")
                 .inner_size(1280.0, 840.0)
                 .min_inner_size(760.0, 540.0)
+                .disable_drag_drop_handler()
                 .initialization_script(DESKTOP_MARKER)
                 .on_navigation({
                     let handle = handle.clone();

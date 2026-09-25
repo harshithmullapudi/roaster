@@ -123,6 +123,28 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
     await fixture.cleanup();
   });
 
+  it("frees the handle it was archived under", async () => {
+    const fixture = await makeFixture("freename");
+
+    const first = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "pm",
+    });
+    await agents.archiveAgent(first.id);
+
+    const second = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "pm",
+    });
+
+    expect(second.handle).toBe("freename-pm");
+    expect(second.id).not.toBe(first.id);
+
+    await fixture.cleanup();
+  });
+
   it("refuses to archive the agent a channel answers as", async () => {
     const fixture = await makeFixture("lastagent");
 
@@ -132,6 +154,91 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
     await expect(agents.archiveAgent(main!.id)).rejects.toThrow(
       /channel's own agent/,
     );
+
+    await fixture.cleanup();
+  });
+
+  it("renames without letting two agents answer to one handle", async () => {
+    const fixture = await makeFixture("rename");
+
+    const pm = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "pm",
+    });
+    await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "qa",
+    });
+
+    const renamed = await agents.updateAgent({
+      organizationId: fixture.orgId,
+      id: pm.id,
+      name: "product",
+      brief: "Scope only.",
+    });
+    expect(renamed.handle).toBe("rename-product");
+    expect(renamed.brief).toBe("Scope only.");
+
+    await expect(
+      agents.updateAgent({
+        organizationId: fixture.orgId,
+        id: pm.id,
+        name: "qa",
+      }),
+    ).rejects.toThrow(/taken/);
+
+    await fixture.cleanup();
+  });
+
+  it("archives an ephemeral agent when its thread is done", async () => {
+    const fixture = await makeFixture("ephem");
+    const made = await fixture.thread();
+
+    const scratch = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "scratch",
+      ephemeral: true,
+    });
+    const kept = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "pm",
+    });
+
+    const { db, threadSessions } = await import("@roster/db");
+    await db.insert(threadSessions).values({
+      threadId: made.threadId,
+      projectId: fixture.projectId,
+      agentMemberId: scratch.id,
+      role: "delegate",
+      status: "idle",
+    });
+
+    const { completeThread } = await import("./sessions/supervisor");
+    await completeThread({
+      threadId: made.threadId,
+      memberId: fixture.memberId,
+    });
+
+    const left = await agents.listAgents({
+      organizationId: fixture.orgId,
+      memberId: fixture.memberId,
+      role: "owner",
+    });
+
+    expect(left.map((agent) => agent.handle)).toContain(kept.handle);
+    expect(left.map((agent) => agent.handle)).not.toContain(scratch.handle);
+
+    const reused = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "scratch",
+    });
+    expect(reused.handle).toBe(scratch.handle);
+    expect(reused.id).not.toBe(scratch.id);
 
     await fixture.cleanup();
   });

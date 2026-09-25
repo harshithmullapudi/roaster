@@ -124,6 +124,7 @@ export const members = authSchema.table(
     agentName: text("agent_name"),
     projectId: uuid("project_id"),
     brief: text("brief"),
+    ephemeral: boolean("ephemeral").default(false).notNull(),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
 
     supersetKeyEncrypted: text("superset_key_encrypted"),

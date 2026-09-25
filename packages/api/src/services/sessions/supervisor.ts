@@ -49,7 +49,11 @@ import {
   attachmentsForMessages,
   textWithAttachments,
 } from "../attachments";
-import { agentById, mainAgentFor } from "../agents";
+import {
+  agentById,
+  archiveEphemeralAgentsFor,
+  mainAgentFor,
+} from "../agents";
 import { allocateSeq } from "../channels";
 import { channelName, publish, threadChannelName } from "../centrifugo";
 import { emitMessageById } from "../message-events";
@@ -1700,6 +1704,8 @@ export async function completeThread(args: {
     memberId: args.memberId,
     emoji: COMPLETE_EMOJI,
   });
+
+  await archiveEphemeralAgentsFor(args.threadId);
 
   await publishThread(args.threadId);
 }

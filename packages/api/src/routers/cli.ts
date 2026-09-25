@@ -2,7 +2,12 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { TASK_STATUSES } from "../lib/task-status";
-import { createAgent, listAgents } from "../services/agents";
+import {
+  createAgent,
+  listAgents,
+  resolveAgent,
+  updateAgent,
+} from "../services/agents";
 import { reactionTarget, toggleReaction } from "../services/reactions";
 import {
   listMentionableChannels,
@@ -54,6 +59,37 @@ const REFUSALS: Record<FileTaskRefusal["reason"], { code: "BAD_REQUEST" | "FORBI
 
 function refusal(reason: FileTaskRefusal["reason"]): TRPCError {
   return new TRPCError(REFUSALS[reason]!);
+}
+
+async function reachableAgent(
+  ctx: { organizationId: string; member: { id: string; role: string } },
+  handle: string,
+) {
+  const agent = await resolveAgent({
+    organizationId: ctx.organizationId,
+    handle,
+  });
+  if (!agent) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: `No agent called "${handle}". Run \`roster agents\` to see who there is.`,
+    });
+  }
+
+  const project = await requireOrgProject({
+    organizationId: ctx.organizationId,
+    memberId: ctx.member.id,
+    role: ctx.member.role,
+    projectId: agent.projectId,
+  });
+  if (!project) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "That agent is on a channel you cannot reach.",
+    });
+  }
+
+  return agent;
 }
 
 export const cliRouter = createTRPCRouter({
@@ -204,6 +240,7 @@ export const cliRouter = createTRPCRouter({
         channelId: z.string().uuid(),
         name: z.string().min(1).max(60),
         brief: z.string().max(4000).optional(),
+        ephemeral: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -219,9 +256,14 @@ export const cliRouter = createTRPCRouter({
         projectId: input.channelId,
         name: input.name,
         brief: input.brief ?? null,
+        ephemeral: input.ephemeral,
       });
 
-      return { handle: agent.handle, channelSlug: agent.channelSlug };
+      return {
+        handle: agent.handle,
+        channelSlug: agent.channelSlug,
+        ephemeral: agent.ephemeral,
+      };
     }),
 
   ask: cliProcedure
@@ -242,6 +284,47 @@ export const cliRouter = createTRPCRouter({
         task: input.task,
       }),
     ),
+
+  getAgent: cliProcedure
+    .input(z.object({ handle: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const agent = await reachableAgent(ctx, input.handle);
+
+      return {
+        handle: agent.handle,
+        channelId: agent.projectId,
+        channelSlug: agent.channelSlug,
+        brief: agent.brief,
+        main: agent.main,
+        ephemeral: agent.ephemeral,
+      };
+    }),
+
+  updateAgent: cliProcedure
+    .input(
+      z.object({
+        handle: z.string().min(1),
+        name: z.string().min(1).max(60).optional(),
+        brief: z.string().max(4000).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const agent = await reachableAgent(ctx, input.handle);
+
+      const updated = await updateAgent({
+        organizationId: ctx.organizationId,
+        id: agent.id,
+        name: input.name,
+        brief: input.brief,
+      });
+
+      return {
+        handle: updated.handle,
+        channelSlug: updated.channelSlug,
+        brief: updated.brief,
+        ephemeral: updated.ephemeral,
+      };
+    }),
 
   react: cliProcedure
     .input(

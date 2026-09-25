@@ -23,7 +23,9 @@ const USAGE = `roster — talk to Roster from inside an agent session
   roster login [--api-url URL]              store this machine's API key
   roster channels                           channels you can reach
   roster agents [--channel-id ID]           agents you can ask, with handles
-  roster agents create <name> --channel-id ID [--brief TEXT]
+  roster agents get <handle>                its name and brief
+  roster agents create <name> --channel-id ID [--brief TEXT] [--ephemeral]
+  roster agents update <handle> [--name NAME] [--brief TEXT]
   roster read messages --channel-id ID [--limit N]
   roster read messages --thread-id ID [--limit N]
   roster tasks create <title> [--channel-id ID]
@@ -58,7 +60,12 @@ so there is no flag for it.
 \`roster agents create\` makes a new agent under this channel — the name is
 suffixed to the channel's own handle, so \`pm\` on #superset becomes
 @superset-pm. It keeps the brief you give it and answers to that handle from
-then on.
+then on. The brief is read at the top of every session that agent runs, so
+it is where a role's standing instructions belong.
+
+An \`--ephemeral\` agent is for one piece of work: it is archived when the
+thread it worked in is marked done, which frees its handle for reuse. Its
+messages keep pointing at it, so old transcripts still say who spoke.
 
 A channel read shows what was said out loud, and marks every message that
 has a thread hanging off it with that thread's id. Read the thread with
@@ -129,11 +136,73 @@ async function createAgent(
     channelId,
     name,
     brief: flagString(parsed, "brief"),
-  })) as { handle: string; channelSlug: string };
+    ephemeral: parsed.flags.ephemeral === true ? true : undefined,
+  })) as { handle: string; channelSlug: string; ephemeral: boolean };
 
   console.log(
-    `@${agent.handle} is on #${agent.channelSlug}. Ask it with \`roster ask ${agent.handle} "<task>"\`.`,
+    `@${agent.handle} is on #${agent.channelSlug}${
+      agent.ephemeral ? ", until this thread is done" : ""
+    }. Ask it with \`roster ask ${agent.handle} "<task>"\`.`,
   );
+}
+
+async function getAgent(parsed: ReturnType<typeof parseArgs>): Promise<void> {
+  const config = requireConfig();
+
+  const handle = parsed.positionals[2];
+  if (!handle) {
+    throw new RosterError(
+      "Say which agent, e.g. `roster agents get superset-pm`.",
+    );
+  }
+
+  const agent = (await query(config, "cli.getAgent", { handle })) as {
+    handle: string;
+    channelSlug: string;
+    brief: string | null;
+    main: boolean;
+    ephemeral: boolean;
+  };
+
+  const marks = [
+    agent.main ? "channel agent" : null,
+    agent.ephemeral ? "ephemeral" : null,
+  ].filter(Boolean);
+
+  console.log(
+    `@${agent.handle}  #${agent.channelSlug}${marks.length > 0 ? `  (${marks.join(", ")})` : ""}`,
+  );
+  console.log("");
+  console.log(agent.brief ?? "No brief.");
+}
+
+async function updateAgent(
+  parsed: ReturnType<typeof parseArgs>,
+): Promise<void> {
+  const config = requireConfig();
+
+  const handle = parsed.positionals[2];
+  if (!handle) {
+    throw new RosterError(
+      "Say which agent, e.g. `roster agents update superset-pm --brief \"...\"`.",
+    );
+  }
+
+  const name = flagString(parsed, "name");
+  const brief = flagString(parsed, "brief");
+
+  if (name === undefined && brief === undefined) {
+    throw new RosterError("Pass --name or --brief with what to change.");
+  }
+
+  const updated = (await mutate(config, "cli.updateAgent", {
+    handle,
+    name,
+    brief,
+  })) as { handle: string; channelSlug: string; brief: string | null };
+
+  console.log(`@${updated.handle} on #${updated.channelSlug} updated.`);
+  if (brief !== undefined) console.log(updated.brief ?? "Brief cleared.");
 }
 
 async function login(parsed: ReturnType<typeof parseArgs>): Promise<void> {
@@ -367,6 +436,8 @@ export async function main(argv: string[]): Promise<number> {
     if (command === "login") await login(parsed);
     else if (command === "channels") await channels();
     else if (command === "agents" && sub === "create") await createAgent(parsed);
+    else if (command === "agents" && sub === "get") await getAgent(parsed);
+    else if (command === "agents" && sub === "update") await updateAgent(parsed);
     else if (command === "agents") await agents(parsed);
     else if (command === "read" && sub === "messages") await readMessages(parsed);
     else if (command === "tasks" && sub === "create") await createTask(parsed);

@@ -1,4 +1,10 @@
-import { db, members, projects, type SelectMember } from "@roster/db";
+import {
+  db,
+  members,
+  projects,
+  type SelectMember,
+  threadSessions,
+} from "@roster/db";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
@@ -25,6 +31,7 @@ const agentColumns = {
   channelName: projects.name,
   archivedAt: members.archivedAt,
   createdAt: members.createdAt,
+  ephemeral: members.ephemeral,
 };
 
 type AgentRow = {
@@ -35,6 +42,7 @@ type AgentRow = {
   channelSlug: string | null;
   channelName: string | null;
   createdAt: Date;
+  ephemeral: boolean;
 };
 
 function toAgent(row: AgentRow, main = false): Agent {
@@ -46,7 +54,7 @@ function toAgent(row: AgentRow, main = false): Agent {
     channelSlug: row.channelSlug ?? "",
     channelName: row.channelName ?? "",
     main,
-    ephemeral: false,
+    ephemeral: row.ephemeral,
   };
 }
 
@@ -185,6 +193,7 @@ export async function createAgent(args: {
       agentName: handle,
       projectId: args.projectId,
       brief: args.brief ?? null,
+      ephemeral: Boolean(args.ephemeral),
     })
     .onConflictDoNothing({
       target: [members.organizationId, members.agentName],
@@ -206,7 +215,7 @@ export async function createAgent(args: {
   const agent = await agentById(row.id);
   if (!agent) throw new Error("That agent could not be read back.");
 
-  return { ...agent, ephemeral: Boolean(args.ephemeral) };
+  return agent;
 }
 
 export async function archiveAgent(id: string): Promise<void> {
@@ -224,7 +233,10 @@ export async function archiveAgent(id: string): Promise<void> {
 
   await db
     .update(members)
-    .set({ archivedAt: new Date() })
+    .set({
+      archivedAt: new Date(),
+      agentName: `${agent.handle}-archived-${id.replace(/-/g, "").slice(0, 6)}`,
+    })
     .where(and(eq(members.id, id), eq(members.type, "agent")));
 }
 
@@ -238,6 +250,93 @@ export async function setAgentBrief(args: {
     .where(and(eq(members.id, args.id), eq(members.type, "agent")));
 
   return agentById(args.id);
+}
+
+export async function updateAgent(args: {
+  organizationId: string;
+  id: string;
+  name?: string;
+  brief?: string | null;
+}): Promise<Agent> {
+  const agent = await agentById(args.id);
+  if (!agent) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "No such agent." });
+  }
+
+  const patch: { agentName?: string; brief?: string | null } = {};
+
+  if (args.brief !== undefined) patch.brief = args.brief;
+
+  if (args.name !== undefined) {
+    const main = await mainAgentFor(agent.projectId);
+    const handle =
+      main && main.id !== agent.id
+        ? agentHandleFor(main.handle, args.name)
+        : channelAgentHandle(args.name);
+
+    if (!HANDLE_SHAPE.test(handle)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "An agent name can only hold lowercase letters, numbers and dashes.",
+      });
+    }
+
+    if (handle !== agent.handle) {
+      const taken = await resolveAgent({
+        organizationId: args.organizationId,
+        handle,
+      });
+      if (taken) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `"@${handle}" is taken in this workspace. Pick another name.`,
+        });
+      }
+      patch.agentName = handle;
+    }
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await db
+      .update(members)
+      .set(patch)
+      .where(and(eq(members.id, args.id), eq(members.type, "agent")));
+  }
+
+  const updated = await agentById(args.id);
+  if (!updated) throw new Error("That agent could not be read back.");
+
+  return updated;
+}
+
+export async function archiveEphemeralAgentsFor(
+  threadId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: members.id })
+    .from(threadSessions)
+    .innerJoin(members, eq(members.id, threadSessions.agentMemberId))
+    .where(
+      and(
+        eq(threadSessions.threadId, threadId),
+        eq(members.type, "agent"),
+        eq(members.ephemeral, true),
+        isNull(members.archivedAt),
+      ),
+    );
+
+  const archived: string[] = [];
+  for (const row of rows) {
+    try {
+      await archiveAgent(row.id);
+      archived.push(row.id);
+    } catch {
+      continue;
+    }
+  }
+
+  return archived;
 }
 
 export async function agentMemberRow(

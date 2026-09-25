@@ -12,6 +12,11 @@ export interface Agent {
   projectId: string;
   channelSlug: string;
   channelName: string;
+  /*
+   * The agent the channel was created with. It is the one a channel answers
+   * as when nobody names another, so it cannot be archived out from under it.
+   */
+  main: boolean;
   ephemeral: boolean;
 }
 
@@ -23,6 +28,7 @@ const agentColumns = {
   channelSlug: projects.slug,
   channelName: projects.name,
   archivedAt: members.archivedAt,
+  createdAt: members.createdAt,
 };
 
 type AgentRow = {
@@ -32,9 +38,10 @@ type AgentRow = {
   projectId: string | null;
   channelSlug: string | null;
   channelName: string | null;
+  createdAt: Date;
 };
 
-function toAgent(row: AgentRow): Agent {
+function toAgent(row: AgentRow, main = false): Agent {
   return {
     id: row.id,
     handle: row.handle ?? "agent",
@@ -42,6 +49,7 @@ function toAgent(row: AgentRow): Agent {
     projectId: row.projectId ?? "",
     channelSlug: row.channelSlug ?? "",
     channelName: row.channelName ?? "",
+    main,
     ephemeral: false,
   };
 }
@@ -67,9 +75,15 @@ export async function listAgents(
         filter?.projectId ? eq(members.projectId, filter.projectId) : undefined,
       ),
     )
-    .orderBy(asc(projects.slug), asc(members.agentName));
+    .orderBy(asc(projects.slug), asc(members.createdAt));
 
-  return rows.map(toAgent);
+  const oldest = new Map<string, string>();
+  for (const row of rows) {
+    const key = row.projectId ?? "";
+    if (!oldest.has(key)) oldest.set(key, row.id);
+  }
+
+  return rows.map((row) => toAgent(row, oldest.get(row.projectId ?? "") === row.id));
 }
 
 export async function resolveAgent(args: {
@@ -126,7 +140,7 @@ export async function mainAgentFor(projectId: string): Promise<Agent | null> {
     .orderBy(asc(members.createdAt))
     .limit(1);
 
-  return row ? toAgent(row) : null;
+  return row ? toAgent(row, true) : null;
 }
 
 const HANDLE_SHAPE = /^[a-z0-9][a-z0-9-]*$/;
@@ -218,6 +232,18 @@ export async function createAgent(args: {
  * spoke.
  */
 export async function archiveAgent(id: string): Promise<void> {
+  const agent = await agentById(id);
+  if (!agent) return;
+
+  const main = await mainAgentFor(agent.projectId);
+  if (main?.id === agent.id) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "That is the channel's own agent — archiving it would leave nobody to answer there.",
+    });
+  }
+
   await db
     .update(members)
     .set({ archivedAt: new Date() })

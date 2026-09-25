@@ -130,6 +130,19 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
     await fixture.cleanup();
   });
 
+  it("refuses to archive the agent a channel answers as", async () => {
+    const fixture = await makeFixture("lastagent");
+
+    const main = await agents.mainAgentFor(fixture.projectId);
+    expect(main?.main).toBe(true);
+
+    await expect(agents.archiveAgent(main!.id)).rejects.toThrow(
+      /channel's own agent/,
+    );
+
+    await fixture.cleanup();
+  });
+
   it("gives a channel that has none an agent named for its adder", async () => {
     const fixture = await makeFixture("ensure");
     const bare = await fixture.channel("ensure-bare");

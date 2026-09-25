@@ -43,7 +43,7 @@ docker run --env-file .env roster node apps/worker/dist/worker.mjs
 | Serves HTTP | yes, on `$PORT` | no |
 | Uploads volume | **required** | **must not have one** |
 | Redis | required | required |
-| Runs migrations | yes, on boot | no |
+| Runs migrations | yes, before it serves | no |
 
 Either way something has to run the worker. It is what starts agent sessions,
 holds the socket to each machine, watches every running session and writes its
@@ -76,8 +76,10 @@ builder — then:
    `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL`. The first of those is baked
    into the browser bundle at build time, so **changing it needs a rebuild,
    not a restart.**
-4. **Nothing, for the schema.** The web service migrates itself on boot, and a
-   database from before migrations existed is adopted on that same boot. The
+4. **Nothing, for the schema.** The web container applies migrations before it
+   starts the server, and exits non-zero if they fail, so a bad migration stops
+   the deploy rather than serving a build the schema cannot answer. A database
+   from before migrations existed is adopted in that same step. The
    worker never migrates; on a cold deploy it may start against an unmigrated
    schema, fail, and be restarted by the `ON_FAILURE` policy until the web
    service has caught up.

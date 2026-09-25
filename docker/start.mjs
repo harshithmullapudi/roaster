@@ -53,6 +53,37 @@ function wantsWorker() {
   return ["1", "true", "yes", "y", "on"].includes(raw);
 }
 
+// The schema has to be current before anything serves a request. Doing this
+// from the web server's instrumentation hook could not: Next starts answering
+// while `register()` is still running, and a rejection there is logged and
+// swallowed, so a failed migration looked exactly like a healthy deploy until
+// the first query hit a column that did not exist.
+function migrate() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["apps/worker/dist/migrate.mjs"], {
+      stdio: "inherit",
+    });
+
+    child.on("exit", (code, signal) => {
+      if (code === 0) return resolve();
+      reject(
+        new Error(`migrations exited ${signal ?? `with code ${code}`}`),
+      );
+    });
+    child.on("error", reject);
+  });
+}
+
+try {
+  await migrate();
+} catch (cause) {
+  console.error(`[start] ${cause.message} — not starting the server`);
+  process.exit(1);
+}
+
+// Already done, above, where a failure can still stop the deploy.
+process.env.ROSTER_SKIP_MIGRATIONS = "1";
+
 start("web", ["apps/web/server.js"]);
 
 if (wantsWorker()) {

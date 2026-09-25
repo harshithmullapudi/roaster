@@ -25,13 +25,11 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import { agentDisplay, agentHandle } from "../../lib/agent-identity";
+import { agentDisplay, normalizeHandle } from "../../lib/agent-identity";
 import { readableError } from "../../utils/session-error";
 import { type ChannelScope, visibleToMember } from "../channels";
 import {
-  AGENT_IDENTITY_ON,
-  agentChannel,
-  agentOwner,
+
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
@@ -233,8 +231,8 @@ async function waitingOnByParent(
       ),
     })
     .from(delegations)
-    .innerJoin(projects, eq(delegations.targetChannelId, projects.id))
-    .leftJoin(members, eq(projects.addedByMemberId, members.id))
+    .innerJoin(members, eq(delegations.targetMemberId, members.id))
+    .innerJoin(projects, eq(members.projectId, projects.id))
     .where(
       and(
         inArray(delegations.parentThreadId, parentThreadIds),
@@ -244,8 +242,8 @@ async function waitingOnByParent(
 
   for (const row of rows) {
     found.set(row.parentThreadId, {
-      handle: agentHandle(row.ownerAgentName, row.channelSlug),
-      display: agentDisplay(row.ownerAgentName, row.channelSlug),
+      handle: normalizeHandle(row.ownerAgentName),
+      display: agentDisplay(row.ownerAgentName),
       channelId: row.channelId,
       channelSlug: row.channelSlug,
       threadId: row.childThreadId,
@@ -756,8 +754,6 @@ function threadMessageRows(conditions: SQL[], limit?: number) {
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
-    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
-    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(and(...conditions));
 
   return limit === undefined

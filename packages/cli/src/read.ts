@@ -6,6 +6,7 @@ export interface ThreadMarker {
 }
 
 export interface ReadMessage {
+  id: string;
   author: string;
   text: string;
   createdAt: string;
@@ -55,7 +56,7 @@ function replies(count: number): string {
 }
 
 function messageBlock(message: ReadMessage): string {
-  return `[${message.createdAt}] ${message.author}:\n${message.text}`;
+  return `[${message.createdAt}] ${message.author} · ${message.id}:\n${message.text}`;
 }
 
 export function formatChannel(page: ChannelPage): string {

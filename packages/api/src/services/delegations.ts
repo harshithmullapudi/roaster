@@ -370,13 +370,17 @@ export async function settleDelegationFor(args: {
 
   const asker = await agentById(row.originMemberId);
 
-  await writeReplyIntoParent({
-    delegationId: row.id,
-    thread: parent,
-    text: spoken.length > 0 ? spoken : `@${handle} finished without a reply.`,
-    authorMemberId: row.targetMemberId,
-    agentChannelId: answering?.projectId ?? parent.projectId,
-  });
+  const text = spoken.length > 0 ? spoken : `@${handle} finished without a reply.`;
+
+  if (!(await alreadySaid({ threadId: parent.id, memberId: row.targetMemberId, text }))) {
+    await writeReplyIntoParent({
+      delegationId: row.id,
+      thread: parent,
+      text,
+      authorMemberId: row.targetMemberId,
+      agentChannelId: answering?.projectId ?? parent.projectId,
+    });
+  }
 
   await steer({
     threadId: row.parentThreadId,
@@ -410,6 +414,26 @@ async function openDelegationFor(args: {
   });
 
   return inThread ?? null;
+}
+
+async function alreadySaid(args: {
+  threadId: string;
+  memberId: string;
+  text: string;
+}): Promise<boolean> {
+  const [row] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.threadId, args.threadId),
+        eq(messages.authorMemberId, args.memberId),
+        eq(messages.text, args.text),
+      ),
+    )
+    .limit(1);
+
+  return row !== undefined;
 }
 
 async function writeReplyIntoParent(args: {

@@ -206,6 +206,64 @@ describe.skipIf(!hasDatabase())("asking an agent on your own channel", () => {
     await fixture.cleanup();
   });
 
+  it("does not repeat an answer the agent already said in the thread", async () => {
+    const fixture = await makeFixture("noecho");
+    const parent = await fixture.thread();
+
+    const pm = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "pm",
+    });
+
+    await delegations.delegate({
+      organizationId: fixture.orgId,
+      memberId: fixture.memberId,
+      role: "owner",
+      parentThreadId: parent.threadId,
+      handle: pm.handle,
+      task: "scope it",
+    });
+
+    const answer = "three screens, one migration";
+
+    const { persistAgentMessage } = await import("./sessions/supervisor");
+    const { db, messages, threads } = await import("@roster/db");
+    const { and, eq } = await import("drizzle-orm");
+
+    const thread = (await db.query.threads.findFirst({
+      where: eq(threads.id, parent.threadId),
+    }))!;
+
+    await persistAgentMessage({
+      sessionId: parent.sessionId,
+      thread,
+      text: answer,
+      agentMemberId: pm.id,
+    });
+
+    await delegations.settleDelegationFor({
+      threadId: parent.threadId,
+      agentMemberId: pm.id,
+      reply: answer,
+    });
+
+    const said = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.threadId, parent.threadId),
+          eq(messages.authorMemberId, pm.id),
+          eq(messages.text, answer),
+        ),
+      );
+
+    expect(said).toHaveLength(1);
+
+    await fixture.cleanup();
+  });
+
   it("says what it asked for before it parks", async () => {
     const fixture = await makeFixture("parksaid");
     const parent = await fixture.thread();

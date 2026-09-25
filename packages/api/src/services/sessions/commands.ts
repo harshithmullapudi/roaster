@@ -13,6 +13,7 @@ export const SESSION_QUEUE = "roster-sessions";
  */
 export const REPLY_TIMEOUT_MS: Record<SessionCommand, number> = {
   startSession: 30_000,
+  joinThread: 45_000,
   steer: 30_000,
   cancelThread: 45_000,
   retryThread: 45_000,
@@ -29,7 +30,17 @@ export interface SessionCommands {
       originChannelId: string;
     };
   };
-  steer: { threadId: string; text: string };
+  joinThread: {
+    threadId: string;
+    agentMemberId: string;
+    projectId: string;
+    text: string;
+    delegation?: {
+      askedBy: string;
+      originChannelId: string;
+    };
+  };
+  steer: { threadId: string; text: string; agentMemberId?: string };
   cancelThread: { threadId: string };
   retryThread: { threadId: string };
   reapThread: { threadId: string };

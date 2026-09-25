@@ -1,8 +1,7 @@
-import { members, messages, projects, users } from "@roster/db";
-import { eq, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { members, messages, users } from "@roster/db";
+import { sql } from "drizzle-orm";
 
-import { agentDisplay, agentHandle } from "../lib/agent-identity";
+import { agentDisplay, normalizeHandle } from "../lib/agent-identity";
 import { attachmentsForMessages, type MessageAttachment } from "./attachments";
 import { type ReactionRef, toReactionRefs } from "./reactions";
 
@@ -28,14 +27,6 @@ export interface ChannelMessage {
   reactions: ReactionRef[];
 }
 
-export const agentChannel = alias(projects, "agent_channel");
-export const agentOwner = alias(members, "agent_owner");
-
-export const AGENT_IDENTITY_ON = {
-  channel: eq(messages.agentChannelId, agentChannel.id),
-  owner: eq(agentChannel.addedByMemberId, agentOwner.id),
-} as const;
-
 const reactionsSql = sql<ReactionRef[]>`coalesce((select jsonb_agg(jsonb_build_object('emoji', r.emoji, 'memberId', r.member_id))
   from roster.reactions r where r.message_id = ${messages.id}), '[]'::jsonb)`;
 
@@ -54,9 +45,10 @@ export const messageColumns = {
   authorMemberId: messages.authorMemberId,
   authorName: users.name,
   authorEmail: users.email,
+  authorType: members.type,
+  authorAgentName: members.agentName,
+  authorProjectId: members.projectId,
   agentChannelId: messages.agentChannelId,
-  agentChannelSlug: agentChannel.slug,
-  agentOwnerName: agentOwner.agentName,
   reactions: reactionsSql.as("message_reactions"),
 };
 
@@ -75,25 +67,28 @@ export interface MessageRow {
   authorMemberId: string | null;
   authorName: string | null;
   authorEmail: string | null;
+  authorType: string | null;
+  authorAgentName: string | null;
+  authorProjectId: string | null;
   agentChannelId: string | null;
-  agentChannelSlug: string | null;
-  agentOwnerName: string | null;
   reactions: unknown;
 }
 
 export function toChannelMessage(row: MessageRow): ChannelMessage {
-  const { agentChannelSlug, agentOwnerName, reactions, ...rest } = row;
+  const { authorType, authorAgentName, authorProjectId, reactions, ...rest } =
+    row;
+  const spokenByAgent = authorType === "agent";
+  const handle = spokenByAgent ? normalizeHandle(authorAgentName) : null;
 
   return {
     ...rest,
     seq: Number(row.seq),
     reactions: toReactionRefs(reactions),
-    agentDisplay: agentChannelSlug
-      ? agentDisplay(agentOwnerName, agentChannelSlug)
-      : null,
-    agentHandle: agentChannelSlug
-      ? agentHandle(agentOwnerName, agentChannelSlug)
-      : null,
+    authorName: spokenByAgent ? null : row.authorName,
+    authorEmail: spokenByAgent ? null : row.authorEmail,
+    agentChannelId: row.agentChannelId ?? (spokenByAgent ? authorProjectId : null),
+    agentHandle: handle,
+    agentDisplay: handle ? agentDisplay(handle) : null,
     attachments: [],
   };
 }

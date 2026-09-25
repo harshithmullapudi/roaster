@@ -1,7 +1,14 @@
 "use client";
 
 import { Button, cn } from "@roster/ui";
-import { ChevronLeft, KeyRound, Server, SlidersHorizontal, Users } from "lucide-react";
+import {
+  Bot,
+  ChevronLeft,
+  KeyRound,
+  Server,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -40,6 +47,7 @@ function groupsFor(orgSlug: string): NavGroup[] {
       title: "Team",
       items: [
         { href: `${base}/members`, label: "Members", icon: <Users size={14} /> },
+        { href: `${base}/agents`, label: "Agents", icon: <Bot size={14} /> },
         { href: `${base}/keys`, label: "API keys", icon: <KeyRound size={14} /> },
       ],
     },

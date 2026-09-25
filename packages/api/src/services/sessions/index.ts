@@ -1,4 +1,5 @@
 export {
+  askingSession,
   assertReaped,
   completeThread,
   createThread,
@@ -11,6 +12,7 @@ export {
 export {
   cancelThread,
   ensureStarted,
+  joinThread,
   reapThread,
   retryThread,
   runSessionsInThisProcess,

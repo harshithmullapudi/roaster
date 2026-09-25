@@ -85,6 +85,34 @@
       "when": 1790249677415,
       "tag": "0011_task_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790337036410,
+      "tag": "0012_agents_are_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790337093441,
+      "tag": "0013_delegations_point_at_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790337094441,
+      "tag": "0014_agents_take_the_channel_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790337095441,
+      "tag": "0015_ephemeral_agents",
+      "breakpoints": true
     }
   ]
 }

@@ -42,12 +42,14 @@ describe("formatChannel", () => {
       channel: CHANNEL,
       messages: [
         {
+          id: "m1",
           author: "Harshith",
           text: "shipping today",
           createdAt: "2026-09-20T10:02:11Z",
           thread: null,
         },
         {
+          id: "m2",
           author: "Priya",
           text: "nice",
           createdAt: "2026-09-20T10:31:02Z",
@@ -60,10 +62,10 @@ describe("formatChannel", () => {
       [
         "# roster",
         "",
-        "[2026-09-20T10:02:11Z] Harshith:",
+        "[2026-09-20T10:02:11Z] Harshith · m1:",
         "shipping today",
         "",
-        "[2026-09-20T10:31:02Z] Priya:",
+        "[2026-09-20T10:31:02Z] Priya · m2:",
         "nice",
       ].join("\n"),
     );
@@ -143,12 +145,14 @@ describe("formatThread", () => {
       thread: THREAD,
       messages: [
         {
+          id: "r1",
           author: "Harshith",
           text: "does the cli read threads?",
           createdAt: "2026-09-20T10:02:11Z",
         },
         {
-          author: "harshith-roster",
+          id: "r2",
+          author: "roster",
           text: "not yet",
           createdAt: "2026-09-20T10:04:55Z",
         },
@@ -159,10 +163,10 @@ describe("formatThread", () => {
       [
         "# roster · thread 8f2a1c4e · running · 2 replies",
         "",
-        "[2026-09-20T10:02:11Z] Harshith:",
+        "[2026-09-20T10:02:11Z] Harshith · r1:",
         "does the cli read threads?",
         "",
-        "[2026-09-20T10:04:55Z] harshith-roster:",
+        "[2026-09-20T10:04:55Z] roster · r2:",
         "not yet",
       ].join("\n"),
     );

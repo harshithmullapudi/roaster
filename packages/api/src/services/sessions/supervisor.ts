@@ -589,7 +589,7 @@ async function askForInput(sessionId: string): Promise<void> {
  * parked — the quiet is what parking means — but the turn still ended, and
  * what the agent said before handing the work over belongs in the thread.
  */
-async function endTurn(
+export async function endTurn(
   session: SessionView,
   event: LifecycleEvent,
 ): Promise<void> {

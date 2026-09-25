@@ -206,6 +206,85 @@ describe.skipIf(!hasDatabase())("asking an agent on your own channel", () => {
     await fixture.cleanup();
   });
 
+  it("says what it asked for before it parks", async () => {
+    const fixture = await makeFixture("parksaid");
+    const parent = await fixture.thread();
+
+    const pm = await agents.createAgent({
+      organizationId: fixture.orgId,
+      projectId: fixture.projectId,
+      name: "pm",
+    });
+
+    const { startSession } = await import("./sessions");
+    await startSession({ threadId: parent.threadId, text: "get going" });
+
+    const spoken = "I asked @parksaid-pm to scope the onboarding change.";
+    vi.mocked(superset.readTranscript).mockResolvedValue({
+      terminalId: "terminal-1",
+      text: `Assistant: ${spoken}\n`,
+      source: "harness" as const,
+      streamBytes: 0,
+    });
+
+    await delegations.delegate({
+      organizationId: fixture.orgId,
+      memberId: fixture.memberId,
+      role: "owner",
+      parentThreadId: parent.threadId,
+      handle: pm.handle,
+      task: "scope it",
+    });
+
+    const { db, messages, threadSessions } = await import("@roster/db");
+    const { and, eq } = await import("drizzle-orm");
+
+    const asker = (await db.query.threadSessions.findFirst({
+      where: and(
+        eq(threadSessions.threadId, parent.threadId),
+        eq(threadSessions.role, "main"),
+      ),
+    }))!;
+    expect(asker.status).toBe("waiting");
+
+    const { endTurn } = await import("./sessions/supervisor");
+    await endTurn(
+      {
+        ...asker,
+        organizationId: fixture.orgId,
+        threadProjectId: fixture.projectId,
+        rootMessageId: parent.rootMessageId,
+      } as never,
+      "Stop",
+    );
+
+    const written = await db
+      .select({ text: messages.text, author: messages.authorMemberId })
+      .from(messages)
+      .where(eq(messages.threadId, parent.threadId));
+
+    const said = written.find((row) => row.text === spoken);
+    expect(said).toBeDefined();
+    expect(said?.author).toBe(fixture.agentFor());
+
+    const still = await db.query.threadSessions.findFirst({
+      where: eq(threadSessions.id, asker.id),
+    });
+    expect(still?.status).toBe("waiting");
+    expect(still?.endedAt).toBeNull();
+
+    vi.mocked(superset.readTranscript).mockResolvedValue({
+      terminalId: "terminal-1",
+      text: "",
+      source: "harness" as const,
+      streamBytes: 0,
+    });
+
+    const { reapThread } = await import("./sessions/supervisor");
+    await reapThread({ threadId: parent.threadId });
+    await fixture.cleanup();
+  });
+
   it("still cuts a fresh worktree for an agent on another channel", async () => {
     const fixture = await makeFixture("othercwd");
     const parent = await fixture.thread();

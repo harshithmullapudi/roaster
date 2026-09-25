@@ -1,3 +1,4 @@
+import { agentsRouter } from "./routers/agents";
 import { apiKeysRouter } from "./routers/api-keys";
 import { channelsRouter } from "./routers/channels";
 import { cliRouter } from "./routers/cli";
@@ -21,6 +22,7 @@ export const appRouter = createTRPCRouter({
   })),
   superset: supersetRouter,
   onboarding: onboardingRouter,
+  agents: agentsRouter,
   channels: channelsRouter,
   cli: cliRouter,
   apiKeys: apiKeysRouter,

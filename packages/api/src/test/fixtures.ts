@@ -25,6 +25,8 @@ export interface Fixture {
   memberId: string;
   projectId: string;
   channel(slug: string): Promise<string>;
+  agentFor(projectId?: string): string;
+  agent(projectId: string, handle: string, brief?: string): Promise<string>;
   thread(args?: { status?: string; text?: string }): Promise<FixtureThread>;
   cleanup(): Promise<void>;
 }
@@ -71,6 +73,8 @@ export async function makeFixture(name: string): Promise<Fixture> {
     createdAt: new Date(),
   });
 
+  const agents = new Map<string, string>();
+
   async function addProject(id: string, slug: string): Promise<string> {
     await db.insert(projects).values({
       id,
@@ -82,7 +86,30 @@ export async function makeFixture(name: string): Promise<Fixture> {
       slug,
       addedByMemberId: memberId,
     });
+    await addAgent(id, slug);
     return id;
+  }
+
+  async function addAgent(
+    target: string,
+    handle: string,
+    brief?: string,
+  ): Promise<string> {
+    const [row] = await db
+      .insert(members)
+      .values({
+        organizationId: orgId,
+        userId: null,
+        role: "member",
+        type: "agent",
+        agentName: handle,
+        projectId: target,
+        brief: brief ?? null,
+      })
+      .returning({ id: members.id });
+
+    if (!agents.has(target)) agents.set(target, row!.id);
+    return row!.id;
   }
 
   await addProject(projectId, name);
@@ -103,6 +130,10 @@ export async function makeFixture(name: string): Promise<Fixture> {
     projectId,
 
     channel: (slug) => addProject(randomUUID(), slug),
+
+    agentFor: (target) => agents.get(target ?? projectId) ?? "",
+
+    agent: (target, handle, brief) => addAgent(target, handle, brief),
 
     async thread(args = {}) {
       const [root] = await db
@@ -133,6 +164,7 @@ export async function makeFixture(name: string): Promise<Fixture> {
         .values({
           threadId: thread!.id,
           projectId,
+          agentMemberId: agents.get(projectId)!,
           role: "main",
           runAsMemberId: memberId,
           status: args.status ?? "running",

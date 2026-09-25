@@ -117,6 +117,15 @@ describe.skipIf(!hasDatabase)("what an agent session is told about files", () =>
       slug: "brief",
       addedByMemberId: ids.member,
     });
+    await db.insert(members).values({
+      organizationId: ids.org,
+      userId: null,
+      role: "member",
+      type: "agent",
+      agentName: "agent-brief",
+      projectId: ids.project,
+      createdAt: new Date(),
+    });
 
     const uploaded = await uploadAttachment({
       userId: ids.user,

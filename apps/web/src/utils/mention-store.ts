@@ -2,6 +2,7 @@ import type { MentionItem } from "./mentions";
 import { trpc } from "./trpc";
 
 let items: MentionItem[] = [];
+let loaded = false;
 let inflight: Promise<MentionItem[]> | null = null;
 const subscribers = new Set<() => void>();
 
@@ -16,13 +17,14 @@ export function subscribeMentions(listener: () => void): () => void {
 }
 
 export function loadMentions(): Promise<MentionItem[]> {
-  if (items.length > 0) return Promise.resolve(items);
+  if (loaded) return Promise.resolve(items);
   if (inflight) return inflight;
 
   inflight = trpc.channels.mentionable
     .query()
     .then((result) => {
       items = result;
+      loaded = true;
       for (const listener of subscribers) listener();
       return items;
     })
@@ -32,6 +34,11 @@ export function loadMentions(): Promise<MentionItem[]> {
     });
 
   return inflight;
+}
+
+export function forgetMentions(): void {
+  loaded = false;
+  items = [];
 }
 
 export function handlesByLength(): MentionItem[] {

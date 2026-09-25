@@ -79,7 +79,7 @@ async function addChannelOwnedBy(args: {
   slug: string;
   memberId: string;
 }): Promise<string> {
-  const { db, members, projects } = await import("@roster/db");
+  const { db, projects } = await import("@roster/db");
 
   const id = randomUUID();
   await db.insert(projects).values({
@@ -91,16 +91,6 @@ async function addChannelOwnedBy(args: {
     name: args.slug,
     slug: args.slug,
     addedByMemberId: args.memberId,
-  });
-
-  await db.insert(members).values({
-    organizationId: args.orgId,
-    userId: null,
-    role: "member",
-    type: "agent",
-    agentName: args.slug,
-    projectId: id,
-    createdAt: new Date(),
   });
 
   return id;
@@ -151,11 +141,11 @@ describe.skipIf(!hasDatabase())("a delegated run", () => {
       memberId: fixture.memberId,
       role: "owner",
       parentThreadId: parent.threadId,
-      handle: "target",
+      handle: "teammate-target",
       task: "look at the logs",
     });
 
-    const child = await sessionOf(result.childThreadId!);
+    const child = await sessionOf(result.childThreadId);
 
     expect(child?.runAsMemberId).toBe(owner.memberId);
     expect(child?.error).toBeNull();
@@ -167,7 +157,7 @@ describe.skipIf(!hasDatabase())("a delegated run", () => {
 
     const { settleDelegationFor } = await import("./delegations");
     await settleDelegationFor({
-      threadId: result.childThreadId!,
+      childThreadId: result.childThreadId,
       reply: "the logs say the disk filled up",
     });
 

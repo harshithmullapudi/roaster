@@ -1,4 +1,3 @@
-import { listAgents } from "./agents";
 import {
   db,
   members,
@@ -24,6 +23,7 @@ import {
 } from "../lib/notification-type";
 import {
   type ChannelScope,
+  listMentionableChannels,
   listMentionableMembers,
   visibleToMember,
 } from "./channels";
@@ -118,15 +118,15 @@ async function mentionedMemberIds(args: {
     role: await memberRole(args.authorMemberId),
   };
 
-  const [agents, people] = await Promise.all([
-    listAgents(scope),
+  const [channels, people] = await Promise.all([
+    listMentionableChannels(scope),
     listMentionableMembers(scope),
   ]);
 
   const mentioned = mentionedHandles({
     body: args.body,
     text: args.text,
-    agents: agents.map((agent) => agent.handle),
+    agents: channels.map((channel) => channel.agentHandle),
     members: people.map((person) => person.handle),
   });
   if (mentioned.members.length === 0) return [];
@@ -341,14 +341,10 @@ export async function notifyDelegationReceived(args: {
   if (!thread) return;
 
   const [asker] = await db
-    .select({ slug: projects.slug, agentName: members.agentName })
+    .select({ slug: projects.slug, ownerAgentName: members.agentName })
     .from(projects)
-    .leftJoin(
-      members,
-      and(eq(members.projectId, projects.id), eq(members.type, "agent")),
-    )
+    .leftJoin(members, eq(projects.addedByMemberId, members.id))
     .where(eq(projects.id, args.originChannelId))
-    .orderBy(members.createdAt)
     .limit(1);
 
   const [owner] = await db
@@ -377,7 +373,9 @@ export async function notifyDelegationReceived(args: {
       dedupeKey: `delegation:${args.delegationId}`,
       actorMemberId: null,
       actorChannelId: args.originChannelId,
-      actorDisplay: asker ? agentDisplay(asker.agentName) : null,
+      actorDisplay: asker
+        ? agentDisplay(asker.ownerAgentName, asker.slug)
+        : null,
       preview: previewOf(args.task),
     },
     [{ memberId: owner.memberId, type: "delegation_received" }],
@@ -493,8 +491,8 @@ function toItem(row: {
     name && name.length > 0
       ? name
       : (row.actorEmail ??
-        (row.actorChannelAgentName
-          ? agentDisplay(row.actorChannelAgentName)
+        (row.actorChannelSlug
+          ? agentDisplay(row.actorChannelAgentName, row.actorChannelSlug)
           : null));
 
   return {

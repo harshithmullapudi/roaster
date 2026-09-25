@@ -12,7 +12,6 @@ import {
   cancelThread,
   closeSessionQueue,
   ensureStarted,
-  joinThread,
   reapThread,
   retryThread,
   runSessionsInThisProcess,
@@ -32,7 +31,6 @@ const workerId = `${process.env.RAILWAY_REPLICA_ID ?? "local"}:${randomUUID().sl
 
 const handlers = {
   startSession,
-  joinThread,
   steer,
   cancelThread,
   retryThread,

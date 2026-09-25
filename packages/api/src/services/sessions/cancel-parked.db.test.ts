@@ -26,8 +26,8 @@ async function delegationStatus(id: string): Promise<string | undefined> {
 async function openDelegation(args: {
   orgId: string;
   parentThreadId: string;
-  originMemberId: string;
-  targetMemberId: string;
+  originChannelId: string;
+  targetChannelId: string;
   childThreadId: string;
   depth?: number;
 }): Promise<string> {
@@ -37,8 +37,8 @@ async function openDelegation(args: {
     .values({
       organizationId: args.orgId,
       parentThreadId: args.parentThreadId,
-      originMemberId: args.originMemberId,
-      targetMemberId: args.targetMemberId,
+      originChannelId: args.originChannelId,
+      targetChannelId: args.targetChannelId,
       childThreadId: args.childThreadId,
       task: "look at the logs",
       status: "open",
@@ -58,8 +58,8 @@ describe.skipIf(!hasDatabase())("cancelling a thread waiting on a delegate", () 
     const delegationId = await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: parent.threadId,
-      originMemberId: fixture.agentFor(),
-      targetMemberId: fixture.agentFor(targetChannelId),
+      originChannelId: fixture.projectId,
+      targetChannelId,
       childThreadId: child.threadId,
     });
 
@@ -81,8 +81,8 @@ describe.skipIf(!hasDatabase())("cancelling a thread waiting on a delegate", () 
     await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: parent.threadId,
-      originMemberId: fixture.agentFor(),
-      targetMemberId: fixture.agentFor(targetChannelId),
+      originChannelId: fixture.projectId,
+      targetChannelId,
       childThreadId: child.threadId,
     });
 
@@ -104,15 +104,15 @@ describe.skipIf(!hasDatabase())("cancelling a thread waiting on a delegate", () 
     await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: parent.threadId,
-      originMemberId: fixture.agentFor(),
-      targetMemberId: fixture.agentFor(targetChannelId),
+      originChannelId: fixture.projectId,
+      targetChannelId,
       childThreadId: child.threadId,
     });
     await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: child.threadId,
-      originMemberId: fixture.agentFor(),
-      targetMemberId: fixture.agentFor(targetChannelId),
+      originChannelId: fixture.projectId,
+      targetChannelId,
       childThreadId: grandchild.threadId,
       depth: 2,
     });
@@ -135,8 +135,8 @@ describe.skipIf(!hasDatabase())("cancelling a thread waiting on a delegate", () 
     await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: parent.threadId,
-      originMemberId: fixture.agentFor(),
-      targetMemberId: fixture.agentFor(targetChannelId),
+      originChannelId: fixture.projectId,
+      targetChannelId,
       childThreadId: child.threadId,
     });
 
@@ -145,7 +145,7 @@ describe.skipIf(!hasDatabase())("cancelling a thread waiting on a delegate", () 
 
     const { settleDelegationFor } = await import("../delegations");
     await settleDelegationFor({
-      threadId: child.threadId,
+      childThreadId: child.threadId,
       reply: "here is the answer",
     });
 
@@ -173,8 +173,8 @@ describe.skipIf(!hasDatabase())("cancelling a thread waiting on a delegate", () 
     const delegationId = await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: parent.threadId,
-      originMemberId: fixture.agentFor(),
-      targetMemberId: fixture.agentFor(targetChannelId),
+      originChannelId: fixture.projectId,
+      targetChannelId,
       childThreadId: child.threadId,
     });
 

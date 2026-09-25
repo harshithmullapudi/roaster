@@ -18,7 +18,6 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { slugifyProject, uniqueProjectSlug } from "../utils/project-slug";
-import { ensureChannelAgent } from "./agents";
 import { forgetSupersetCredentials } from "./sessions/connection";
 
 export interface ConnectResult {
@@ -254,20 +253,7 @@ export async function saveProjects(args: {
 
   if (rows.length === 0) return 0;
 
-  const added = await db
-    .insert(projects)
-    .values(rows)
-    .onConflictDoNothing()
-    .returning({ id: projects.id, slug: projects.slug });
-
-  for (const project of added) {
-    await ensureChannelAgent({
-      organizationId: args.organizationId,
-      projectId: project.id,
-      slug: project.slug,
-    });
-  }
-
+  await db.insert(projects).values(rows).onConflictDoNothing();
   return rows.length;
 }
 

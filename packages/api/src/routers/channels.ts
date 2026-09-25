@@ -2,11 +2,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { CHANNEL_VISIBILITIES } from "../lib/channel-visibility";
-import { listAgents } from "../services/agents";
 import {
   dismissChannelPause,
   getChannelBySlug,
   listChannels,
+  listMentionableChannels,
   listMentionableMembers,
   requireOrgProject,
   setChannelWatch,
@@ -36,20 +36,20 @@ export const channelsRouter = createTRPCRouter({
       role: ctx.member.role,
     };
 
-    const [agents, people] = await Promise.all([
-      listAgents(scope),
+    const [channels, people] = await Promise.all([
+      listMentionableChannels(scope),
       listMentionableMembers(scope),
     ]);
 
     return [
-      ...agents.map((agent) => ({
-        id: agent.projectId,
+      ...channels.map((channel) => ({
+        id: channel.id,
         kind: "agent" as const,
-        slug: agent.channelSlug,
-        name: agent.channelName,
-        visibility: "public",
-        handle: agent.handle,
-        display: agent.handle,
+        slug: channel.slug,
+        name: channel.name,
+        visibility: channel.visibility,
+        handle: channel.agentHandle,
+        display: channel.agentDisplay,
       })),
       ...people.map((person) => ({
         id: person.id,

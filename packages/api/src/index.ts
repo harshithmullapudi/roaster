@@ -26,7 +26,6 @@ export {
   type ChannelGroups,
   type ChannelPatch,
 } from "./services/channels";
-export { listAgents, mainAgentFor, type Agent } from "./services/agents";
 export {
   can,
   capabilitiesFor,

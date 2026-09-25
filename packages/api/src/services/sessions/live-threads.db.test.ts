@@ -129,11 +129,9 @@ describe.skipIf(!hasDatabase())("listLiveThreads", () => {
     await subscribe(fixture, made.threadId, { lastReadAt: AFTER });
 
     const { db, threadSessions } = await import("@roster/db");
-    const subChannel = await fixture.channel("livemixed-sub");
     await db.insert(threadSessions).values({
       threadId: made.threadId,
-      projectId: subChannel,
-      agentMemberId: fixture.agentFor(subChannel),
+      projectId: await fixture.channel("livemixed-sub"),
       role: "delegate",
       runAsMemberId: fixture.memberId,
       status: "running",

@@ -63,7 +63,6 @@ export async function hostConnection(args: {
   organizationId: string;
   projectId: string;
   runAsMemberId: string | null;
-  supersetHostKey?: string | null;
 }): Promise<HostConnection> {
   const project = await db.query.projects.findFirst({
     where: eq(projects.id, args.projectId),
@@ -85,9 +84,7 @@ export async function hostConnection(args: {
   return {
     jwt: await jwts.get(key.apiKey),
     project,
-    hostKey:
-      args.supersetHostKey ??
-      routingKey(project.supersetOrgId, project.supersetHostId),
+    hostKey: routingKey(project.supersetOrgId, project.supersetHostId),
     memberId: member!.id,
   };
 }

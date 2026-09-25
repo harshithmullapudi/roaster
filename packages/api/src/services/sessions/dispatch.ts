@@ -23,13 +23,6 @@ export async function startSession(
   await tell("startSession", args);
 }
 
-export async function joinThread(
-  args: SessionCommands["joinThread"],
-): Promise<boolean> {
-  if (here) return supervisor.joinThread(args);
-  return ask<"joinThread", boolean>("joinThread", args);
-}
-
 export async function steer(args: SessionCommands["steer"]): Promise<void> {
   if (here) return supervisor.steer(args);
   await tell("steer", args);

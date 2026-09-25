@@ -1,4 +1,3 @@
-import { listAgents } from "./agents";
 import {
   db,
   delegations,
@@ -29,7 +28,9 @@ import { mentionedHandles } from "../lib/message-mentions";
 import { sessionErrorDetail } from "../utils/session-error";
 import { contiguousRun, type RunMessage } from "../utils/message-run";
 import {
-
+  AGENT_IDENTITY_ON,
+  agentChannel,
+  agentOwner,
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
@@ -39,6 +40,7 @@ import {
 import { bindAttachments, textWithAttachments } from "./attachments";
 import {
   allocateSeq,
+  listMentionableChannels,
   listMentionableMembers,
 } from "./channels";
 import { channelName, publish, threadChannelName } from "./centrifugo";
@@ -80,6 +82,8 @@ export async function listMessages(args: {
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
+    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
+    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(and(...conditions))
     .orderBy(desc(messages.seq))
     .limit(limit);
@@ -123,6 +127,8 @@ async function findByClientId(args: {
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
+    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
+    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(
       and(
         eq(messages.projectId, args.projectId),
@@ -369,15 +375,15 @@ async function mentionsAnyAgent(args: {
     role: args.role,
   };
 
-  const [agents, people] = await Promise.all([
-    listAgents(scope),
+  const [channels, people] = await Promise.all([
+    listMentionableChannels(scope),
     listMentionableMembers(scope),
   ]);
 
   const mentioned = mentionedHandles({
     body: args.body,
     text: args.text,
-    agents: agents.map((agent) => agent.handle),
+    agents: channels.map((channel) => channel.agentHandle),
     members: people.map((person) => person.handle),
   });
 
@@ -509,6 +515,8 @@ export async function startPausedSession(
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
+    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
+    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(
       and(
         eq(messages.projectId, projectId),

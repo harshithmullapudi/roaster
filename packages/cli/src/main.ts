@@ -21,18 +21,13 @@ import {
 const USAGE = `roster — talk to Roster from inside an agent session
 
   roster login [--api-url URL]              store this machine's API key
-  roster channels                           channels you can reach
-  roster agents [--channel-id ID]           agents you can ask, with handles
-  roster agents get <handle>                its name and brief
-  roster agents create <name> --channel-id ID [--brief TEXT] [--ephemeral]
-  roster agents update <handle> [--name NAME] [--brief TEXT]
+  roster channels                           agents you can ask, with handles
   roster read messages --channel-id ID [--limit N]
   roster read messages --thread-id ID [--limit N]
   roster tasks create <title> [--channel-id ID]
                              [--rrule RULE] [--at HH:MM] [--timezone TZ]
   roster tasks status <task-id> <todo|in_progress|done>
   roster ask <handle> <task> --thread THREAD_ID
-  roster react <message-id> <emoji>         add or remove a reaction
   roster files download <url-or-id> [--out PATH]
 
 Pass --channel-id only when someone named the channel the work belongs to;
@@ -52,28 +47,9 @@ Your thread id, channel id and task id are in the <roster> block at the top
 of your session. \`roster ask\` returns immediately — say what you asked for
 and end your turn; you are resumed automatically with the answer.
 
-An agent on your own channel works in the worktree you are already in, taking
-its turn while you wait. An agent on another channel gets a worktree of its
-own, cut from that channel's repo. Which one you get follows from who you ask,
-so there is no flag for it.
-
-\`roster agents create\` makes a new agent under this channel — the name is
-suffixed to the channel's own handle, so \`pm\` on #superset becomes
-@superset-pm. It keeps the brief you give it and answers to that handle from
-then on. The brief is read at the top of every session that agent runs, so
-it is where a role's standing instructions belong.
-
-An \`--ephemeral\` agent is for one piece of work: it is archived when the
-thread it worked in is marked done, which frees its handle for reuse. Its
-messages keep pointing at it, so old transcripts still say who spoke.
-
 A channel read shows what was said out loud, and marks every message that
 has a thread hanging off it with that thread's id. Read the thread with
-\`roster read messages --thread-id <id>\`.
-
-Every message is printed with its own id beside the author. \`roster react\`
-takes that id, and toggles: reacting twice with the same emoji takes it off
-again.`;
+\`roster read messages --thread-id <id>\`.`;
 
 function requireConfig(): Config {
   const config = loadConfig();
@@ -83,126 +59,6 @@ function requireConfig(): Config {
     );
   }
   return config;
-}
-
-async function agents(parsed: ReturnType<typeof parseArgs>): Promise<void> {
-  const config = requireConfig();
-  const channelId = flagString(parsed, "channel-id");
-
-  const rows = (await query(
-    config,
-    "cli.agents",
-    channelId ? { channelId } : undefined,
-  )) as Array<{
-    handle: string;
-    channelSlug: string;
-    brief: string | null;
-  }>;
-
-  if (rows.length === 0) {
-    console.log("No agents you can reach.");
-    return;
-  }
-
-  const width = Math.max(...rows.map((row) => row.handle.length));
-  for (const row of rows) {
-    const brief = row.brief?.split("\n")[0]?.trim() ?? "";
-    console.log(
-      `@${row.handle.padEnd(width)}  #${row.channelSlug}${brief ? `  ${brief}` : ""}`,
-    );
-  }
-}
-
-async function createAgent(
-  parsed: ReturnType<typeof parseArgs>,
-): Promise<void> {
-  const config = requireConfig();
-
-  const name = parsed.positionals[2];
-  if (!name) {
-    throw new RosterError(
-      "Say what to call it, e.g. `roster agents create pm --channel-id ID`.",
-    );
-  }
-
-  const channelId = flagString(parsed, "channel-id") ?? process.env.ROSTER_CHANNEL_ID;
-  if (!channelId) {
-    throw new RosterError(
-      "Pass --channel-id with the channel id from your <roster> block.",
-    );
-  }
-
-  const agent = (await mutate(config, "cli.createAgent", {
-    channelId,
-    name,
-    brief: flagString(parsed, "brief"),
-    ephemeral: parsed.flags.ephemeral === true ? true : undefined,
-  })) as { handle: string; channelSlug: string; ephemeral: boolean };
-
-  console.log(
-    `@${agent.handle} is on #${agent.channelSlug}${
-      agent.ephemeral ? ", until this thread is done" : ""
-    }. Ask it with \`roster ask ${agent.handle} "<task>"\`.`,
-  );
-}
-
-async function getAgent(parsed: ReturnType<typeof parseArgs>): Promise<void> {
-  const config = requireConfig();
-
-  const handle = parsed.positionals[2];
-  if (!handle) {
-    throw new RosterError(
-      "Say which agent, e.g. `roster agents get superset-pm`.",
-    );
-  }
-
-  const agent = (await query(config, "cli.getAgent", { handle })) as {
-    handle: string;
-    channelSlug: string;
-    brief: string | null;
-    main: boolean;
-    ephemeral: boolean;
-  };
-
-  const marks = [
-    agent.main ? "channel agent" : null,
-    agent.ephemeral ? "ephemeral" : null,
-  ].filter(Boolean);
-
-  console.log(
-    `@${agent.handle}  #${agent.channelSlug}${marks.length > 0 ? `  (${marks.join(", ")})` : ""}`,
-  );
-  console.log("");
-  console.log(agent.brief ?? "No brief.");
-}
-
-async function updateAgent(
-  parsed: ReturnType<typeof parseArgs>,
-): Promise<void> {
-  const config = requireConfig();
-
-  const handle = parsed.positionals[2];
-  if (!handle) {
-    throw new RosterError(
-      "Say which agent, e.g. `roster agents update superset-pm --brief \"...\"`.",
-    );
-  }
-
-  const name = flagString(parsed, "name");
-  const brief = flagString(parsed, "brief");
-
-  if (name === undefined && brief === undefined) {
-    throw new RosterError("Pass --name or --brief with what to change.");
-  }
-
-  const updated = (await mutate(config, "cli.updateAgent", {
-    handle,
-    name,
-    brief,
-  })) as { handle: string; channelSlug: string; brief: string | null };
-
-  console.log(`@${updated.handle} on #${updated.channelSlug} updated.`);
-  if (brief !== undefined) console.log(updated.brief ?? "Brief cleared.");
 }
 
 async function login(parsed: ReturnType<typeof parseArgs>): Promise<void> {
@@ -369,37 +225,10 @@ async function ask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
     threadId,
     handle,
     task,
-  })) as { targetHandle: string; sameWorktree: boolean };
+  })) as { targetHandle: string };
 
   console.log(
-    `Asked @${result.targetHandle}${
-      result.sameWorktree ? ", working in this same worktree" : ""
-    }. Say so and end your turn — you will be resumed with the answer.`,
-  );
-}
-
-async function react(parsed: ReturnType<typeof parseArgs>): Promise<void> {
-  const config = requireConfig();
-
-  const messageId = parsed.positionals[1];
-  if (!messageId) {
-    throw new RosterError(
-      "Say which message, e.g. `roster react <message-id> 👍`. Message ids are printed beside each author by `roster read messages`.",
-    );
-  }
-
-  const emoji = parsed.positionals[2];
-  if (!emoji) throw new RosterError("Say which emoji to react with.");
-
-  const result = (await mutate(config, "cli.react", {
-    messageId,
-    emoji,
-  })) as { added: boolean; emoji: string };
-
-  console.log(
-    result.added
-      ? `Reacted ${result.emoji}.`
-      : `Removed your ${result.emoji}.`,
+    `Asked @${result.targetHandle}. Say so and end your turn — you will be resumed with the answer.`,
   );
 }
 
@@ -435,15 +264,10 @@ export async function main(argv: string[]): Promise<number> {
 
     if (command === "login") await login(parsed);
     else if (command === "channels") await channels();
-    else if (command === "agents" && sub === "create") await createAgent(parsed);
-    else if (command === "agents" && sub === "get") await getAgent(parsed);
-    else if (command === "agents" && sub === "update") await updateAgent(parsed);
-    else if (command === "agents") await agents(parsed);
     else if (command === "read" && sub === "messages") await readMessages(parsed);
     else if (command === "tasks" && sub === "create") await createTask(parsed);
     else if (command === "tasks" && sub === "status") await setTaskStatus(parsed);
     else if (command === "ask") await ask(parsed);
-    else if (command === "react") await react(parsed);
     else if (command === "files" && sub === "download") await filesDownload(parsed);
     else {
       console.error(`Unknown command: ${[command, sub].filter(Boolean).join(" ")}\n`);

@@ -260,10 +260,6 @@ export const threadSessions = rosterSchema.table(
       .default("main")
       .notNull(),
 
-    agentMemberId: uuid("agent_member_id")
-      .notNull()
-      .references(() => members.id, { onDelete: "cascade" }),
-
     runAsMemberId: uuid("run_as_member_id").references(() => members.id, {
       onDelete: "set null",
     }),
@@ -287,9 +283,9 @@ export const threadSessions = rosterSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("thread_sessions_thread_agent_idx").on(
+    uniqueIndex("thread_sessions_thread_project_idx").on(
       table.threadId,
-      table.agentMemberId,
+      table.projectId,
     ),
     index("thread_sessions_thread_idx").on(table.threadId),
     index("thread_sessions_status_idx").on(table.status),
@@ -461,12 +457,12 @@ export const delegations = rosterSchema.table(
     parentThreadId: uuid("parent_thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
-    originMemberId: uuid("origin_member_id")
+    originChannelId: uuid("origin_channel_id")
       .notNull()
-      .references(() => members.id, { onDelete: "cascade" }),
-    targetMemberId: uuid("target_member_id")
+      .references(() => projects.id, { onDelete: "cascade" }),
+    targetChannelId: uuid("target_channel_id")
       .notNull()
-      .references(() => members.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "cascade" }),
     childThreadId: uuid("child_thread_id").references(() => threads.id, {
       onDelete: "set null",
     }),
@@ -484,7 +480,7 @@ export const delegations = rosterSchema.table(
       .on(table.parentThreadId)
       .where(sql`status = 'open'`),
     index("delegations_child_thread_idx").on(table.childThreadId),
-    index("delegations_target_idx").on(table.targetMemberId),
+    index("delegations_target_idx").on(table.targetChannelId),
   ],
 );
 

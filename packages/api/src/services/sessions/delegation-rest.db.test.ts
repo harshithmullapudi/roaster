@@ -33,13 +33,9 @@ describe.skipIf(!hasDatabase)("which sessions may rest at idle", () => {
     project: "",
     plainThread: "",
     askedThread: "",
-    agent: "",
   };
 
-  let answersDelegation: (args: {
-    threadId: string;
-    agentMemberId?: string;
-  }) => Promise<boolean>;
+  let answersDelegation: (threadId: string) => Promise<boolean>;
   let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
@@ -62,7 +58,6 @@ describe.skipIf(!hasDatabase)("which sessions may rest at idle", () => {
     ids.project = randomUUID();
     ids.plainThread = randomUUID();
     ids.askedThread = randomUUID();
-    ids.agent = randomUUID();
 
     await db.insert(users).values({
       id: ids.user,
@@ -95,16 +90,6 @@ describe.skipIf(!hasDatabase)("which sessions may rest at idle", () => {
       slug: "rest",
       addedByMemberId: ids.member,
     });
-    await db.insert(members).values({
-      id: ids.agent,
-      organizationId: ids.org,
-      userId: null,
-      role: "member",
-      type: "agent",
-      agentName: "agent-rest",
-      projectId: ids.project,
-      createdAt: new Date(),
-    });
 
     let seq = 0;
     const thread = async (threadId: string) => {
@@ -135,8 +120,8 @@ describe.skipIf(!hasDatabase)("which sessions may rest at idle", () => {
     await db.insert(delegations).values({
       organizationId: ids.org,
       parentThreadId: ids.plainThread,
-      originMemberId: ids.agent,
-      targetMemberId: ids.agent,
+      originChannelId: ids.project,
+      targetChannelId: ids.project,
       childThreadId: ids.askedThread,
       task: "what is the auth flow?",
       status: "open",
@@ -158,11 +143,11 @@ describe.skipIf(!hasDatabase)("which sessions may rest at idle", () => {
   });
 
   it("lets a thread nobody is waiting on rest", async () => {
-    expect(await answersDelegation({ threadId: ids.plainThread })).toBe(false);
+    expect(await answersDelegation(ids.plainThread)).toBe(false);
   });
 
   it("holds a thread that owes another thread an answer", async () => {
-    expect(await answersDelegation({ threadId: ids.askedThread })).toBe(true);
+    expect(await answersDelegation(ids.askedThread)).toBe(true);
   });
 
   it("lets it rest once the delegation has been answered", async () => {
@@ -175,7 +160,7 @@ describe.skipIf(!hasDatabase)("which sessions may rest at idle", () => {
         .set({ status: "answered", answeredAt: new Date() })
         .where(eq(delegations.childThreadId, ids.askedThread));
 
-      expect(await answersDelegation({ threadId: ids.askedThread })).toBe(false);
+      expect(await answersDelegation(ids.askedThread)).toBe(false);
     } finally {
       await cleanup();
     }

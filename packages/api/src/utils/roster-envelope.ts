@@ -16,29 +16,21 @@ export interface EnvelopeArgs {
   threadId: string;
   channelId: string;
   handle: string;
-  brief?: string | null;
   delegation?: DelegationContext;
   task?: TaskContext;
 }
 
 export function rosterEnvelope(args: EnvelopeArgs): string {
-  const brief = (args.brief ?? "").trim();
-
   const lines = [
     ENVELOPE_OPEN,
-    `You are @${args.handle}, an agent for this channel in Roster.`,
+    `You are @${args.handle}, the agent for this channel in Roster.`,
     `thread-id: ${args.threadId}`,
     `channel-id: ${args.channelId}`,
-    ...(brief.length > 0 ? ["", "What you are here to do:", brief] : []),
     "",
     "The `roster` CLI is available:",
     "  roster channels",
-    "  roster agents [--channel-id <id>]",
-    "  roster agents create <name> --channel-id <id> [--brief TEXT]",
-    "  roster agents brief <handle> <text>",
     "  roster read messages --channel-id <id> [--limit N]",
     "  roster read messages --thread-id <id> [--limit N]",
-    "  roster react <message-id> <emoji>",
     "  roster tasks create <title> [--channel-id <id>]",
     "  roster tasks status <task-id> <todo|in_progress|done>",
     `  roster ask <handle> <task> --thread ${args.threadId}`,
@@ -47,11 +39,9 @@ export function rosterEnvelope(args: EnvelopeArgs): string {
     "to. Without it the task waits in the backlog for a person to assign it.",
     "Assigning a task starts that channel's agent on it straight away.",
     "",
-    "`roster agents` lists who you can ask. An agent on this channel works in",
-    "this same worktree, turn about with you; an agent on another channel gets",
-    "a fresh one of its own. `roster ask` returns straight away — after calling",
-    "it, say what you asked for and end your turn. You are resumed with their",
-    "answer. Never poll or wait.",
+    "`roster ask` hands work to another channel's agent and returns straight",
+    "away. After calling it, say what you asked for and end your turn — you",
+    "are resumed automatically with their answer. Never poll or wait.",
     "",
     "A channel read marks every message that has a thread with that thread's",
     "id. Read one with --thread-id to see the replies underneath it; your own",

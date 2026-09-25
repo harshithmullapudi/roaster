@@ -4,6 +4,7 @@ import {
   db,
   delegations,
   messages,
+  projects,
   type SelectDelegation,
   threads,
 } from "@roster/db";
@@ -167,6 +168,7 @@ export async function delegate(
         projectId: target.projectId,
         rootMessageId,
         agentMemberId: target.id,
+        runAsMemberId: await channelOwner(target.projectId),
       });
 
   if (!sameWorktree && !childThread) {
@@ -248,6 +250,23 @@ export async function delegate(
     sameWorktree,
     depth,
   };
+}
+
+async function channelOwner(projectId: string): Promise<string> {
+  const [row] = await db
+    .select({ memberId: projects.addedByMemberId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  if (!row) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "That channel is no longer linked to a project.",
+    });
+  }
+
+  return row.memberId;
 }
 
 async function postRequest(args: {

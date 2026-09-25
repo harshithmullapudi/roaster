@@ -260,11 +260,6 @@ export async function saveProjects(args: {
     .onConflictDoNothing()
     .returning({ id: projects.id, slug: projects.slug });
 
-  /*
-   * A channel with no agent cannot answer anybody, so it gets one the moment
-   * the folder is connected — named for whoever connected it, which is the
-   * name every channel already had before agents were members.
-   */
   for (const project of added) {
     await ensureChannelAgent({
       organizationId: args.organizationId,

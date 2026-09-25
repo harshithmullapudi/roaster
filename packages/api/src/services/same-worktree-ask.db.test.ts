@@ -3,12 +3,6 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { hasDatabase, makeFixture } from "../test/fixtures";
 import "../test/mock-superset";
 
-/*
- * Asking an agent on your own channel is the whole point of agents being
- * members: it joins the thread you are already in and works in the worktree
- * that thread already has, rather than cutting one of its own. Asking an
- * agent elsewhere must keep doing what it always did.
- */
 describe.skipIf(!hasDatabase())("asking an agent on your own channel", () => {
   let superset: typeof import("@roster/superset");
   let delegations: typeof import("./delegations");
@@ -46,7 +40,6 @@ describe.skipIf(!hasDatabase())("asking an agent on your own channel", () => {
     expect(result.sameWorktree).toBe(true);
     expect(result.childThreadId).toBeNull();
 
-    // No second worktree was cut.
     expect(vi.mocked(superset.createWorkspace)).not.toHaveBeenCalled();
 
     const run = vi.mocked(superset.runAgent).mock.calls[0]?.[0];
@@ -158,7 +151,6 @@ describe.skipIf(!hasDatabase())("asking an agent on your own channel", () => {
 
     expect(vi.mocked(superset.deleteWorkspace)).toHaveBeenCalledTimes(1);
 
-    // Both sessions must be marked, or the thread looks like it leaked one.
     await expect(
       assertReaped({ threadId: parent.threadId }),
     ).resolves.toBeUndefined();

@@ -109,13 +109,6 @@ export type InsertOrganization = typeof organizations.$inferInsert;
 export const MEMBER_TYPES = ["human", "agent"] as const;
 export type MemberType = (typeof MEMBER_TYPES)[number];
 
-/*
- * Agents are members. A human has a user account and no channel; an agent has
- * a channel and no user, which is why user_id is nullable and project_id is
- * not a drizzle reference — auth is imported by roster, so pointing back at
- * roster.projects here would close an import cycle. The foreign key is added
- * in the migration instead.
- */
 export const members = authSchema.table(
   "members",
   {

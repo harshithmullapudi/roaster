@@ -88,16 +88,6 @@ function isIdle(status: string): boolean {
   return status === "idle";
 }
 
-/**
- * True when this session owes an answer to a thread that asked for one. Such a
- * session has to complete rather than rest at idle, because completing is what
- * settles the delegation and wakes the asking agent.
- *
- * Two shapes qualify. An agent in another channel answers from a thread of its
- * own, so the thread is the child. An agent in this one answers from inside
- * the asking thread, so the delegation names it as the target — and the agent
- * that did the asking, sitting in the same thread, owes nothing.
- */
 export async function answersDelegation(args: {
   threadId: string;
   agentMemberId?: string;
@@ -243,11 +233,6 @@ async function sessionForAgent(
   return row ?? null;
 }
 
-/*
- * Which agent in a thread is doing the asking. With one agent running at a
- * time the answer is whichever is awake; the channel's own agent is the
- * fallback for a thread that is between turns.
- */
 export async function askingSession(
   threadId: string,
 ): Promise<SessionView | null> {
@@ -974,10 +959,6 @@ export async function persistAgentMessage(args: {
     rootMessageId: string;
   };
   text: string;
-  /*
-   * Who is speaking. A thread can hold two agents, so the message says which
-   * one wrote it rather than leaving the reader to infer it from the channel.
-   */
   agentMemberId?: string;
   agentChannelId?: string;
   dedupe?: boolean;
@@ -1074,11 +1055,6 @@ export async function startSession(args: {
   await startSessionRow({ session, ...args });
 }
 
-/**
- * Bring another of this channel's agents into a thread that is already
- * running, in the worktree that thread already has. The asking agent is
- * parked while this one works, so the two never hold the checkout at once.
- */
 export async function joinThread(args: {
   threadId: string;
   agentMemberId: string;
@@ -1138,11 +1114,6 @@ async function startSessionRow(args: {
   text: string;
   context?: string[];
   delegation?: DelegationContext;
-  /*
-   * An agent joining a thread that is already running works in the worktree
-   * that thread already has, rather than cutting one of its own. Only one of
-   * them runs at a time, so sharing the checkout is safe.
-   */
   shareWorkspace?: { workspaceId: string; hostKey: string };
 }): Promise<void> {
   const { session } = args;
@@ -1463,11 +1434,6 @@ async function recordSessionError(
 export async function steer(args: {
   threadId: string;
   text: string;
-  /*
-   * A thread can hold more than one agent, so a reply meant for a particular
-   * one says so. Without it the channel's own agent takes the message, which
-   * is what someone typing into the thread means by default.
-   */
   agentMemberId?: string;
 }): Promise<void> {
   await ensureStarted();
@@ -1654,11 +1620,6 @@ async function cancelSession(session: SessionView): Promise<void> {
   });
 }
 
-/*
- * Sessions that shared a worktree share its removal: deleting it once per
- * session would fail on the second, leave that session unmarked, and trip the
- * check that every worktree was reaped.
- */
 export async function reapThread(args: { threadId: string }): Promise<void> {
   const sessions = await sessionsOf(args.threadId);
   const reaped = new Set<string>();

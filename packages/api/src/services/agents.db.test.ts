@@ -2,12 +2,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { hasDatabase, makeFixture } from "../test/fixtures";
 
-/*
- * Agents are members, so their names live in the same namespace people's do.
- * That is the whole reason a channel can hold several of them without two
- * ever computing the same handle, and it is worth proving against the index
- * that enforces it rather than against a stub.
- */
 describe.skipIf(!hasDatabase())("agents under a channel", () => {
   let agents: typeof import("./agents");
 
@@ -70,7 +64,6 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
     const fixture = await makeFixture("clash");
     const other = await fixture.channel("clash-other");
 
-    // The handle "pm" on #clash would resolve to, and this channel already has.
     await fixture.agent(other, "agent-clash-pm");
 
     await expect(

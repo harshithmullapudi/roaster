@@ -5,11 +5,6 @@ import { can } from "../lib/access";
 import { agentDisplay, normalizeHandle } from "../lib/agent-identity";
 import type { ChannelVisibility } from "../lib/channel-visibility";
 
-/*
- * A channel's own agent: the oldest unarchived one it holds. A correlated
- * subquery rather than a join, because a channel with three agents would
- * otherwise come back three times.
- */
 const MAIN_AGENT_HANDLE = sql<string | null>`(
   select m."agent_name" from "auth"."members" m
    where m."project_id" = ${projects.id}

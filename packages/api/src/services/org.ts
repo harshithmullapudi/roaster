@@ -119,11 +119,6 @@ export async function listOrgMembers(organizationId: string) {
     orderBy: members.createdAt,
   });
 
-  /*
-   * A human always has a user account; the column is only nullable because
-   * agents share this table and have none. Anything without one is not a
-   * person and has no place in a list of people.
-   */
   return rows.flatMap((row) =>
     row.userId && row.user
       ? [

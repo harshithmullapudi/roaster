@@ -59,12 +59,6 @@ export function memberKey(
   return { apiKey };
 }
 
-/*
- * The machine a session runs on is the one its worktree is on, which is not
- * always the one its own channel would name: an agent borrowed into another
- * agent's worktree runs where that worktree already lives. The session records
- * the host it started against, so prefer it over re-deriving one.
- */
 export async function hostConnection(args: {
   organizationId: string;
   projectId: string;

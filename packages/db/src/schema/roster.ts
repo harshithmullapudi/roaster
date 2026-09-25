@@ -260,11 +260,6 @@ export const threadSessions = rosterSchema.table(
       .default("main")
       .notNull(),
 
-    /*
-     * Which agent is speaking. A thread holds one session per agent, so two
-     * agents of the same channel can sit in one thread — which project_id
-     * alone could not express.
-     */
     agentMemberId: uuid("agent_member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
@@ -466,21 +461,12 @@ export const delegations = rosterSchema.table(
     parentThreadId: uuid("parent_thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
-    /*
-     * Which agent asked and which answers. Channels are not enough now that
-     * one of them holds several agents, and both channels are reachable from
-     * the members anyway.
-     */
     originMemberId: uuid("origin_member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
     targetMemberId: uuid("target_member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
-    /*
-     * Null when the answering agent joined this thread rather than opening one
-     * of its own, which is what an ask inside a single channel does.
-     */
     childThreadId: uuid("child_thread_id").references(() => threads.id, {
       onDelete: "set null",
     }),

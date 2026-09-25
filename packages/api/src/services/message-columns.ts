@@ -30,11 +30,6 @@ export interface ChannelMessage {
 const reactionsSql = sql<ReactionRef[]>`coalesce((select jsonb_agg(jsonb_build_object('emoji', r.emoji, 'memberId', r.member_id))
   from roster.reactions r where r.message_id = ${messages.id}), '[]'::jsonb)`;
 
-/*
- * Who wrote a message is one join now. An agent is a member, so its name is on
- * the row the author join already reaches rather than something to rebuild
- * from the channel it belongs to.
- */
 export const messageColumns = {
   id: messages.id,
   projectId: messages.projectId,

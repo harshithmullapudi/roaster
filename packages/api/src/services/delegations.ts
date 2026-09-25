@@ -143,11 +143,6 @@ export async function delegate(
     });
   }
 
-  /*
-   * An agent on this channel has no worktree of its own to go to, so it joins
-   * this thread and works in the checkout that is already open. An agent
-   * elsewhere gets a thread and a worktree of its own, as it always did.
-   */
   const sameWorktree = target.projectId === parent.projectId;
 
   const rootMessageId = await postRequest({
@@ -322,10 +317,6 @@ async function ancestorDepth(threadId: string): Promise<number> {
   return depth;
 }
 
-/*
- * Every agent already waiting further up this chain. Asking one of them back
- * would deadlock, since each is parked until the one below it answers.
- */
 async function ancestorAgents(threadId: string): Promise<string[]> {
   const chain: string[] = [];
   let current: string | null = threadId;
@@ -343,14 +334,6 @@ async function ancestorAgents(threadId: string): Promise<string[]> {
   return chain;
 }
 
-/**
- * An answering session has finished. Close the delegation it was opened for,
- * put the answer where the asking agent can read it, and wake that agent.
- *
- * An agent in another channel answers from a thread of its own, so the
- * delegation is found by that thread. An agent in this channel answers from
- * inside the asking thread, so it is found by the pair of thread and agent.
- */
 export async function settleDelegationFor(args: {
   threadId: string;
   agentMemberId?: string;

@@ -12,10 +12,6 @@ export interface Agent {
   projectId: string;
   channelSlug: string;
   channelName: string;
-  /*
-   * The agent the channel was created with. It is the one a channel answers
-   * as when nobody names another, so it cannot be archived out from under it.
-   */
   main: boolean;
   ephemeral: boolean;
 }
@@ -54,11 +50,6 @@ function toAgent(row: AgentRow, main = false): Agent {
   };
 }
 
-/*
- * An agent belongs to a channel, so it is visible exactly where the channel
- * is. Archived ones stay in the database to keep old messages attributed, but
- * they are no longer anybody's to mention.
- */
 export async function listAgents(
   scope: ChannelScope,
   filter?: { projectId?: string },
@@ -121,10 +112,6 @@ export async function agentById(id: string): Promise<Agent | null> {
   return row ? toAgent(row) : null;
 }
 
-/*
- * The agent a channel answers as when nobody names one. It is the oldest,
- * which is the one the channel was created with.
- */
 export async function mainAgentFor(projectId: string): Promise<Agent | null> {
   const [row] = await db
     .select(agentColumns)
@@ -150,10 +137,6 @@ export function agentHandleFor(channelHandle: string, name: string): string {
   return role.startsWith(`${channelHandle}-`) ? role : `${channelHandle}-${role}`;
 }
 
-/*
- * Created on demand, so this has to be idempotent: asking the same agent
- * twice must reach the same agent rather than failing on the unique index.
- */
 export async function createAgent(args: {
   organizationId: string;
   projectId: string;
@@ -226,11 +209,6 @@ export async function createAgent(args: {
   return { ...agent, ephemeral: Boolean(args.ephemeral) };
 }
 
-/*
- * Ephemeral agents are archived rather than deleted. Messages point at their
- * author, so removing the row would leave a transcript that cannot say who
- * spoke.
- */
 export async function archiveAgent(id: string): Promise<void> {
   const agent = await agentById(id);
   if (!agent) return;
@@ -268,10 +246,6 @@ export async function agentMemberRow(
   return db.query.members.findFirst({ where: eq(members.id, id) });
 }
 
-/*
- * Every channel gets an agent when it is added. Nothing else in the product
- * can speak for a channel, so a channel without one is unusable.
- */
 export async function ensureChannelAgent(args: {
   organizationId: string;
   projectId: string;

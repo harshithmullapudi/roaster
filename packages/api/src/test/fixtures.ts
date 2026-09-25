@@ -90,10 +90,6 @@ export async function makeFixture(name: string): Promise<Fixture> {
     return id;
   }
 
-  /*
-   * A channel without an agent cannot hold a thread, so a fixture channel
-   * gets one the same way a real one does.
-   */
   async function addAgent(
     target: string,
     handle: string,

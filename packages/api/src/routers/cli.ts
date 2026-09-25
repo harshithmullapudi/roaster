@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { TASK_STATUSES } from "../lib/task-status";
 import { createAgent, listAgents } from "../services/agents";
+import { reactionTarget, toggleReaction } from "../services/reactions";
 import {
   listMentionableChannels,
   requireOrgProject,
@@ -241,6 +242,45 @@ export const cliRouter = createTRPCRouter({
         task: input.task,
       }),
     ),
+
+  react: cliProcedure
+    .input(
+      z.object({
+        messageId: z.string().uuid(),
+        emoji: z.string().min(1).max(16),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const target = await reactionTarget(input.messageId);
+      if (!target) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message:
+            "No such message. Message ids are printed by `roster read messages`.",
+        });
+      }
+
+      const project = await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: target.projectId,
+      });
+      if (!project) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "That message is in a channel you cannot reach.",
+        });
+      }
+
+      const result = await toggleReaction({
+        messageId: target.id,
+        memberId: ctx.member.id,
+        emoji: input.emoji,
+      });
+
+      return { added: result.added, emoji: input.emoji };
+    }),
 
   createTask: cliProcedure
     .input(

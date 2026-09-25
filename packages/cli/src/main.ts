@@ -30,6 +30,7 @@ const USAGE = `roster — talk to Roster from inside an agent session
                              [--rrule RULE] [--at HH:MM] [--timezone TZ]
   roster tasks status <task-id> <todo|in_progress|done>
   roster ask <handle> <task> --thread THREAD_ID
+  roster react <message-id> <emoji>         add or remove a reaction
   roster files download <url-or-id> [--out PATH]
 
 Pass --channel-id only when someone named the channel the work belongs to;
@@ -61,7 +62,11 @@ then on.
 
 A channel read shows what was said out loud, and marks every message that
 has a thread hanging off it with that thread's id. Read the thread with
-\`roster read messages --thread-id <id>\`.`;
+\`roster read messages --thread-id <id>\`.
+
+Every message is printed with its own id beside the author. \`roster react\`
+takes that id, and toggles: reacting twice with the same emoji takes it off
+again.`;
 
 function requireConfig(): Config {
   const config = loadConfig();
@@ -304,6 +309,31 @@ async function ask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
   );
 }
 
+async function react(parsed: ReturnType<typeof parseArgs>): Promise<void> {
+  const config = requireConfig();
+
+  const messageId = parsed.positionals[1];
+  if (!messageId) {
+    throw new RosterError(
+      "Say which message, e.g. `roster react <message-id> 👍`. Message ids are printed beside each author by `roster read messages`.",
+    );
+  }
+
+  const emoji = parsed.positionals[2];
+  if (!emoji) throw new RosterError("Say which emoji to react with.");
+
+  const result = (await mutate(config, "cli.react", {
+    messageId,
+    emoji,
+  })) as { added: boolean; emoji: string };
+
+  console.log(
+    result.added
+      ? `Reacted ${result.emoji}.`
+      : `Removed your ${result.emoji}.`,
+  );
+}
+
 async function filesDownload(
   parsed: ReturnType<typeof parseArgs>,
 ): Promise<void> {
@@ -342,6 +372,7 @@ export async function main(argv: string[]): Promise<number> {
     else if (command === "tasks" && sub === "create") await createTask(parsed);
     else if (command === "tasks" && sub === "status") await setTaskStatus(parsed);
     else if (command === "ask") await ask(parsed);
+    else if (command === "react") await react(parsed);
     else if (command === "files" && sub === "download") await filesDownload(parsed);
     else {
       console.error(`Unknown command: ${[command, sub].filter(Boolean).join(" ")}\n`);

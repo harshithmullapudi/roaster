@@ -19,7 +19,7 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
       brief: "Own the spec.",
     });
 
-    expect(made.handle).toBe("agent-agentname-pm");
+    expect(made.handle).toBe("agentname-pm");
     expect(made.brief).toBe("Own the spec.");
 
     await fixture.cleanup();
@@ -31,10 +31,10 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
     const made = await agents.createAgent({
       organizationId: fixture.orgId,
       projectId: fixture.projectId,
-      name: "agent-stutter-qa",
+      name: "stutter-qa",
     });
 
-    expect(made.handle).toBe("agent-stutter-qa");
+    expect(made.handle).toBe("stutter-qa");
 
     await fixture.cleanup();
   });
@@ -64,7 +64,7 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
     const fixture = await makeFixture("clash");
     const other = await fixture.channel("clash-other");
 
-    await fixture.agent(other, "agent-clash-pm");
+    await fixture.agent(other, "clash-pm");
 
     await expect(
       agents.createAgent({
@@ -87,10 +87,10 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
 
     const found = await agents.resolveAgent({
       organizationId: fixture.orgId,
-      handle: "@Agent-Resolve-PM",
+      handle: "@Resolve-PM",
     });
 
-    expect(found?.handle).toBe("agent-resolve-pm");
+    expect(found?.handle).toBe("resolve-pm");
 
     await fixture.cleanup();
   });
@@ -136,7 +136,7 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
     await fixture.cleanup();
   });
 
-  it("gives a channel that has none an agent named for its adder", async () => {
+  it("gives a channel that has none an agent named for the channel", async () => {
     const fixture = await makeFixture("ensure");
     const bare = await fixture.channel("ensure-bare");
 
@@ -150,10 +150,9 @@ describe.skipIf(!hasDatabase())("agents under a channel", () => {
       organizationId: fixture.orgId,
       projectId: bare,
       slug: "ensure-bare",
-      ownerAgentName: "fern",
     });
 
-    expect(made.handle).toBe("fern-ensure-bare");
+    expect(made.handle).toBe("ensure-bare");
 
     await fixture.cleanup();
   });

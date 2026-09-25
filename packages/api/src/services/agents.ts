@@ -250,12 +250,11 @@ export async function ensureChannelAgent(args: {
   organizationId: string;
   projectId: string;
   slug: string;
-  ownerAgentName: string | null;
 }): Promise<Agent> {
   const existing = await mainAgentFor(args.projectId);
   if (existing) return existing;
 
-  const base = channelAgentHandle(args.ownerAgentName, args.slug);
+  const base = channelAgentHandle(args.slug);
 
   const taken = await resolveAgent({
     organizationId: args.organizationId,

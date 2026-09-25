@@ -1,3 +1,4 @@
+import { listAgents } from "./agents";
 import {
   db,
   delegations,
@@ -38,7 +39,6 @@ import {
 import { bindAttachments, textWithAttachments } from "./attachments";
 import {
   allocateSeq,
-  listMentionableChannels,
   listMentionableMembers,
 } from "./channels";
 import { channelName, publish, threadChannelName } from "./centrifugo";
@@ -369,15 +369,15 @@ async function mentionsAnyAgent(args: {
     role: args.role,
   };
 
-  const [channels, people] = await Promise.all([
-    listMentionableChannels(scope),
+  const [agents, people] = await Promise.all([
+    listAgents(scope),
     listMentionableMembers(scope),
   ]);
 
   const mentioned = mentionedHandles({
     body: args.body,
     text: args.text,
-    agents: channels.map((channel) => channel.agentHandle),
+    agents: agents.map((agent) => agent.handle),
     members: people.map((person) => person.handle),
   });
 

@@ -9,10 +9,7 @@ export function agentDisplay(handle: string | null | undefined): string {
   return normalized.length > 0 ? normalized : UNNAMED;
 }
 
-export function channelAgentHandle(
-  ownerAgentName: string | null | undefined,
-  channelSlug: string,
-): string {
-  const owner = normalizeHandle(ownerAgentName);
-  return `${owner.length > 0 ? owner : UNNAMED}-${channelSlug}`;
+export function channelAgentHandle(channelSlug: string): string {
+  const slug = normalizeHandle(channelSlug);
+  return slug.length > 0 ? slug : UNNAMED;
 }

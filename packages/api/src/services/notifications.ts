@@ -1,3 +1,4 @@
+import { listAgents } from "./agents";
 import {
   db,
   members,
@@ -23,7 +24,6 @@ import {
 } from "../lib/notification-type";
 import {
   type ChannelScope,
-  listMentionableChannels,
   listMentionableMembers,
   visibleToMember,
 } from "./channels";
@@ -118,15 +118,15 @@ async function mentionedMemberIds(args: {
     role: await memberRole(args.authorMemberId),
   };
 
-  const [channels, people] = await Promise.all([
-    listMentionableChannels(scope),
+  const [agents, people] = await Promise.all([
+    listAgents(scope),
     listMentionableMembers(scope),
   ]);
 
   const mentioned = mentionedHandles({
     body: args.body,
     text: args.text,
-    agents: channels.map((channel) => channel.agentHandle),
+    agents: agents.map((agent) => agent.handle),
     members: people.map((person) => person.handle),
   });
   if (mentioned.members.length === 0) return [];
@@ -341,10 +341,14 @@ export async function notifyDelegationReceived(args: {
   if (!thread) return;
 
   const [asker] = await db
-    .select({ slug: projects.slug, ownerAgentName: members.agentName })
+    .select({ slug: projects.slug, agentName: members.agentName })
     .from(projects)
-    .leftJoin(members, eq(projects.addedByMemberId, members.id))
+    .leftJoin(
+      members,
+      and(eq(members.projectId, projects.id), eq(members.type, "agent")),
+    )
     .where(eq(projects.id, args.originChannelId))
+    .orderBy(members.createdAt)
     .limit(1);
 
   const [owner] = await db
@@ -373,7 +377,7 @@ export async function notifyDelegationReceived(args: {
       dedupeKey: `delegation:${args.delegationId}`,
       actorMemberId: null,
       actorChannelId: args.originChannelId,
-      actorDisplay: asker ? agentDisplay(asker.ownerAgentName) : null,
+      actorDisplay: asker ? agentDisplay(asker.agentName) : null,
       preview: previewOf(args.task),
     },
     [{ memberId: owner.memberId, type: "delegation_received" }],

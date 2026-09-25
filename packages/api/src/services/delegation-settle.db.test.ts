@@ -85,7 +85,7 @@ describe.skipIf(!hasDatabase())("settling a delegation", () => {
         memberId: fixture.memberId,
         role: "owner",
         parentThreadId: parent.threadId,
-        handle: "agent-target",
+        handle: "target",
         task: "look at the logs",
       });
 

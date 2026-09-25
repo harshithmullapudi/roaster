@@ -32,18 +32,13 @@ describe("agentDisplay", () => {
 });
 
 describe("channelAgentHandle", () => {
-  it("joins the adder's name to the channel", () => {
-    expect(channelAgentHandle("fern", "core")).toBe("fern-core");
+  it("is the channel's own slug", () => {
+    expect(channelAgentHandle("core")).toBe("core");
+    expect(channelAgentHandle("spark-wilderness")).toBe("spark-wilderness");
   });
 
-  it("names channels whose adder never picked one", () => {
-    expect(channelAgentHandle(null, "core")).toBe("agent-core");
-    expect(channelAgentHandle("   ", "core")).toBe("agent-core");
-  });
-
-  it("stays readable for hyphenated slugs", () => {
-    expect(channelAgentHandle("fern", "spark-wilderness")).toBe(
-      "fern-spark-wilderness",
-    );
+  it("names a channel with no slug to take", () => {
+    expect(channelAgentHandle("")).toBe("agent");
+    expect(channelAgentHandle("   ")).toBe("agent");
   });
 });

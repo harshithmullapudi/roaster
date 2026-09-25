@@ -86,7 +86,7 @@ export async function makeFixture(name: string): Promise<Fixture> {
       slug,
       addedByMemberId: memberId,
     });
-    await addAgent(id, `agent-${slug}`);
+    await addAgent(id, slug);
     return id;
   }
 

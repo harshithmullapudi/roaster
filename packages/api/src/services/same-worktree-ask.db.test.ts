@@ -218,7 +218,7 @@ describe.skipIf(!hasDatabase())("asking an agent on your own channel", () => {
       memberId: fixture.memberId,
       role: "owner",
       parentThreadId: parent.threadId,
-      handle: "agent-othercwd-design",
+      handle: "othercwd-design",
       task: "review the empty states",
     });
 
@@ -239,7 +239,7 @@ describe.skipIf(!hasDatabase())("asking an agent on your own channel", () => {
         memberId: fixture.memberId,
         role: "owner",
         parentThreadId: parent.threadId,
-        handle: "agent-selfask",
+        handle: "selfask",
         task: "do it",
       }),
     ).rejects.toThrow(/just do the work/);

@@ -1,7 +1,7 @@
 "use client";
 
-import { Badge, Button, Input } from "@roster/ui";
-import { Check, Plus, X } from "lucide-react";
+import { Badge, Button, cn, Input } from "@roster/ui";
+import { Check, ChevronRight, Plus, X } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 
 import { errorMessage, trpc } from "~/utils/trpc";
@@ -136,11 +136,13 @@ function AgentCard({
 }) {
   const [brief, setBrief] = useState(agent.brief ?? "");
   const [saved, setSaved] = useState(agent.brief ?? "");
+  const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dirty = brief.trim() !== saved.trim();
+  const summary = saved.split("\n")[0]?.trim() ?? "";
 
   async function save() {
     setPending(true);
@@ -163,18 +165,38 @@ function AgentCard({
   }
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-3">
+    <li className="flex flex-col px-4 py-3">
       <div className="flex items-center gap-2">
-        <code className="text-foreground font-mono text-sm">
-          @{agent.handle}
-        </code>
-        {agent.main ? (
-          <Badge variant="secondary" className="shrink-0">
-            channel agent
-          </Badge>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={open}
+        >
+          <ChevronRight
+            size={14}
+            className={cn(
+              "text-muted-foreground shrink-0 transition-transform",
+              open && "rotate-90",
+            )}
+          />
+          <code className="text-foreground shrink-0 font-mono text-sm">
+            @{agent.handle}
+          </code>
+          {agent.main ? (
+            <Badge variant="secondary" className="shrink-0">
+              channel
+            </Badge>
+          ) : null}
+          {!open ? (
+            <span className="text-muted-foreground min-w-0 truncate text-xs">
+              {summary || "no brief"}
+            </span>
+          ) : null}
+        </button>
+
         {justSaved && !dirty ? (
-          <span className="text-muted-foreground flex items-center gap-1 text-xs">
+          <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">
             <Check size={12} />
             saved
           </span>
@@ -183,7 +205,7 @@ function AgentCard({
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground ml-auto"
+            className="text-muted-foreground shrink-0"
             onClick={onArchive}
           >
             Archive
@@ -191,37 +213,41 @@ function AgentCard({
         ) : null}
       </div>
 
-      <textarea
-        aria-label={`Brief for @${agent.handle}`}
-        value={brief}
-        onChange={(event) => {
-          setBrief(event.target.value);
-          setJustSaved(false);
-        }}
-        rows={3}
-        placeholder={
-          agent.main
-            ? "Anything every session on this channel should know."
-            : "What this one is here to do. It is read at the top of every session."
-        }
-        className="border-border bg-background focus-visible:ring-ring min-h-16 w-full resize-y rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-1"
-      />
+      {open ? (
+        <div className="mt-2 flex flex-col gap-2 pl-6">
+          <textarea
+            aria-label={`Brief for @${agent.handle}`}
+            value={brief}
+            onChange={(event) => {
+              setBrief(event.target.value);
+              setJustSaved(false);
+            }}
+            rows={4}
+            placeholder={
+              agent.main
+                ? "Anything every session on this channel should know."
+                : "What this one is here to do. It is read at the top of every session."
+            }
+            className="border-border bg-background focus-visible:ring-ring min-h-20 w-full resize-y rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-1"
+          />
 
-      {error ? <p className="text-destructive text-xs">{error}</p> : null}
+          {error ? <p className="text-destructive text-xs">{error}</p> : null}
 
-      {dirty ? (
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={save} disabled={pending}>
-            {pending ? "Saving…" : "Save brief"}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setBrief(saved)}
-            disabled={pending}
-          >
-            Revert
-          </Button>
+          {dirty ? (
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={save} disabled={pending}>
+                {pending ? "Saving…" : "Save brief"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setBrief(saved)}
+                disabled={pending}
+              >
+                Revert
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>

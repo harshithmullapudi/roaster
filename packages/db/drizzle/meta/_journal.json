@@ -99,6 +99,13 @@
       "when": 1790337093441,
       "tag": "0013_delegations_point_at_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790337094441,
+      "tag": "0014_agents_take_the_channel_name",
+      "breakpoints": true
     }
   ]
 }

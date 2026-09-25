@@ -265,7 +265,6 @@ export async function saveProjects(args: {
       organizationId: args.organizationId,
       projectId: project.id,
       slug: project.slug,
-      ownerAgentName: args.member.agentName,
     });
   }
 

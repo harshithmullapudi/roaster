@@ -80,8 +80,10 @@ function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "canceled";
 }
 
+const PARKED: ThreadStatus = "waiting";
+
 function isParked(status: string): boolean {
-  return status === "waiting";
+  return status === PARKED;
 }
 
 function isIdle(status: string): boolean {
@@ -582,6 +584,26 @@ async function askForInput(sessionId: string): Promise<void> {
   await publishThread(row.threadId);
 }
 
+/**
+ * The agent's terminal has gone quiet. A session parked on a delegate stays
+ * parked — the quiet is what parking means — but the turn still ended, and
+ * what the agent said before handing the work over belongs in the thread.
+ */
+async function endTurn(
+  session: SessionView,
+  event: LifecycleEvent,
+): Promise<void> {
+  const status = await statusAfter(session, event);
+  if (status === null && !isParked(session.status)) return;
+
+  await finish({
+    sessionId: session.id,
+    status: status ?? PARKED,
+    error: null,
+    capture: true,
+  });
+}
+
 async function settle(sessionId: string): Promise<void> {
   const watch = watches.get(sessionId);
   if (!watch) return;
@@ -596,10 +618,7 @@ async function settle(sessionId: string): Promise<void> {
   const session = await sessionById(sessionId);
   if (!session || isTerminal(session.status)) return;
 
-  const status = await statusAfter(session, "Stop");
-  if (status === null) return;
-
-  await finish({ sessionId, status, error: null, capture: true });
+  await endTurn(session, "Stop");
 }
 
 async function pollOnce(sessionId: string): Promise<void> {
@@ -662,9 +681,7 @@ async function pollOnce(sessionId: string): Promise<void> {
         await drainSteers(sessionId);
         return;
       }
-      const status = await statusAfter(session, "Stop");
-      if (status === null) return;
-      await finish({ sessionId, status, error: null, capture: true });
+      await endTurn(session, "Stop");
       return;
     }
     bound = binding !== undefined;
@@ -691,10 +708,7 @@ async function pollOnce(sessionId: string): Promise<void> {
     console.warn(
       `[sessions] nothing has been bound to ${sessionId}'s terminal for ${STALENESS_TIMEOUT_MS}ms and it wrote nothing — ending it`,
     );
-    const status = await statusAfter(session, "Stop");
-    if (status !== null) {
-      await finish({ sessionId, status, error: null, capture: true });
-    }
+    await endTurn(session, "Stop");
     return;
   }
 

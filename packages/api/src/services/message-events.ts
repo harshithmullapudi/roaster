@@ -15,9 +15,7 @@ import {
   threadChannelName,
 } from "./centrifugo";
 import {
-  AGENT_IDENTITY_ON,
-  agentChannel,
-  agentOwner,
+
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
@@ -34,8 +32,6 @@ export async function messageById(id: string): Promise<ChannelMessage> {
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
-    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
-    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(eq(messages.id, id))
     .limit(1);
 

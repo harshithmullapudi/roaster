@@ -260,6 +260,15 @@ export const threadSessions = rosterSchema.table(
       .default("main")
       .notNull(),
 
+    /*
+     * Which agent is speaking. A thread holds one session per agent, so two
+     * agents of the same channel can sit in one thread — which project_id
+     * alone could not express.
+     */
+    agentMemberId: uuid("agent_member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+
     runAsMemberId: uuid("run_as_member_id").references(() => members.id, {
       onDelete: "set null",
     }),
@@ -283,9 +292,9 @@ export const threadSessions = rosterSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("thread_sessions_thread_project_idx").on(
+    uniqueIndex("thread_sessions_thread_agent_idx").on(
       table.threadId,
-      table.projectId,
+      table.agentMemberId,
     ),
     index("thread_sessions_thread_idx").on(table.threadId),
     index("thread_sessions_status_idx").on(table.status),
@@ -457,12 +466,21 @@ export const delegations = rosterSchema.table(
     parentThreadId: uuid("parent_thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
-    originChannelId: uuid("origin_channel_id")
+    /*
+     * Which agent asked and which answers. Channels are not enough now that
+     * one of them holds several agents, and both channels are reachable from
+     * the members anyway.
+     */
+    originMemberId: uuid("origin_member_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    targetChannelId: uuid("target_channel_id")
+      .references(() => members.id, { onDelete: "cascade" }),
+    targetMemberId: uuid("target_member_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => members.id, { onDelete: "cascade" }),
+    /*
+     * Null when the answering agent joined this thread rather than opening one
+     * of its own, which is what an ask inside a single channel does.
+     */
     childThreadId: uuid("child_thread_id").references(() => threads.id, {
       onDelete: "set null",
     }),
@@ -480,7 +498,7 @@ export const delegations = rosterSchema.table(
       .on(table.parentThreadId)
       .where(sql`status = 'open'`),
     index("delegations_child_thread_idx").on(table.childThreadId),
-    index("delegations_target_idx").on(table.targetChannelId),
+    index("delegations_target_idx").on(table.targetMemberId),
   ],
 );
 

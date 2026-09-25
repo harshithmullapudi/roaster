@@ -1,61 +1,28 @@
-export interface AgentIdentity {
-  agentName: string;
-  channelSlug: string;
-  handle: string;
-  display: string;
+/*
+ * An agent's handle is stored on its member row rather than computed from a
+ * person's name and a channel slug, because a channel can hold several agents
+ * and only one of them could ever have carried the computed name.
+ */
+export function normalizeHandle(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/^@/, "");
 }
 
 const UNNAMED = "agent";
 
-function normalize(agentName: string | null | undefined): string {
-  const trimmed = (agentName ?? "").trim().toLowerCase();
-  return trimmed.length > 0 ? trimmed : UNNAMED;
+export function agentDisplay(handle: string | null | undefined): string {
+  const normalized = normalizeHandle(handle);
+  return normalized.length > 0 ? normalized : UNNAMED;
 }
 
-export function agentHandle(
-  agentName: string | null | undefined,
+/*
+ * The handle a channel's first agent is given: the adder's own agent name
+ * joined to the channel slug. Kept so a channel added today is named the same
+ * way as every channel the backfill renamed.
+ */
+export function channelAgentHandle(
+  ownerAgentName: string | null | undefined,
   channelSlug: string,
 ): string {
-  return `${normalize(agentName)}-${channelSlug}`;
-}
-
-export function agentDisplay(
-  agentName: string | null | undefined,
-  channelSlug: string,
-): string {
-  return `${normalize(agentName)} [${channelSlug}]`;
-}
-
-export function agentIdentity(args: {
-  agentName: string | null | undefined;
-  channelSlug: string;
-}): AgentIdentity {
-  const agentName = normalize(args.agentName);
-  return {
-    agentName,
-    channelSlug: args.channelSlug,
-    handle: agentHandle(agentName, args.channelSlug),
-    display: agentDisplay(agentName, args.channelSlug),
-  };
-}
-
-export interface HandleCandidate {
-  agentName: string | null;
-  slug: string;
-}
-
-export function matchAgentHandle<T extends HandleCandidate>(
-  handle: string,
-  candidates: T[],
-): T | null {
-  const wanted = handle.trim().toLowerCase().replace(/^@/, "");
-  if (wanted.length === 0) return null;
-
-  for (const candidate of candidates) {
-    if (agentHandle(candidate.agentName, candidate.slug) === wanted) {
-      return candidate;
-    }
-  }
-
-  return null;
+  const owner = normalizeHandle(ownerAgentName);
+  return `${owner.length > 0 ? owner : UNNAMED}-${channelSlug}`;
 }

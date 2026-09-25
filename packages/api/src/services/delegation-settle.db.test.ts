@@ -26,8 +26,8 @@ async function statusOf(delegationId: string): Promise<string | undefined> {
 async function openDelegation(args: {
   orgId: string;
   parentThreadId: string;
-  originChannelId: string;
-  targetChannelId: string;
+  originMemberId: string;
+  targetMemberId: string;
   childThreadId: string;
 }): Promise<string> {
   const { db, delegations } = await import("@roster/db");
@@ -36,8 +36,8 @@ async function openDelegation(args: {
     .values({
       organizationId: args.orgId,
       parentThreadId: args.parentThreadId,
-      originChannelId: args.originChannelId,
-      targetChannelId: args.targetChannelId,
+      originMemberId: args.originMemberId,
+      targetMemberId: args.targetMemberId,
       childThreadId: args.childThreadId,
       task: "look at the logs",
       status: "open",
@@ -56,15 +56,15 @@ describe.skipIf(!hasDatabase())("settling a delegation", () => {
     const delegationId = await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: parent.threadId,
-      originChannelId: fixture.projectId,
-      targetChannelId,
+      originMemberId: fixture.agentFor(),
+      targetMemberId: fixture.agentFor(targetChannelId),
       childThreadId: child.threadId,
     });
 
     const { settleDelegationFor } = await import("./delegations");
     await Promise.all([
-      settleDelegationFor({ childThreadId: child.threadId, reply: "found it" }),
-      settleDelegationFor({ childThreadId: child.threadId, reply: "found it" }),
+      settleDelegationFor({ threadId: child.threadId, reply: "found it" }),
+      settleDelegationFor({ threadId: child.threadId, reply: "found it" }),
     ]);
 
     expect(await statusOf(delegationId)).toBe("answered");
@@ -124,8 +124,8 @@ describe.skipIf(!hasDatabase())("settling a delegation", () => {
     const delegationId = await openDelegation({
       orgId: fixture.orgId,
       parentThreadId: parent.threadId,
-      originChannelId: fixture.projectId,
-      targetChannelId,
+      originMemberId: fixture.agentFor(),
+      targetMemberId: fixture.agentFor(targetChannelId),
       childThreadId: child.threadId,
     });
 
@@ -138,7 +138,7 @@ describe.skipIf(!hasDatabase())("settling a delegation", () => {
 
     const { settleDelegationFor } = await import("./delegations");
     await settleDelegationFor({
-      childThreadId: child.threadId,
+      threadId: child.threadId,
       reply: "",
       failed: true,
     });

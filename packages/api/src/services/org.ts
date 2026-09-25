@@ -111,22 +111,36 @@ export async function listUserOrganizations(userId: string) {
 
 export async function listOrgMembers(organizationId: string) {
   const rows = await db.query.members.findMany({
-    where: eq(members.organizationId, organizationId),
+    where: and(
+      eq(members.organizationId, organizationId),
+      eq(members.type, "human"),
+    ),
     with: { user: true },
     orderBy: members.createdAt,
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    role: row.role,
-    joinedAt: row.createdAt,
-    userId: row.userId,
-    name: row.user.name,
-    email: row.user.email,
-    image: row.user.image,
-    agentName: row.agentName,
-    supersetConnected: Boolean(row.supersetConnectedAt),
-  }));
+  /*
+   * A human always has a user account; the column is only nullable because
+   * agents share this table and have none. Anything without one is not a
+   * person and has no place in a list of people.
+   */
+  return rows.flatMap((row) =>
+    row.userId && row.user
+      ? [
+          {
+            id: row.id,
+            role: row.role,
+            joinedAt: row.createdAt,
+            userId: row.userId,
+            name: row.user.name,
+            email: row.user.email,
+            image: row.user.image,
+            agentName: row.agentName,
+            supersetConnected: Boolean(row.supersetConnectedAt),
+          },
+        ]
+      : [],
+  );
 }
 
 export async function listPendingInvitations(organizationId: string) {

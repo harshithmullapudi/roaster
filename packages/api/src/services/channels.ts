@@ -2,8 +2,21 @@ import { channelStars, db, members, projects, users } from "@roster/db";
 import { and, asc, eq, isNotNull, ne, or, sql } from "drizzle-orm";
 
 import { can } from "../lib/access";
-import { agentDisplay, agentHandle } from "../lib/agent-identity";
+import { agentDisplay, normalizeHandle } from "../lib/agent-identity";
 import type { ChannelVisibility } from "../lib/channel-visibility";
+
+/*
+ * A channel's own agent: the oldest unarchived one it holds. A correlated
+ * subquery rather than a join, because a channel with three agents would
+ * otherwise come back three times.
+ */
+const MAIN_AGENT_HANDLE = sql<string | null>`(
+  select m."agent_name" from "auth"."members" m
+   where m."project_id" = ${projects.id}
+     and m."type" = 'agent'
+     and m."archived_at" is null
+   order by m."created_at" asc
+   limit 1)`;
 
 export interface Channel {
   id: string;
@@ -42,7 +55,7 @@ export async function listChannels(scope: ChannelScope): Promise<ChannelGroups> 
       repoName: projects.repoName,
       repoPath: projects.repoPath,
       starred: isNotNull(channelStars.id),
-      ownerAgentName: members.agentName,
+      mainAgentHandle: MAIN_AGENT_HANDLE,
     })
     .from(projects)
     .leftJoin(
@@ -52,7 +65,6 @@ export async function listChannels(scope: ChannelScope): Promise<ChannelGroups> 
         eq(channelStars.memberId, scope.memberId),
       ),
     )
-    .leftJoin(members, eq(projects.addedByMemberId, members.id))
     .where(
       and(
         eq(projects.organizationId, scope.organizationId),
@@ -64,11 +76,11 @@ export async function listChannels(scope: ChannelScope): Promise<ChannelGroups> 
   const groups: ChannelGroups = { starred: [], public: [], private: [] };
 
   for (const row of rows) {
-    const { ownerAgentName, ...rest } = row;
+    const { mainAgentHandle, ...rest } = row;
     const channel: Channel = {
       ...rest,
       starred: Boolean(row.starred),
-      ...toAgent(ownerAgentName, row.slug),
+      ...toAgent(mainAgentHandle),
     };
     if (channel.starred) groups.starred.push(channel);
     else if (channel.visibility === "private") groups.private.push(channel);
@@ -79,13 +91,13 @@ export async function listChannels(scope: ChannelScope): Promise<ChannelGroups> 
 }
 
 function toAgent(
-  agentName: string | null,
-  slug: string,
+  handle: string | null,
 ): Pick<Channel, "agentName" | "agentHandle" | "agentDisplay"> {
+  const normalized = normalizeHandle(handle);
   return {
-    agentName: agentName ?? "",
-    agentHandle: agentHandle(agentName, slug),
-    agentDisplay: agentDisplay(agentName, slug),
+    agentName: normalized,
+    agentHandle: normalized,
+    agentDisplay: agentDisplay(normalized),
   };
 }
 
@@ -119,6 +131,7 @@ export async function listMentionableMembers(
     .where(
       and(
         eq(members.organizationId, scope.organizationId),
+        eq(members.type, "human"),
         isNotNull(members.agentName),
         ne(members.id, scope.memberId),
       ),
@@ -159,6 +172,7 @@ export async function findMemberByHandle(args: {
     .where(
       and(
         eq(members.organizationId, args.organizationId),
+        eq(members.type, "human"),
         eq(sql`lower(${members.agentName})`, wanted),
       ),
     )
@@ -174,31 +188,8 @@ export async function findMemberByHandle(args: {
   };
 }
 
-export async function resolveAgentHandle(
-  scope: ChannelScope,
-  handle: string,
-): Promise<Channel | null> {
-  const wanted = handle.trim().toLowerCase().replace(/^@/, "");
-  if (wanted.length === 0) return null;
-
-  const channels = await listMentionableChannels(scope);
-  return channels.find((channel) => channel.agentHandle === wanted) ?? null;
-}
-
-export async function channelAgentIdentity(projectId: string) {
-  const [row] = await db
-    .select({ slug: projects.slug, agentName: members.agentName })
-    .from(projects)
-    .leftJoin(members, eq(projects.addedByMemberId, members.id))
-    .where(eq(projects.id, projectId))
-    .limit(1);
-
-  if (!row) return null;
-
-  return {
-    channelSlug: row.slug,
-    ...toAgent(row.agentName, row.slug),
-  };
+export async function channelById(projectId: string) {
+  return db.query.projects.findFirst({ where: eq(projects.id, projectId) });
 }
 
 export function visibleToMember(memberId: string, role: string) {

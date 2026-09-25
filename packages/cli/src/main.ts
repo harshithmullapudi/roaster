@@ -21,7 +21,9 @@ import {
 const USAGE = `roster — talk to Roster from inside an agent session
 
   roster login [--api-url URL]              store this machine's API key
-  roster channels                           agents you can ask, with handles
+  roster channels                           channels you can reach
+  roster agents [--channel-id ID]           agents you can ask, with handles
+  roster agents create <name> --channel-id ID [--brief TEXT]
   roster read messages --channel-id ID [--limit N]
   roster read messages --thread-id ID [--limit N]
   roster tasks create <title> [--channel-id ID]
@@ -47,6 +49,16 @@ Your thread id, channel id and task id are in the <roster> block at the top
 of your session. \`roster ask\` returns immediately — say what you asked for
 and end your turn; you are resumed automatically with the answer.
 
+An agent on your own channel works in the worktree you are already in, taking
+its turn while you wait. An agent on another channel gets a worktree of its
+own, cut from that channel's repo. Which one you get follows from who you ask,
+so there is no flag for it.
+
+\`roster agents create\` makes a new agent under this channel — the name is
+suffixed to the channel's own handle, so \`pm\` on #superset becomes
+@superset-pm. It keeps the brief you give it and answers to that handle from
+then on.
+
 A channel read shows what was said out loud, and marks every message that
 has a thread hanging off it with that thread's id. Read the thread with
 \`roster read messages --thread-id <id>\`.`;
@@ -59,6 +71,64 @@ function requireConfig(): Config {
     );
   }
   return config;
+}
+
+async function agents(parsed: ReturnType<typeof parseArgs>): Promise<void> {
+  const config = requireConfig();
+  const channelId = flagString(parsed, "channel-id");
+
+  const rows = (await query(
+    config,
+    "cli.agents",
+    channelId ? { channelId } : undefined,
+  )) as Array<{
+    handle: string;
+    channelSlug: string;
+    brief: string | null;
+  }>;
+
+  if (rows.length === 0) {
+    console.log("No agents you can reach.");
+    return;
+  }
+
+  const width = Math.max(...rows.map((row) => row.handle.length));
+  for (const row of rows) {
+    const brief = row.brief?.split("\n")[0]?.trim() ?? "";
+    console.log(
+      `@${row.handle.padEnd(width)}  #${row.channelSlug}${brief ? `  ${brief}` : ""}`,
+    );
+  }
+}
+
+async function createAgent(
+  parsed: ReturnType<typeof parseArgs>,
+): Promise<void> {
+  const config = requireConfig();
+
+  const name = parsed.positionals[2];
+  if (!name) {
+    throw new RosterError(
+      "Say what to call it, e.g. `roster agents create pm --channel-id ID`.",
+    );
+  }
+
+  const channelId = flagString(parsed, "channel-id") ?? process.env.ROSTER_CHANNEL_ID;
+  if (!channelId) {
+    throw new RosterError(
+      "Pass --channel-id with the channel id from your <roster> block.",
+    );
+  }
+
+  const agent = (await mutate(config, "cli.createAgent", {
+    channelId,
+    name,
+    brief: flagString(parsed, "brief"),
+  })) as { handle: string; channelSlug: string };
+
+  console.log(
+    `@${agent.handle} is on #${agent.channelSlug}. Ask it with \`roster ask ${agent.handle} "<task>"\`.`,
+  );
 }
 
 async function login(parsed: ReturnType<typeof parseArgs>): Promise<void> {
@@ -225,10 +295,12 @@ async function ask(parsed: ReturnType<typeof parseArgs>): Promise<void> {
     threadId,
     handle,
     task,
-  })) as { targetHandle: string };
+  })) as { targetHandle: string; sameWorktree: boolean };
 
   console.log(
-    `Asked @${result.targetHandle}. Say so and end your turn — you will be resumed with the answer.`,
+    `Asked @${result.targetHandle}${
+      result.sameWorktree ? ", working in this same worktree" : ""
+    }. Say so and end your turn — you will be resumed with the answer.`,
   );
 }
 
@@ -264,6 +336,8 @@ export async function main(argv: string[]): Promise<number> {
 
     if (command === "login") await login(parsed);
     else if (command === "channels") await channels();
+    else if (command === "agents" && sub === "create") await createAgent(parsed);
+    else if (command === "agents") await agents(parsed);
     else if (command === "read" && sub === "messages") await readMessages(parsed);
     else if (command === "tasks" && sub === "create") await createTask(parsed);
     else if (command === "tasks" && sub === "status") await setTaskStatus(parsed);

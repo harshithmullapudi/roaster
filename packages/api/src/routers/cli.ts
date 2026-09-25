@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { TASK_STATUSES } from "../lib/task-status";
+import { createAgent, listAgents } from "../services/agents";
 import {
   listMentionableChannels,
   requireOrgProject,
@@ -175,6 +176,51 @@ export const cliRouter = createTRPCRouter({
         },
         messages: detail.messages.slice(-input.limit).map(toCliMessage),
       };
+    }),
+
+  agents: cliProcedure
+    .input(z.object({ channelId: z.string().uuid().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const scope = {
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+      };
+
+      const found = await listAgents(scope, { projectId: input?.channelId });
+
+      return found.map((agent) => ({
+        handle: agent.handle,
+        channelId: agent.projectId,
+        channelSlug: agent.channelSlug,
+        brief: agent.brief,
+      }));
+    }),
+
+  createAgent: cliProcedure
+    .input(
+      z.object({
+        channelId: z.string().uuid(),
+        name: z.string().min(1).max(60),
+        brief: z.string().max(4000).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireOrgProject({
+        organizationId: ctx.organizationId,
+        memberId: ctx.member.id,
+        role: ctx.member.role,
+        projectId: input.channelId,
+      });
+
+      const agent = await createAgent({
+        organizationId: ctx.organizationId,
+        projectId: input.channelId,
+        name: input.name,
+        brief: input.brief ?? null,
+      });
+
+      return { handle: agent.handle, channelSlug: agent.channelSlug };
     }),
 
   ask: cliProcedure

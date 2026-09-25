@@ -28,9 +28,7 @@ import { mentionedHandles } from "../lib/message-mentions";
 import { sessionErrorDetail } from "../utils/session-error";
 import { contiguousRun, type RunMessage } from "../utils/message-run";
 import {
-  AGENT_IDENTITY_ON,
-  agentChannel,
-  agentOwner,
+
   type ChannelMessage,
   messageColumns,
   toChannelMessage,
@@ -82,8 +80,6 @@ export async function listMessages(args: {
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
-    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
-    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(and(...conditions))
     .orderBy(desc(messages.seq))
     .limit(limit);
@@ -127,8 +123,6 @@ async function findByClientId(args: {
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
-    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
-    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(
       and(
         eq(messages.projectId, args.projectId),
@@ -515,8 +509,6 @@ export async function startPausedSession(
     .from(messages)
     .leftJoin(members, eq(messages.authorMemberId, members.id))
     .leftJoin(users, eq(members.userId, users.id))
-    .leftJoin(agentChannel, AGENT_IDENTITY_ON.channel)
-    .leftJoin(agentOwner, AGENT_IDENTITY_ON.owner)
     .where(
       and(
         eq(messages.projectId, projectId),

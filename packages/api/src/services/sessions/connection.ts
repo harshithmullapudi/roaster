@@ -59,10 +59,17 @@ export function memberKey(
   return { apiKey };
 }
 
+/*
+ * The machine a session runs on is the one its worktree is on, which is not
+ * always the one its own channel would name: an agent borrowed into another
+ * agent's worktree runs where that worktree already lives. The session records
+ * the host it started against, so prefer it over re-deriving one.
+ */
 export async function hostConnection(args: {
   organizationId: string;
   projectId: string;
   runAsMemberId: string | null;
+  supersetHostKey?: string | null;
 }): Promise<HostConnection> {
   const project = await db.query.projects.findFirst({
     where: eq(projects.id, args.projectId),
@@ -84,7 +91,9 @@ export async function hostConnection(args: {
   return {
     jwt: await jwts.get(key.apiKey),
     project,
-    hostKey: routingKey(project.supersetOrgId, project.supersetHostId),
+    hostKey:
+      args.supersetHostKey ??
+      routingKey(project.supersetOrgId, project.supersetHostId),
     memberId: member!.id,
   };
 }

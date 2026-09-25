@@ -106,6 +106,16 @@ export const organizations = authSchema.table(
 export type SelectOrganization = typeof organizations.$inferSelect;
 export type InsertOrganization = typeof organizations.$inferInsert;
 
+export const MEMBER_TYPES = ["human", "agent"] as const;
+export type MemberType = (typeof MEMBER_TYPES)[number];
+
+/*
+ * Agents are members. A human has a user account and no channel; an agent has
+ * a channel and no user, which is why user_id is nullable and project_id is
+ * not a drizzle reference — auth is imported by roster, so pointing back at
+ * roster.projects here would close an import cycle. The foreign key is added
+ * in the migration instead.
+ */
 export const members = authSchema.table(
   "members",
   {
@@ -113,13 +123,15 @@ export const members = authSchema.table(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     role: text("role").default("member").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 
+    type: text("type").$type<MemberType>().default("human").notNull(),
     agentName: text("agent_name"),
+    projectId: uuid("project_id"),
+    brief: text("brief"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
 
     supersetKeyEncrypted: text("superset_key_encrypted"),
     supersetOrgId: uuid("superset_org_id"),
@@ -133,6 +145,7 @@ export const members = authSchema.table(
       table.organizationId,
       table.agentName,
     ),
+    index("members_project_idx").on(table.projectId),
   ],
 );
 

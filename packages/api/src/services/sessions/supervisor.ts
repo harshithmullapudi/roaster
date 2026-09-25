@@ -24,7 +24,7 @@ import {
   runAgent,
   sendToAgent,
 } from "@roster/superset";
-import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 
 import {
   humanSessionError,
@@ -49,7 +49,8 @@ import {
   attachmentsForMessages,
   textWithAttachments,
 } from "../attachments";
-import { allocateSeq, channelAgentIdentity } from "../channels";
+import { agentById, mainAgentFor } from "../agents";
+import { allocateSeq } from "../channels";
 import { channelName, publish, threadChannelName } from "../centrifugo";
 import { emitMessageById } from "../message-events";
 import { notifyThreadFailed, subscribeThreadAuthor } from "../notifications";
@@ -88,15 +89,31 @@ function isIdle(status: string): boolean {
 }
 
 /**
- * True when this thread owes an answer to a thread that asked for one. Such a
+ * True when this session owes an answer to a thread that asked for one. Such a
  * session has to complete rather than rest at idle, because completing is what
- * settles the delegation and wakes the asking thread.
+ * settles the delegation and wakes the asking agent.
+ *
+ * Two shapes qualify. An agent in another channel answers from a thread of its
+ * own, so the thread is the child. An agent in this one answers from inside
+ * the asking thread, so the delegation names it as the target — and the agent
+ * that did the asking, sitting in the same thread, owes nothing.
  */
-export async function answersDelegation(threadId: string): Promise<boolean> {
+export async function answersDelegation(args: {
+  threadId: string;
+  agentMemberId?: string;
+}): Promise<boolean> {
   const open = await db.query.delegations.findFirst({
     where: and(
-      eq(delegations.childThreadId, threadId),
       eq(delegations.status, "open"),
+      args.agentMemberId
+        ? or(
+            eq(delegations.childThreadId, args.threadId),
+            and(
+              eq(delegations.parentThreadId, args.threadId),
+              eq(delegations.targetMemberId, args.agentMemberId),
+            ),
+          )
+        : eq(delegations.childThreadId, args.threadId),
     ),
     columns: { id: true },
   });
@@ -110,7 +127,10 @@ async function statusAfter(
   return nextStatus({
     current: session.status,
     event,
-    answersDelegation: await answersDelegation(session.threadId),
+    answersDelegation: await answersDelegation({
+      threadId: session.threadId,
+      agentMemberId: session.agentMemberId,
+    }),
   });
 }
 
@@ -161,6 +181,7 @@ interface SessionView {
   id: string;
   threadId: string;
   projectId: string;
+  agentMemberId: string;
   role: string;
   runAsMemberId: string | null;
   supersetWorkspaceId: string | null;
@@ -179,6 +200,7 @@ const sessionViewColumns = {
   id: threadSessions.id,
   threadId: threadSessions.threadId,
   projectId: threadSessions.projectId,
+  agentMemberId: threadSessions.agentMemberId,
   role: threadSessions.role,
   runAsMemberId: threadSessions.runAsMemberId,
   supersetWorkspaceId: threadSessions.supersetWorkspaceId,
@@ -201,6 +223,48 @@ async function sessionById(sessionId: string): Promise<SessionView | null> {
     .where(eq(threadSessions.id, sessionId))
     .limit(1);
   return row ?? null;
+}
+
+async function sessionForAgent(
+  threadId: string,
+  agentMemberId: string,
+): Promise<SessionView | null> {
+  const [row] = await db
+    .select(sessionViewColumns)
+    .from(threadSessions)
+    .innerJoin(threads, eq(threadSessions.threadId, threads.id))
+    .where(
+      and(
+        eq(threadSessions.threadId, threadId),
+        eq(threadSessions.agentMemberId, agentMemberId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/*
+ * Which agent in a thread is doing the asking. With one agent running at a
+ * time the answer is whichever is awake; the channel's own agent is the
+ * fallback for a thread that is between turns.
+ */
+export async function askingSession(
+  threadId: string,
+): Promise<SessionView | null> {
+  const rows = await db
+    .select(sessionViewColumns)
+    .from(threadSessions)
+    .innerJoin(threads, eq(threadSessions.threadId, threads.id))
+    .where(
+      and(
+        eq(threadSessions.threadId, threadId),
+        inArray(threadSessions.status, ["running", "starting", "needs_input"]),
+      ),
+    )
+    .orderBy(desc(threadSessions.startedAt))
+    .limit(1);
+
+  return rows[0] ?? (await mainSession(threadId));
 }
 
 async function mainSession(threadId: string): Promise<SessionView | null> {
@@ -525,6 +589,7 @@ async function askForInput(sessionId: string): Promise<void> {
       sessionId,
       thread: threadIdentity(row),
       text: question,
+      agentMemberId: row.agentMemberId,
       agentChannelId: row.projectId,
     });
   }
@@ -789,6 +854,7 @@ async function finishOnce(args: {
         sessionId: args.sessionId,
         thread: threadIdentity(session),
         text: finalText,
+        agentMemberId: session.agentMemberId,
         agentChannelId: session.projectId,
       });
     }
@@ -813,6 +879,7 @@ async function finishOnce(args: {
           sessionId: args.sessionId,
           thread: threadIdentity(row),
           text: finalText,
+          agentMemberId: row.agentMemberId,
           agentChannelId: row.projectId,
         })
       : false;
@@ -836,7 +903,8 @@ async function finishOnce(args: {
   if (outcome.resumeWith !== null) return outcome;
 
   await settleIfDelegated({
-    childThreadId: row.threadId,
+    threadId: row.threadId,
+    agentMemberId: row.agentMemberId,
     reply: finalText ?? "",
     failed: args.status !== "completed",
   });
@@ -882,7 +950,8 @@ async function reportUndelivered(
 }
 
 async function settleIfDelegated(args: {
-  childThreadId: string;
+  threadId: string;
+  agentMemberId: string;
   reply: string;
   failed: boolean;
 }): Promise<void> {
@@ -891,7 +960,7 @@ async function settleIfDelegated(args: {
     await settleDelegationFor(args);
   } catch (cause) {
     console.warn(
-      `[sessions] delegation settle failed for ${args.childThreadId}: ${sessionErrorDetail(cause)}`,
+      `[sessions] delegation settle failed for ${args.threadId}: ${sessionErrorDetail(cause)}`,
     );
   }
 }
@@ -905,15 +974,28 @@ export async function persistAgentMessage(args: {
     rootMessageId: string;
   };
   text: string;
+  /*
+   * Who is speaking. A thread can hold two agents, so the message says which
+   * one wrote it rather than leaving the reader to infer it from the channel.
+   */
+  agentMemberId?: string;
   agentChannelId?: string;
   dedupe?: boolean;
 }): Promise<boolean> {
   const { thread, text } = args;
   const agentChannelId = args.agentChannelId ?? thread.projectId;
+  const agentMemberId =
+    args.agentMemberId ?? (await sessionById(args.sessionId))?.agentMemberId;
 
   if (args.dedupe !== false) {
     const existing = await db.query.messages.findFirst({
-      where: and(eq(messages.threadId, thread.id), eq(messages.kind, "agent")),
+      where: and(
+        eq(messages.threadId, thread.id),
+        eq(messages.kind, "agent"),
+        agentMemberId
+          ? eq(messages.authorMemberId, agentMemberId)
+          : isNull(messages.authorMemberId),
+      ),
       orderBy: desc(messages.seq),
     });
     if (existing?.text === text) return false;
@@ -934,7 +1016,7 @@ export async function persistAgentMessage(args: {
       organizationId: thread.organizationId,
       projectId: thread.projectId,
       seq,
-      authorMemberId: null,
+      authorMemberId: agentMemberId ?? null,
       kind: "agent",
       agentChannelId,
       body: markdownToTiptap(text),
@@ -958,15 +1040,16 @@ async function briefedPrompt(args: {
   context?: string[];
   delegation?: DelegationContext;
 }): Promise<string> {
-  const [identity, task] = await Promise.all([
-    channelAgentIdentity(args.session.projectId),
+  const [agent, task] = await Promise.all([
+    agentById(args.session.agentMemberId),
     taskForThread(args.session.threadId),
   ]);
 
   const envelope = rosterEnvelope({
     threadId: args.session.threadId,
     channelId: args.session.projectId,
-    handle: identity?.agentHandle ?? "agent",
+    handle: agent?.handle ?? "agent",
+    brief: agent?.brief ?? null,
     delegation: args.delegation,
     task: task
       ? { id: task.id, title: task.title, status: task.status }
@@ -991,11 +1074,76 @@ export async function startSession(args: {
   await startSessionRow({ session, ...args });
 }
 
+/**
+ * Bring another of this channel's agents into a thread that is already
+ * running, in the worktree that thread already has. The asking agent is
+ * parked while this one works, so the two never hold the checkout at once.
+ */
+export async function joinThread(args: {
+  threadId: string;
+  agentMemberId: string;
+  projectId: string;
+  text: string;
+  delegation?: DelegationContext;
+}): Promise<boolean> {
+  await ensureStarted();
+
+  const host = await askingSession(args.threadId);
+  if (!host?.supersetWorkspaceId || !host.supersetHostKey) return false;
+  if (host.workspaceReapedAt) return false;
+
+  const existing = await sessionForAgent(args.threadId, args.agentMemberId);
+  const session =
+    existing ??
+    (await (async () => {
+      const [row] = await db
+        .insert(threadSessions)
+        .values({
+          threadId: args.threadId,
+          projectId: args.projectId,
+          agentMemberId: args.agentMemberId,
+          role: "delegate",
+          runAsMemberId: host.runAsMemberId,
+          status: "starting",
+        })
+        .onConflictDoNothing({
+          target: [threadSessions.threadId, threadSessions.agentMemberId],
+        })
+        .returning({ id: threadSessions.id });
+
+      return row
+        ? await sessionById(row.id)
+        : await sessionForAgent(args.threadId, args.agentMemberId);
+    })());
+
+  if (!session) return false;
+
+  await patch(session.id, { status: "starting", endedAt: null, error: null });
+
+  await startSessionRow({
+    session,
+    text: args.text,
+    delegation: args.delegation,
+    shareWorkspace: {
+      workspaceId: host.supersetWorkspaceId,
+      hostKey: host.supersetHostKey,
+    },
+  });
+
+  return true;
+}
+
 async function startSessionRow(args: {
   session: SessionView;
   text: string;
   context?: string[];
   delegation?: DelegationContext;
+  /*
+   * An agent joining a thread that is already running works in the worktree
+   * that thread already has, rather than cutting one of its own. Only one of
+   * them runs at a time, so sharing the checkout is safe.
+   */
+  shareWorkspace?: { workspaceId: string; hostKey: string };
 }): Promise<void> {
   const { session } = args;
 
@@ -1004,15 +1152,19 @@ async function startSessionRow(args: {
   try {
     const connection = await hostConnection(session);
 
-    const workspace = await createWorkspace({
-      jwt: connection.jwt,
-      routingKey: connection.hostKey,
-      projectId: connection.project.supersetProjectId,
-      namingPrompt: args.text,
-    });
+    const workspace = args.shareWorkspace
+      ? { id: args.shareWorkspace.workspaceId }
+      : await createWorkspace({
+          jwt: connection.jwt,
+          routingKey: connection.hostKey,
+          projectId: connection.project.supersetProjectId,
+          namingPrompt: args.text,
+        });
+    const hostKey = args.shareWorkspace?.hostKey ?? connection.hostKey;
+
     await patch(session.id, {
       supersetWorkspaceId: workspace.id,
-      supersetHostKey: connection.hostKey,
+      supersetHostKey: hostKey,
     });
 
     const prompt = await briefedPrompt({
@@ -1024,7 +1176,7 @@ async function startSessionRow(args: {
 
     const run = await runAgent({
       jwt: connection.jwt,
-      routingKey: connection.hostKey,
+      routingKey: hostKey,
       workspaceId: workspace.id,
       prompt,
     });
@@ -1049,7 +1201,7 @@ async function startSessionRow(args: {
     startWatch({
       sessionId: session.id,
       threadId: session.threadId,
-      hostKey: connection.hostKey,
+      hostKey,
       memberId: connection.memberId,
       workspaceId: workspace.id,
       terminalId: run.sessionId,
@@ -1311,10 +1463,18 @@ async function recordSessionError(
 export async function steer(args: {
   threadId: string;
   text: string;
+  /*
+   * A thread can hold more than one agent, so a reply meant for a particular
+   * one says so. Without it the channel's own agent takes the message, which
+   * is what someone typing into the thread means by default.
+   */
+  agentMemberId?: string;
 }): Promise<void> {
   await ensureStarted();
 
-  const session = await mainSession(args.threadId);
+  const session = args.agentMemberId
+    ? await sessionForAgent(args.threadId, args.agentMemberId)
+    : await mainSession(args.threadId);
   if (!session) return;
 
   await bumpTurn(session.threadId);
@@ -1494,8 +1654,14 @@ async function cancelSession(session: SessionView): Promise<void> {
   });
 }
 
+/*
+ * Sessions that shared a worktree share its removal: deleting it once per
+ * session would fail on the second, leave that session unmarked, and trip the
+ * check that every worktree was reaped.
+ */
 export async function reapThread(args: { threadId: string }): Promise<void> {
   const sessions = await sessionsOf(args.threadId);
+  const reaped = new Set<string>();
 
   for (const session of sessions) {
     stopWatch(session.id);
@@ -1504,18 +1670,21 @@ export async function reapThread(args: { threadId: string }): Promise<void> {
     const workspaceId = session.supersetWorkspaceId;
     if (!workspaceId || session.workspaceReapedAt) continue;
 
-    try {
-      const connection = await hostConnection(session);
-      await deleteWorkspace({
-        jwt: connection.jwt,
-        routingKey: session.supersetHostKey ?? connection.hostKey,
-        workspaceId,
-      });
-    } catch (cause) {
-      console.warn(
-        `[sessions] reap failed for ${session.id}: ${sessionErrorDetail(cause)}`,
-      );
-      continue;
+    if (!reaped.has(workspaceId)) {
+      try {
+        const connection = await hostConnection(session);
+        await deleteWorkspace({
+          jwt: connection.jwt,
+          routingKey: session.supersetHostKey ?? connection.hostKey,
+          workspaceId,
+        });
+      } catch (cause) {
+        console.warn(
+          `[sessions] reap failed for ${session.id}: ${sessionErrorDetail(cause)}`,
+        );
+        continue;
+      }
+      reaped.add(workspaceId);
     }
 
     await patch(session.id, { workspaceReapedAt: new Date() });
@@ -1635,7 +1804,14 @@ export async function createThread(args: {
   projectId: string;
   rootMessageId: string;
   runAsMemberId?: string | null;
+  agentMemberId?: string;
 }): Promise<SelectThread | null> {
+  const agentMemberId =
+    args.agentMemberId ?? (await mainAgentFor(args.projectId))?.id;
+  if (!agentMemberId) {
+    throw new Error("That channel has no agent to open a thread with.");
+  }
+
   const [row] = await db
     .insert(threads)
     .values({
@@ -1653,12 +1829,13 @@ export async function createThread(args: {
     .values({
       threadId: row.id,
       projectId: args.projectId,
+      agentMemberId,
       role: "main",
       runAsMemberId: args.runAsMemberId ?? null,
       status: "starting",
     })
     .onConflictDoNothing({
-      target: [threadSessions.threadId, threadSessions.projectId],
+      target: [threadSessions.threadId, threadSessions.agentMemberId],
     });
 
   await db

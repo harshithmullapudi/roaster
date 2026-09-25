@@ -373,9 +373,7 @@ export async function notifyDelegationReceived(args: {
       dedupeKey: `delegation:${args.delegationId}`,
       actorMemberId: null,
       actorChannelId: args.originChannelId,
-      actorDisplay: asker
-        ? agentDisplay(asker.ownerAgentName, asker.slug)
-        : null,
+      actorDisplay: asker ? agentDisplay(asker.ownerAgentName) : null,
       preview: previewOf(args.task),
     },
     [{ memberId: owner.memberId, type: "delegation_received" }],
@@ -491,8 +489,8 @@ function toItem(row: {
     name && name.length > 0
       ? name
       : (row.actorEmail ??
-        (row.actorChannelSlug
-          ? agentDisplay(row.actorChannelAgentName, row.actorChannelSlug)
+        (row.actorChannelAgentName
+          ? agentDisplay(row.actorChannelAgentName)
           : null));
 
   return {
